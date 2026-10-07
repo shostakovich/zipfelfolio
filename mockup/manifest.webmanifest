@@ -1,0 +1,9 @@
+{
+  "name": "zipfelfolio",
+  "short_name": "zipfelfolio",
+  "start_url": "./#uebersicht",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3d64a0",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
