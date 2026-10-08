@@ -1,0 +1,4 @@
+.app-auth { max-width: 26rem; }
+.app-avatar { width: 2.25rem; height: 2.25rem; flex-shrink: 0; }
+/* `d-flex` would show the hidden connection alerts of the flash group. */
+.alert[hidden] { display: none !important; }
