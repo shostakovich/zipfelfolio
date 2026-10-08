@@ -36,10 +36,15 @@ _Avoid_: Booking, entry, cross entry
 A part of a transaction's amount: gross value, fee or tax, possibly in a foreign currency with its exchange rate.
 _German UI_: Bruttobetrag, Gebühr, Steuer
 
+**Savings plan**:
+A recurring purchase, deposit, removal or interest payment with a start, an interval and an amount; it knows the transactions it produced.
+_German UI_: Sparplan
+_Avoid_: Investment plan
+
 ### Classification
 
 **Taxonomy**:
-A named tree of classifications, such as regions or asset allocation.
+A user's named tree of classifications, such as regions or asset allocation.
 _German UI_: Klassifizierung
 
 **Classification**:

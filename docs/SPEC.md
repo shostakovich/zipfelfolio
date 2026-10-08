@@ -43,8 +43,8 @@ Not in scope: Vorabpauschale, Freistellungsauftrag, trading, public hosting, mul
 Mirrors PP so the import is lossless.
 
 - **Security**: name, ISIN, WKN, currency, quote feed + symbol (e.g. Yahoo `VGWL.DE`), dividend feed, retired
-  flag, attributes (TER, fund size, provider, …), notes
-- **Price**: security, date, close; latest quote cached separately
+  flag, attributes (TER, fund size, provider, …), notes; shared by all users (metadata, not sensitive)
+- **Price**: security, date, close, source; latest quote cached separately; shared by all users
 - **Portfolio**: name, owner, optional reference account, retired flag
 - **Account**: cash account on its own (not part of a portfolio), currency, retired flag
 - **Transaction**: one record per business event: date and time, type, portfolio side and/or account side
@@ -52,8 +52,10 @@ Mirrors PP so the import is lossless.
   tax, gross value with FX rate), ex date, note, source (manual, PP import, receipt), optional document
   - types as in PP: buy, sell, inbound/outbound delivery, security transfer, deposit, removal, dividend,
     interest, interest charge, fee, fee refund, tax, tax refund, cash transfer
-- **Taxonomy**: classifications with parent, colour, target weight; assignments security or account →
-  classification with weight
+- **Taxonomy**: per user; classifications with parent, colour, target weight; assignments security or
+  account → classification with weight
+- **Savings plan**: name, security, portfolio and/or account, start, interval (months or weeks), amount, fees,
+  taxes, type, its transactions; shown only, zipfelfolio generates nothing from it (yet)
 - **Dividend event**: security, ex date, pay date, amount per share, currency, source, `announced` flag
 - **Exchange rate**: ECB daily reference rates
 - **Document**: PDF, SHA-256, origin (upload, Paperless id)
@@ -99,14 +101,24 @@ All behind a small behaviour per kind, results stored locally; screens never cal
 - Not imported: watchlists, dashboards, bookmarks, configuration sets, security events (splits are already in
   the transactions' shares, dividends come from DivvyDiary)
 - Repeatable: re-import replaces everything that came from PP, keeps data entered in zipfelfolio; this allows
-  running PP in parallel until the switch
+  running PP in parallel until the switch. Until then PP is the only place to book; the import warns if
+  transactions were entered in zipfelfolio
+- Imported portfolios, accounts, transactions, taxonomies and savings plans belong to the importing user;
+  a re-import touches only that user's data
 - Objects are matched by their PP UUID and updated in place, so data entered in zipfelfolio that refers to
-  them survives; objects deleted in PP are deleted
+  them survives; objects deleted in PP are deleted. Shared securities are matched by ISIN (PP UUID if there
+  is none) and deleted only when nothing refers to them any more. Savings plans have no UUID in PP and are
+  replaced as a whole
+- Prices from PP win over fetched prices on the same date until the switch, so the numbers match PP
 - Upload in Settings (LiveView upload); one DB transaction, nothing half-imported; a summary shows created,
   updated and deleted objects per kind
-- Quote feeds map to Yahoo where possible (`PP` feed → Xetra symbol, e.g. `LDGL.DE`); unmapped ones become
-  manual
+- Quote feeds: for `YAHOO` and `PP` the PP ticker symbol is already a Yahoo symbol (PP's own feed uses Yahoo's
+  exchange suffixes, e.g. `LDGL.DE`) and is taken over; other feeds become manual. The symbol stays editable
+  in Settings and survives a re-import
 - XML format only if needed later
+- Test fixture: a small `.portfolio` made with PP (every transaction type, two portfolios, three accounts, a
+  savings plan, an account assignment, a foreign-currency transaction); edge cases PP does not produce easily
+  come from a test-only encoder
 - The test against the owner's real file runs only when its path is given and asserts invariants, no real
   numbers: every PP transaction is imported, cross entries match, a second import changes nothing
 
