@@ -42,6 +42,11 @@ defmodule Zipfelfolio.DataCase do
     on_exit(fn -> Sandbox.stop_owner(pid) end)
   end
 
+  @doc "Whether a PP import summary reports no change at all."
+  def import_unchanged?(summary) do
+    Enum.all?(summary, fn {_kind, counts} -> Enum.all?(counts, fn {_op, n} -> n == 0 end) end)
+  end
+
   @doc """
   A helper that transforms changeset errors into a map of messages.
 

@@ -50,7 +50,6 @@ defmodule Zipfelfolio.PPImportRealFileTest do
 
     assert {:ok, summary} = PPImport.run(scope, path)
 
-    assert Enum.all?(summary, fn {_kind, counts} -> Enum.all?(counts, &(elem(&1, 1) == 0)) end),
-           inspect(summary)
+    assert import_unchanged?(summary), inspect(summary)
   end
 end

@@ -146,6 +146,32 @@ defmodule Zipfelfolio.PPImport.Reader do
 
   @epoch ~D[1970-01-01]
 
+  # Per message: the map an empty message decodes to, and the fields collected in reverse.
+  @defaults Map.new(@messages, fn {message, spec} ->
+              defaults =
+                Map.new(spec, fn {_number, field} ->
+                  default =
+                    case field do
+                      {_, _, :repeated} -> []
+                      {_, _, :optional} -> nil
+                      {_, :attributes} -> %{}
+                      {_, :bool} -> false
+                      {_, {:enum, [first | _]}} -> first
+                      {_, type} when type in [:int32, :int64, :uint32] -> 0
+                      {_, :epoch_day} -> @epoch
+                      _ -> nil
+                    end
+
+                  {elem(field, 0), default}
+                end)
+
+              {message, defaults}
+            end)
+
+  @repeated Map.new(@messages, fn {message, spec} ->
+              {message, for({_, {name, _, :repeated}} <- spec, do: name)}
+            end)
+
   @doc "Reads a PP file from disk."
   def read(path) do
     case File.read(path) do
@@ -173,11 +199,10 @@ defmodule Zipfelfolio.PPImport.Reader do
   end
 
   defp message(bin, name) do
-    spec = Map.fetch!(@messages, name)
-
     with {:ok, fields} <- Wire.decode(bin),
-         {:ok, map} <- collect(fields, spec, defaults(spec)) do
-      {:ok, finish(map, spec)}
+         {:ok, map} <- collect(fields, @messages[name], @defaults[name]) do
+      {:ok,
+       Enum.reduce(@repeated[name], map, &Map.update!(&2, &1, fn list -> Enum.reverse(list) end))}
     end
   end
 
@@ -207,26 +232,6 @@ defmodule Zipfelfolio.PPImport.Reader do
 
   defp put({name, type}, raw, acc) do
     with {:ok, value} <- convert(type, raw), do: {:ok, Map.put(acc, name, value)}
-  end
-
-  defp defaults(spec) do
-    Map.new(spec, fn {_number, field} -> {elem(field, 0), default(field)} end)
-  end
-
-  defp default({_, _, :repeated}), do: []
-  defp default({_, _, :optional}), do: nil
-  defp default({_, :attributes}), do: %{}
-  defp default({_, :bool}), do: false
-  defp default({_, {:enum, [first | _]}}), do: first
-  defp default({_, type}) when type in [:int32, :int64, :uint32], do: 0
-  defp default({_, :epoch_day}), do: @epoch
-  defp default({_, _}), do: nil
-
-  defp finish(map, spec) do
-    Enum.reduce(spec, map, fn
-      {_, {name, _, :repeated}}, map -> Map.update!(map, name, &Enum.reverse/1)
-      _, map -> map
-    end)
   end
 
   defp convert(:string, raw) when is_binary(raw), do: {:ok, raw}

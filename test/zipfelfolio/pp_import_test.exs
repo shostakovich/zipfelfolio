@@ -20,9 +20,6 @@ defmodule Zipfelfolio.PPImportTest do
   defp transaction(scope, type),
     do: Enum.find(Portfolios.list_transactions(scope), &(&1.type == type))
 
-  defp unchanged?(summary),
-    do: Enum.all?(summary, fn {_kind, counts} -> Enum.all?(counts, &(elem(&1, 1) == 0)) end)
-
   describe "importing the sample file" do
     setup %{scope: scope} do
       {:ok, summary} = PPImport.run(scope, @sample)
@@ -151,7 +148,7 @@ defmodule Zipfelfolio.PPImportTest do
 
     test "a second import changes nothing", %{scope: scope} do
       assert {:ok, summary} = PPImport.run(scope, @sample)
-      assert unchanged?(summary)
+      assert import_unchanged?(summary)
     end
   end
 
@@ -199,7 +196,7 @@ defmodule Zipfelfolio.PPImportTest do
 
     {:ok, summary} = PPImport.run(scope, @sample)
 
-    assert unchanged?(summary)
+    assert import_unchanged?(summary)
     assert %{quote_feed: :yahoo, symbol: "APC.DE"} = security("US0378331005")
   end
 
@@ -245,7 +242,7 @@ defmodule Zipfelfolio.PPImportTest do
 
     {:ok, summary} = PPImport.run(scope, @sample)
 
-    assert unchanged?(summary)
+    assert import_unchanged?(summary)
     assert Portfolios.own_transactions?(scope)
     assert length(Portfolios.list_transactions(scope)) == 22
   end

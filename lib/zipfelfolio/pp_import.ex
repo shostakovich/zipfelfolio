@@ -32,8 +32,6 @@ defmodule Zipfelfolio.PPImport do
   # PP's own feed already uses Yahoo's exchange suffixes, e.g. LDGL.DE.
   @yahoo_feeds ["YAHOO", "YAHOO-ADJUSTEDCLOSE", "PP"]
 
-  def kinds, do: @kinds
-
   @doc "Reads the file at `path` and imports it for the scope's user."
   def run(%Scope{} = scope, path) do
     with {:ok, client} <- Reader.read(path), do: import_client(scope, client)
@@ -41,7 +39,7 @@ defmodule Zipfelfolio.PPImport do
 
   @doc "Imports a file already parsed by `Zipfelfolio.PPImport.Reader`."
   def import_client(%Scope{user: user}, client) do
-    Repo.transaction(fn -> do_import(user.id, client) end)
+    Repo.transact(fn -> {:ok, do_import(user.id, client)} end)
   end
 
   defp do_import(user_id, client) do
@@ -67,15 +65,8 @@ defmodule Zipfelfolio.PPImport do
 
     incoming =
       for t <- (client.settings && client.settings.attribute_types) || [] do
-        {{t.id, t.target},
-         %{
-           pp_id: t.id,
-           name: t.name,
-           column_label: t.column_label,
-           target: t.target,
-           value_type: t.value_type,
-           converter: t.converter
-         }}
+        attrs = Map.take(t, [:name, :column_label, :target, :value_type, :converter])
+        {{t.id, t.target}, Map.put(attrs, :pp_id, t.id)}
       end
 
     # Shared by all users, so types missing from this file stay.
@@ -109,7 +100,7 @@ defmodule Zipfelfolio.PPImport do
   defp link_security(ctx, uuid, attrs) do
     {ctx, security} =
       case unlinked_security(ctx.user_id, attrs.isin) do
-        nil -> {count(ctx, :securities, :created), Repo.insert!(struct(Security, attrs))}
+        nil -> put_record(ctx, :securities, Security, nil, attrs)
         security -> update_security(ctx, security, attrs)
       end
 
@@ -139,21 +130,17 @@ defmodule Zipfelfolio.PPImport do
         do: {:yahoo, s.ticker},
         else: {:manual, nil}
 
-    %{
-      name: s.name,
-      isin: s.isin,
-      wkn: s.wkn,
+    s
+    |> Map.take([:name, :isin, :wkn, :note, :retired, :attributes])
+    |> Map.merge(%{
       currency: s.currency || base_currency,
-      note: s.note,
-      retired: s.retired,
-      attributes: s.attributes,
       pp_feed: s.feed,
       pp_ticker: s.ticker,
       quote_feed: quote_feed,
       symbol: symbol,
       latest_date: s.latest && s.latest.date,
       latest_close: s.latest && s.latest.close
-    }
+    })
   end
 
   # PP's prices replace the PP prices stored so far and win over fetched ones on the same day.
@@ -165,23 +152,32 @@ defmodule Zipfelfolio.PPImport do
 
   defp sync_prices(ctx, security_id, incoming) do
     existing =
-      Repo.all(from p in Price, where: p.security_id == ^security_id) |> Map.new(&{&1.date, &1})
+      Repo.all(
+        from p in Price,
+          where: p.security_id == ^security_id,
+          select: {p.date, {p.id, p.close, p.source}}
+      )
+      |> Map.new()
 
-    new =
-      for {date, close} <- incoming, not Map.has_key?(existing, date) do
-        %{security_id: security_id, date: date, close: close, source: :pp}
-      end
+    {new, changed} =
+      incoming
+      |> Enum.reject(fn {date, close} -> match?({_id, ^close, :pp}, existing[date]) end)
+      |> Enum.split_with(fn {date, _close} -> is_nil(existing[date]) end)
 
-    changed =
-      for {date, close} <- incoming,
-          price = existing[date],
-          price && (price.close != close or price.source != :pp),
-          do: change(price, close: close, source: :pp)
+    stale =
+      for {date, {id, _close, :pp}} <- existing, not Map.has_key?(incoming, date), do: id
 
-    stale = for {date, p} <- existing, p.source == :pp, not Map.has_key?(incoming, date), do: p.id
-
-    new |> Enum.chunk_every(5000) |> Enum.each(&Repo.insert_all(Price, &1))
-    Enum.each(changed, &Repo.update!/1)
+    (new ++ changed)
+    |> Enum.map(fn {date, close} ->
+      %{security_id: security_id, date: date, close: close, source: :pp}
+    end)
+    |> Enum.chunk_every(5000)
+    |> Enum.each(
+      &Repo.insert_all(Price, &1,
+        on_conflict: {:replace, [:close, :source]},
+        conflict_target: [:security_id, :date]
+      )
+    )
 
     stale
     |> Enum.chunk_every(5000)
@@ -200,16 +196,8 @@ defmodule Zipfelfolio.PPImport do
 
     incoming =
       for a <- client.accounts do
-        {a.uuid,
-         %{
-           user_id: ctx.user_id,
-           name: a.name,
-           currency: a.currency,
-           note: a.note,
-           retired: a.retired,
-           attributes: a.attributes,
-           pp_uuid: a.uuid
-         }}
+        attrs = Map.take(a, [:name, :currency, :note, :retired, :attributes])
+        {a.uuid, Map.merge(attrs, %{user_id: ctx.user_id, pp_uuid: a.uuid})}
       end
 
     {ctx, ids} = upsert(ctx, :accounts, existing, incoming, Account)
@@ -221,16 +209,14 @@ defmodule Zipfelfolio.PPImport do
 
     incoming =
       for p <- client.portfolios do
+        attrs = Map.take(p, [:name, :note, :retired, :attributes])
+
         {p.uuid,
-         %{
+         Map.merge(attrs, %{
            user_id: ctx.user_id,
            reference_account_id: ctx.accounts[p.reference_account],
-           name: p.name,
-           note: p.note,
-           retired: p.retired,
-           attributes: p.attributes,
            pp_uuid: p.uuid
-         }}
+         })}
       end
 
     {ctx, ids} = upsert(ctx, :portfolios, existing, incoming, Portfolio)
@@ -259,8 +245,7 @@ defmodule Zipfelfolio.PPImport do
         {ctx, ids}
       end)
 
-    seen = MapSet.new(client.transactions, & &1.uuid)
-    stale = for {uuid, t} <- existing, not MapSet.member?(seen, uuid), do: t.id
+    stale = stale(existing, ids)
     Repo.delete_all(from t in Transaction, where: t.id in ^stale)
 
     ctx
@@ -294,36 +279,26 @@ defmodule Zipfelfolio.PPImport do
   end
 
   defp transaction_attrs(ctx, t) do
-    %{
+    t
+    |> Map.take([:type, :date_time, :shares, :amount, :currency, :ex_date, :note])
+    |> Map.merge(%{
       user_id: ctx.user_id,
-      type: t.type,
-      date_time: t.date_time,
       portfolio_id: ctx.portfolios[t.portfolio],
       account_id: ctx.accounts[t.account],
       other_portfolio_id: ctx.portfolios[t.other_portfolio],
       other_account_id: ctx.accounts[t.other_account],
       security_id: ctx.securities[t.security],
-      shares: t.shares,
-      amount: t.amount,
-      currency: t.currency,
-      ex_date: t.ex_date,
-      note: t.note,
       source: :pp_import,
       pp_uuid: t.uuid,
       pp_other_uuid: t.other_uuid,
       pp_source: t.source
-    }
+    })
   end
 
   defp unit_attrs(u) do
-    %{
-      type: u.type,
-      amount: u.amount,
-      currency: u.currency,
-      fx_amount: u.fx_amount,
-      fx_currency: u.fx_currency,
-      fx_rate: u.fx_rate && Decimal.normalize(u.fx_rate)
-    }
+    u
+    |> Map.take([:type, :amount, :currency, :fx_amount, :fx_currency])
+    |> Map.put(:fx_rate, u.fx_rate && Decimal.normalize(u.fx_rate))
   end
 
   defp insert_units(_record, []), do: :ok
@@ -354,13 +329,9 @@ defmodule Zipfelfolio.PPImport do
   end
 
   @plan_fields [
-    :user_id,
     :name,
     :note,
     :type,
-    :security_id,
-    :portfolio_id,
-    :account_id,
     :auto_generate,
     :start,
     :interval,
@@ -369,31 +340,24 @@ defmodule Zipfelfolio.PPImport do
     :taxes,
     :attributes
   ]
+  @plan_refs [:user_id, :security_id, :portfolio_id, :account_id]
 
   defp plan_attrs(ctx, p) do
-    %{
+    p
+    |> Map.take(@plan_fields)
+    |> Map.merge(%{
       user_id: ctx.user_id,
-      name: p.name,
-      note: p.note,
-      type: p.type,
       security_id: ctx.securities[p.security],
       portfolio_id: ctx.portfolios[p.portfolio],
       account_id: ctx.accounts[p.account],
-      auto_generate: p.auto_generate,
-      start: p.start,
-      interval: p.interval,
-      amount: p.amount,
-      fees: p.fees,
-      taxes: p.taxes,
-      attributes: p.attributes,
       transaction_ids:
         p.transactions |> Enum.map(&ctx.transactions[&1]) |> Enum.reject(&is_nil/1) |> uniq_sort()
-    }
+    })
   end
 
   defp normalize_plan(plan) do
     plan
-    |> Map.take(@plan_fields)
+    |> Map.take(@plan_fields ++ @plan_refs)
     |> Map.put(:transaction_ids, plan.transactions |> Enum.map(& &1.id) |> uniq_sort())
   end
 
@@ -415,14 +379,8 @@ defmodule Zipfelfolio.PPImport do
 
     incoming =
       for t <- client.taxonomies do
-        {t.id,
-         %{
-           user_id: ctx.user_id,
-           name: t.name,
-           source: t.source,
-           dimensions: t.dimensions,
-           pp_id: t.id
-         }}
+        attrs = Map.take(t, [:name, :source, :dimensions])
+        {t.id, Map.merge(attrs, %{user_id: ctx.user_id, pp_id: t.id})}
       end
 
     {ctx, ids} = upsert(ctx, :taxonomies, existing, incoming, Taxonomy)
@@ -452,29 +410,14 @@ defmodule Zipfelfolio.PPImport do
       classifications
       |> parents_first()
       |> Enum.reduce({ctx, %{}}, fn c, {ctx, ids} ->
-        attrs = %{
-          taxonomy_id: taxonomy_id,
-          parent_id: ids[c.parent_id],
-          name: c.name,
-          note: c.note,
-          color: c.color,
-          weight: c.weight,
-          rank: c.rank,
-          pp_id: c.id
-        }
+        attrs =
+          c
+          |> Map.take([:name, :note, :color, :weight, :rank])
+          |> Map.merge(%{taxonomy_id: taxonomy_id, parent_id: ids[c.parent_id], pp_id: c.id})
 
-        {ctx, record} =
-          case existing[c.id] do
-            nil ->
-              {count(ctx, :classifications, :created),
-               Repo.insert!(struct(Classification, attrs))}
-
-            record ->
-              update(ctx, :classifications, record, attrs)
-          end
-
-        current = if existing[c.id], do: existing[c.id].assignments, else: []
-        ctx = sync_assignments(ctx, record.id, current, c.assignments)
+        old = existing[c.id]
+        {ctx, record} = put_record(ctx, :classifications, Classification, old, attrs)
+        ctx = sync_assignments(ctx, record.id, (old && old.assignments) || [], c.assignments)
         {ctx, Map.put(ids, c.id, record.id)}
       end)
 
@@ -566,15 +509,15 @@ defmodule Zipfelfolio.PPImport do
   # Inserts or updates records so they match `incoming`, a list of `{key, attrs}`.
   defp upsert(ctx, kind, existing, incoming, schema) do
     Enum.reduce(incoming, {ctx, %{}}, fn {key, attrs}, {ctx, ids} ->
-      {ctx, record} =
-        case existing[key] do
-          nil -> {count(ctx, kind, :created), Repo.insert!(struct(schema, attrs))}
-          record -> update(ctx, kind, record, attrs)
-        end
-
+      {ctx, record} = put_record(ctx, kind, schema, existing[key], attrs)
       {ctx, Map.put(ids, key, record.id)}
     end)
   end
+
+  defp put_record(ctx, kind, schema, nil, attrs),
+    do: {count(ctx, kind, :created), Repo.insert!(struct(schema, attrs))}
+
+  defp put_record(ctx, kind, _schema, record, attrs), do: update(ctx, kind, record, attrs)
 
   defp update(ctx, kind, record, attrs) do
     case change(record, attrs) do

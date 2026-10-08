@@ -23,8 +23,6 @@ defmodule Zipfelfolio.Securities.Security do
     field :latest_date, :date
     field :latest_close, :integer
 
-    has_many :prices, Zipfelfolio.Securities.Price
-
     timestamps()
   end
 
