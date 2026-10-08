@@ -8,7 +8,7 @@ defmodule Zipfelfolio.PPImport.Reader do
   alias Zipfelfolio.PPImport.Wire
 
   # {name, type} or {name, type, :repeated | :optional}. Absent optional fields are nil,
-  # absent scalars take the proto3 default (0, false, first enum value).
+  # absent scalars take the proto3 default ("", 0, false, first enum value).
   @messages %{
     client: %{
       1 => {:version, :int32},
@@ -156,6 +156,7 @@ defmodule Zipfelfolio.PPImport.Reader do
                       {_, _, :optional} -> nil
                       {_, :attributes} -> %{}
                       {_, :bool} -> false
+                      {_, :string} -> ""
                       {_, {:enum, [first | _]}} -> first
                       {_, type} when type in [:int32, :int64, :uint32] -> 0
                       {_, :epoch_day} -> @epoch
@@ -191,9 +192,27 @@ defmodule Zipfelfolio.PPImport.Reader do
     end
   end
 
+  # Only PP's own entries are unpacked, and only up to a sane size, so a crafted ZIP cannot
+  # exhaust memory.
+  @entries [~c"data.portfolio", ~c"data.xml"]
+  @max_unpacked 500_000_000
+
   defp unzip(bin) do
-    case :zip.unzip(bin, [:memory]) do
+    with {:ok, [_comment | listing]} <- :zip.list_dir(bin) do
+      sizes =
+        for {:zip_file, name, info, _, _, _} <- listing,
+            name in @entries,
+            do: {name, elem(info, 1)}
+
+      cond do
+        sizes == [] -> {:ok, []}
+        Enum.any?(sizes, fn {_name, size} -> size > @max_unpacked end) -> {:error, :too_large}
+        true -> :zip.unzip(bin, [:memory, file_list: Enum.map(sizes, &elem(&1, 0))])
+      end
+    end
+    |> case do
       {:ok, files} -> {:ok, files}
+      {:error, :too_large} -> {:error, :too_large}
       {:error, _} -> {:error, :not_a_pp_file}
     end
   end

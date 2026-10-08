@@ -34,6 +34,14 @@ defmodule ZipfelfolioWeb.ImportLiveTest do
     refute has_element?(lv, "#import-summary")
   end
 
+  test "ignores a submit without a finished upload", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/settings/import")
+
+    lv |> form("#import-form") |> render_submit()
+
+    refute has_element?(lv, "#import-summary")
+  end
+
   test "is linked from the settings", %{conn: conn} do
     {:ok, lv, _html} = live(conn, ~p"/users/settings")
 

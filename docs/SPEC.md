@@ -106,9 +106,11 @@ All behind a small behaviour per kind, results stored locally; screens never cal
 - Imported portfolios, accounts, transactions, taxonomies and savings plans belong to the importing user;
   a re-import touches only that user's data
 - Objects are matched by their PP UUID and updated in place, so data entered in zipfelfolio that refers to
-  them survives; objects deleted in PP are deleted. Savings plans have no UUID in PP and are replaced as a whole
+  them survives; objects deleted in PP are deleted. Savings plans have no UUID in PP and are replaced as a whole.
+  A portfolio or account PP dropped stays, detached from PP, while transactions entered in zipfelfolio use it
 - Shared securities: each user's file reaches them through its own PP UUIDs; a security new to that user is
-  matched by ISIN, without ISIN it is created. The latest import sets a shared security's data and PP prices.
+  matched by ISIN, without ISIN it is created. A security recreated in PP (new UUID, same ISIN) keeps its
+  zipfelfolio settings. The latest import sets a shared security's data and PP prices.
   A security is deleted only when no file, transaction, plan or assignment refers to it any more
 - Attribute types are shared too, identified by PP id and target (PP has e.g. `logo` for securities, accounts
   and portfolios)
@@ -118,7 +120,7 @@ All behind a small behaviour per kind, results stored locally; screens never cal
 - Quote feeds: for `YAHOO`, `YAHOO-ADJUSTEDCLOSE` and `PP` the PP ticker symbol is already a Yahoo symbol (PP's own feed uses Yahoo's
   exchange suffixes, e.g. `LDGL.DE`) and is taken over; other feeds become manual. The symbol stays editable
   in Settings and survives a re-import
-- XML format only if needed later
+- XML format only if needed later; only `data.portfolio` is unpacked, up to 500 MB
 - Test fixture: `test/fixtures/pp/sample.portfolio`, built with PP's own model and writer by
   `test/fixtures/pp/generate.sh` (PP bundles from PP's update site, not committed): every transaction type,
   two portfolios, three accounts, two savings plans, an account assignment, foreign-currency units. Decoder

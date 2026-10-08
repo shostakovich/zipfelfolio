@@ -104,7 +104,7 @@ defmodule Zipfelfolio.PPImportTest do
       assert %{retired: true, isin: nil} = Repo.get_by!(Security, name: "Altfonds ohne ISIN")
     end
 
-    test "keeps attributes, latest price and price history" do
+    test "keeps attributes, latest price and price history", %{scope: scope} do
       world = security("IE00B4L5Y983")
 
       assert world.attributes == %{"ter" => 0.002, "vendor" => "iShares"}
@@ -112,7 +112,7 @@ defmodule Zipfelfolio.PPImportTest do
       assert world.latest_close == 9_095_000_000
 
       assert [%{date: ~D[2024-01-02], close: 8_510_000_000, source: :pp} | _] =
-               Securities.list_prices(world)
+               Securities.list_prices(scope, world)
     end
 
     test "links savings plans to their transactions", %{scope: scope} do
@@ -189,7 +189,7 @@ defmodule Zipfelfolio.PPImportTest do
     {:ok, _} = PPImport.run(scope, @sample)
 
     {:ok, _} =
-      Securities.update_quote_feed(security("US0378331005"), %{
+      Securities.update_quote_feed(scope, security("US0378331005"), %{
         quote_feed: :yahoo,
         symbol: "APC.DE"
       })
@@ -219,7 +219,7 @@ defmodule Zipfelfolio.PPImportTest do
     {:ok, summary} = PPImport.run(scope, @sample)
 
     assert summary.prices == %{created: 0, updated: 1, deleted: 0}
-    prices = Map.new(Securities.list_prices(world), &{&1.date, {&1.close, &1.source}})
+    prices = Map.new(Securities.list_prices(scope, world), &{&1.date, {&1.close, &1.source}})
     assert prices[~D[2024-01-02]] == {8_510_000_000, :pp}
     assert prices[~D[2024-03-05]] == {9_100_000_000, :yahoo}
   end
@@ -254,7 +254,7 @@ defmodule Zipfelfolio.PPImportTest do
 
     # Matched by ISIN; the security without an ISIN cannot be matched.
     assert summary.securities == %{created: 1, updated: 0, deleted: 0}
-    assert length(Securities.list_securities()) == 5
+    assert length(Securities.list_securities(scope)) == 5
 
     assert length(Portfolios.list_portfolios(scope)) == 2
     assert length(Portfolios.list_portfolios(other)) == 2
@@ -280,6 +280,80 @@ defmodule Zipfelfolio.PPImportTest do
 
     assert summary.securities.deleted == 0
     assert security("IE00B4L5Y983")
+  end
+
+  test "keeps an account PP dropped while transactions entered in zipfelfolio use it",
+       %{scope: scope, client: client} do
+    {:ok, _} = PPImport.import_client(scope, client)
+    usd = Enum.find(Portfolios.list_accounts(scope), &(&1.currency == "USD"))
+
+    Repo.insert!(%Transaction{
+      user_id: scope.user.id,
+      type: :removal,
+      date_time: ~N[2024-04-01 10:00:00],
+      account_id: usd.id,
+      amount: 1_000,
+      currency: "USD",
+      source: :manual
+    })
+
+    pp_usd = Enum.find(client.accounts, &(&1.uuid == usd.pp_uuid))
+
+    without_usd = %{
+      client
+      | accounts: List.delete(client.accounts, pp_usd),
+        transactions: Enum.reject(client.transactions, &(&1.account == pp_usd.uuid))
+    }
+
+    {:ok, summary} = PPImport.import_client(scope, without_usd)
+
+    assert summary.accounts == %{created: 0, updated: 1, deleted: 0}
+    assert %{pp_uuid: nil} = Repo.reload!(usd)
+    assert Portfolios.own_transactions?(scope)
+  end
+
+  test "keeps a security PP recreated under a new UUID", %{scope: scope, client: client} do
+    {:ok, _} = PPImport.import_client(scope, client)
+    em = security("IE00BTJRMP35")
+    {:ok, _} = Securities.update_quote_feed(scope, em, %{quote_feed: :manual})
+
+    old_uuid = Enum.find(client.securities, &(&1.isin == "IE00BTJRMP35")).uuid
+
+    {:ok, summary} =
+      PPImport.import_client(scope, replace(client, old_uuid, Ecto.UUID.generate()))
+
+    assert summary.securities == %{created: 0, updated: 0, deleted: 0}
+    assert %{id: id, quote_feed: :manual} = security("IE00BTJRMP35")
+    assert id == em.id
+  end
+
+  defp replace(term, old, new) when is_map(term) and not is_struct(term),
+    do: Map.new(term, fn {k, v} -> {k, replace(v, old, new)} end)
+
+  defp replace(term, old, new) when is_list(term), do: Enum.map(term, &replace(&1, old, new))
+  defp replace(old, old, new), do: new
+  defp replace(term, _old, _new), do: term
+
+  test "does not match securities by an empty ISIN", %{scope: scope, client: client} do
+    other = user_scope_fixture()
+    [first, second | _] = client.securities
+
+    {:ok, _} = PPImport.import_client(scope, %{client | securities: [%{first | isin: ""}]})
+    {:ok, summary} = PPImport.import_client(other, %{client | securities: [%{second | isin: ""}]})
+
+    assert summary.securities.created == 1
+  end
+
+  test "imports an account whose name PP left empty", %{scope: scope} do
+    # proto3 leaves out empty strings: the account has only its UUID.
+    {:ok, client} = Reader.parse(zip("PPPBV1" <> <<0x1A, 3, 0x0A, 1, "a">>))
+
+    assert {:ok, %{accounts: %{created: 1}}} = PPImport.import_client(scope, client)
+  end
+
+  defp zip(data) do
+    {:ok, {_name, bin}} = :zip.create(~c"x.zip", [{~c"data.portfolio", data}], [:memory])
+    bin
   end
 
   defp ids(records), do: MapSet.new(records, & &1.id)

@@ -39,7 +39,8 @@ defmodule Zipfelfolio.PPImport do
 
   @doc "Imports a file already parsed by `Zipfelfolio.PPImport.Reader`."
   def import_client(%Scope{user: user}, client) do
-    Repo.transact(fn -> {:ok, do_import(user.id, client)} end)
+    # A large file takes longer than the default 15 s checkout timeout.
+    Repo.transact(fn -> {:ok, do_import(user.id, client)} end, timeout: :timer.minutes(5))
   end
 
   defp do_import(user_id, client) do
@@ -80,20 +81,44 @@ defmodule Zipfelfolio.PPImport do
       Repo.all(from l in PPSecurityLink, where: l.user_id == ^ctx.user_id, preload: :security)
       |> Map.new(&{&1.pp_uuid, &1})
 
-    {ctx, ids} =
-      Enum.reduce(client.securities, {ctx, %{}}, fn s, {ctx, ids} ->
+    file_uuids = MapSet.new(client.securities, & &1.uuid)
+
+    # A security recreated in PP keeps its ISIN but gets a new UUID; its old link moves over.
+    movable =
+      for {uuid, link} <- links,
+          not MapSet.member?(file_uuids, uuid),
+          link.security.isin not in [nil, ""],
+          into: %{},
+          do: {link.security.isin, link}
+
+    {ctx, ids, unmoved} =
+      Enum.reduce(client.securities, {ctx, %{}, movable}, fn s, {ctx, ids, movable} ->
         attrs = security_attrs(s, client.base_currency)
 
-        {ctx, security} =
-          case links[s.uuid] do
-            %{security: security} -> update_security(ctx, security, attrs)
-            nil -> link_security(ctx, s.uuid, attrs)
+        {{ctx, security}, movable} =
+          case {links[s.uuid], movable[attrs.isin]} do
+            {%{security: security}, _} ->
+              {update_security(ctx, security, attrs), movable}
+
+            {nil, %PPSecurityLink{} = link} ->
+              Repo.update!(change(link, pp_uuid: s.uuid))
+              {update_security(ctx, link.security, attrs), Map.delete(movable, attrs.isin)}
+
+            {nil, nil} ->
+              {link_security(ctx, s.uuid, attrs), movable}
           end
 
-        {ctx, Map.put(ids, s.uuid, security.id)}
+        {ctx, Map.put(ids, s.uuid, security.id), movable}
       end)
 
-    stale_links = for {uuid, link} <- links, not Map.has_key?(ids, uuid), do: link
+    moved = MapSet.new(Map.values(movable) -- Map.values(unmoved), & &1.id)
+
+    stale_links =
+      for {uuid, link} <- links,
+          not MapSet.member?(file_uuids, uuid),
+          not MapSet.member?(moved, link.id),
+          do: link
+
     Map.merge(ctx, %{securities: ids, stale_links: stale_links})
   end
 
@@ -109,7 +134,7 @@ defmodule Zipfelfolio.PPImport do
   end
 
   # Another user's import may have created the security already.
-  defp unlinked_security(_user_id, nil), do: nil
+  defp unlinked_security(_user_id, isin) when isin in [nil, ""], do: nil
 
   defp unlinked_security(user_id, isin) do
     linked = from l in PPSecurityLink, where: l.user_id == ^user_id, select: l.security_id
@@ -469,8 +494,16 @@ defmodule Zipfelfolio.PPImport do
   ## Deleting what the file no longer has
 
   defp delete_stale_holdings(ctx) do
-    Repo.delete_all(from p in Portfolio, where: p.id in ^ctx.stale_portfolios)
-    Repo.delete_all(from a in Account, where: a.id in ^ctx.stale_accounts)
+    ctx =
+      ctx
+      |> delete_or_detach(
+        :portfolios,
+        Portfolio,
+        ctx.stale_portfolios,
+        :portfolio_id,
+        :other_portfolio_id
+      )
+      |> delete_or_detach(:accounts, Account, ctx.stale_accounts, :account_id, :other_account_id)
 
     link_ids = Enum.map(ctx.stale_links, & &1.id)
     Repo.delete_all(from l in PPSecurityLink, where: l.id in ^link_ids)
@@ -483,10 +516,28 @@ defmodule Zipfelfolio.PPImport do
 
     Repo.delete_all(from s in Security, where: s.id in ^orphans)
 
+    count(ctx, :securities, :deleted, length(orphans))
+  end
+
+  # A portfolio or account PP no longer has stays, detached from PP, while transactions entered
+  # in zipfelfolio use it.
+  defp delete_or_detach(ctx, kind, schema, ids, field, other_field) do
+    {keep, delete} =
+      Enum.split_with(ids, fn id ->
+        Repo.exists?(
+          from t in Transaction,
+            where:
+              t.source != :pp_import and
+                (field(t, ^field) == ^id or field(t, ^other_field) == ^id)
+        )
+      end)
+
+    Repo.update_all(from(r in schema, where: r.id in ^keep), set: [pp_uuid: nil])
+    Repo.delete_all(from r in schema, where: r.id in ^delete)
+
     ctx
-    |> count(:portfolios, :deleted, length(ctx.stale_portfolios))
-    |> count(:accounts, :deleted, length(ctx.stale_accounts))
-    |> count(:securities, :deleted, length(orphans))
+    |> count(kind, :updated, length(keep))
+    |> count(kind, :deleted, length(delete))
   end
 
   # A security stays while any user's file, transaction, plan or assignment still needs it.

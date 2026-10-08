@@ -104,6 +104,13 @@ defmodule ZipfelfolioWeb.ImportLive do
   def handle_event("validate", _params, socket), do: {:noreply, socket}
 
   def handle_event("import", _params, socket) do
+    case uploaded_entries(socket, :pp_file) do
+      {[_entry], []} -> import_file(socket)
+      _not_ready -> {:noreply, socket}
+    end
+  end
+
+  defp import_file(socket) do
     scope = socket.assigns.current_scope
 
     [result] =
@@ -133,6 +140,8 @@ defmodule ZipfelfolioWeb.ImportLive do
 
   defp error_message(:xml_format),
     do: "Die Datei ist im XML-Format. Speichere sie in Portfolio Performance als Binärdatei."
+
+  defp error_message(:too_large), do: "Die Datei ist entpackt zu groß."
 
   defp error_message(:malformed), do: "Die Datei ist beschädigt oder hat ein unbekanntes Format."
 
