@@ -54,21 +54,9 @@ public class SampleFile
         var client = new Client();
         client.setBaseCurrency("EUR");
 
-        var ter = new AttributeType("ter");
-        ter.setName("TER");
-        ter.setColumnLabel("TER");
-        ter.setTarget(Security.class);
-        ter.setType(Double.class);
-        ter.setConverter(AttributeType.PercentConverter.class);
-        client.getSettings().addAttributeType(ter);
-
-        var provider = new AttributeType("vendor");
-        provider.setName("Anbieter");
-        provider.setColumnLabel("Anbieter");
-        provider.setTarget(Security.class);
-        provider.setType(String.class);
-        provider.setConverter(AttributeType.StringConverter.class);
-        client.getSettings().addAttributeType(provider);
+        // PP's default attribute types include TER and provider.
+        var ter = attributeType(client, "ter");
+        var provider = attributeType(client, "vendor");
 
         var world = new Security("iShares Core MSCI World UCITS ETF", "EUR");
         world.setIsin("IE00B4L5Y983");
@@ -298,6 +286,11 @@ public class SampleFile
         c.setRank(rank);
         parent.addChild(c);
         return c;
+    }
+
+    static AttributeType attributeType(Client client, String id)
+    {
+        return client.getSettings().getAttributeTypes().filter(t -> t.getId().equals(id)).findFirst().orElseThrow();
     }
 
     static void check(boolean condition, String what)

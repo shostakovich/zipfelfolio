@@ -1,8 +1,8 @@
 defmodule ZipfelfolioWeb.PasskeyControllerTest do
   use ZipfelfolioWeb.ConnCase
 
-  alias Zipfelfolio.Users
   alias Zipfelfolio.FakeAuthenticator
+  alias Zipfelfolio.Users
   alias ZipfelfolioWeb.PasskeyController
 
   test "the relying party is the endpoint's host and origin" do

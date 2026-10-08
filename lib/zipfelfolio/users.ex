@@ -6,8 +6,8 @@ defmodule Zipfelfolio.Users do
 
   import Ecto.Query, warn: false
 
-  alias Zipfelfolio.Users.{Passkey, User, UserNotifier, UserToken}
   alias Zipfelfolio.Repo
+  alias Zipfelfolio.Users.{Passkey, User, UserNotifier, UserToken}
   alias Zipfelfolio.WebAuthn
 
   ## Users

@@ -3,8 +3,8 @@ defmodule ZipfelfolioWeb.UserSessionControllerTest do
 
   import Zipfelfolio.UsersFixtures
 
-  alias Zipfelfolio.Users
   alias Zipfelfolio.FakeAuthenticator
+  alias Zipfelfolio.Users
 
   setup do
     %{user: user_fixture()}
