@@ -9,7 +9,6 @@ and a [DivvyDiary](https://divvydiary.com/) subscription. **The user interface i
 Skeleton: sign-in with passkeys or a link by email, container and deploy. No portfolio features yet.
 
 - [docs/SPEC.md](docs/SPEC.md): scope, domain, data sources, phases
-- [docs/deploy.md](docs/deploy.md): container, Caddy, first user
 - `mockup/`: click dummy with example data, built with [felt-css](https://felt-css.rocu.de/)
 
 ## Development
