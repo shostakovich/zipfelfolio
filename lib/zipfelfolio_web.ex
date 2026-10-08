@@ -1,7 +1,7 @@
 defmodule ZipfelfolioWeb do
   @moduledoc false
 
-  def static_paths, do: ~w(assets icon.svg robots.txt)
+  def static_paths, do: ~w(assets images robots.txt)
 
   def router do
     quote do
