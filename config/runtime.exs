@@ -37,7 +37,9 @@ if config_env() == :prod do
     verify: :verify_peer,
     cacerts: :public_key.cacerts_get(),
     server_name_indication: String.to_charlist(smtp_host),
-    depth: 99
+    depth: 99,
+    # Mailgun and others present wildcard certificates, which OTP's default check rejects.
+    customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)]
   ]
 
   # Port 465 speaks TLS from the start, any other port upgrades with STARTTLS.

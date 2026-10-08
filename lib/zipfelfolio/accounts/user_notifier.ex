@@ -2,6 +2,8 @@ defmodule Zipfelfolio.Accounts.UserNotifier do
   @moduledoc false
   import Swoosh.Email
 
+  require Logger
+
   alias Zipfelfolio.Mailer
 
   defp deliver(recipient, subject, body) do
@@ -12,8 +14,13 @@ defmodule Zipfelfolio.Accounts.UserNotifier do
       |> subject(subject)
       |> text_body(body)
 
-    with {:ok, _metadata} <- Mailer.deliver(email) do
-      {:ok, email}
+    case Mailer.deliver(email) do
+      {:ok, _metadata} ->
+        {:ok, email}
+
+      {:error, reason} = error ->
+        Logger.error("Mail \"#{subject}\" not delivered: #{inspect(reason)}")
+        error
     end
   end
 
