@@ -8,7 +8,7 @@ defmodule ZipfelfolioWeb.OverviewLive do
       <.header>Übersicht</.header>
       <.card>
         <p class="mb-0">
-          Noch keine Portfolios. Sie kommen mit dem Import aus Portfolio Performance.
+          Noch keine Portfolios. Sie kommen mit dem <.link navigate={~p"/settings/import"}>Import aus Portfolio Performance</.link>.
         </p>
       </.card>
     </Layouts.app>

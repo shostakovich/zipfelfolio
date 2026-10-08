@@ -106,19 +106,23 @@ All behind a small behaviour per kind, results stored locally; screens never cal
 - Imported portfolios, accounts, transactions, taxonomies and savings plans belong to the importing user;
   a re-import touches only that user's data
 - Objects are matched by their PP UUID and updated in place, so data entered in zipfelfolio that refers to
-  them survives; objects deleted in PP are deleted. Shared securities are matched by ISIN (PP UUID if there
-  is none) and deleted only when nothing refers to them any more. Savings plans have no UUID in PP and are
-  replaced as a whole
+  them survives; objects deleted in PP are deleted. Savings plans have no UUID in PP and are replaced as a whole
+- Shared securities: each user's file reaches them through its own PP UUIDs; a security new to that user is
+  matched by ISIN, without ISIN it is created. The latest import sets a shared security's data and PP prices.
+  A security is deleted only when no file, transaction, plan or assignment refers to it any more
+- Attribute types are shared too, identified by PP id and target (PP has e.g. `logo` for securities, accounts
+  and portfolios)
 - Prices from PP win over fetched prices on the same date until the switch, so the numbers match PP
-- Upload in Settings (LiveView upload); one DB transaction, nothing half-imported; a summary shows created,
+- Upload at `/settings/import`, linked from Settings (LiveView upload); one DB transaction, nothing half-imported; a summary shows created,
   updated and deleted objects per kind
-- Quote feeds: for `YAHOO` and `PP` the PP ticker symbol is already a Yahoo symbol (PP's own feed uses Yahoo's
+- Quote feeds: for `YAHOO`, `YAHOO-ADJUSTEDCLOSE` and `PP` the PP ticker symbol is already a Yahoo symbol (PP's own feed uses Yahoo's
   exchange suffixes, e.g. `LDGL.DE`) and is taken over; other feeds become manual. The symbol stays editable
   in Settings and survives a re-import
 - XML format only if needed later
-- Test fixture: a small `.portfolio` made with PP (every transaction type, two portfolios, three accounts, a
-  savings plan, an account assignment, a foreign-currency transaction); edge cases PP does not produce easily
-  come from a test-only encoder
+- Test fixture: `test/fixtures/pp/sample.portfolio`, built with PP's own model and writer by
+  `test/fixtures/pp/generate.sh` (PP bundles from PP's update site, not committed): every transaction type,
+  two portfolios, three accounts, two savings plans, an account assignment, foreign-currency units. Decoder
+  edge cases are tested with hand-built bytes
 - The test against the owner's real file runs only when its path is given and asserts invariants, no real
   numbers: every PP transaction is imported, cross entries match, a second import changes nothing
 

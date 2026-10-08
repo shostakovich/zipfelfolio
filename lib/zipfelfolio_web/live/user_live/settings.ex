@@ -71,6 +71,14 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
         </div>
 
         <div class="col-lg-5">
+          <.card title="Import" id="import">
+            <p class="text-body-secondary">
+              Wertpapiere, Depots, Konten und Buchungen aus Portfolio Performance übernehmen.
+            </p>
+            <.link navigate={~p"/settings/import"} class="btn btn-outline-primary">
+              PP-Datei importieren
+            </.link>
+          </.card>
           <.card title="E-Mail-Adresse">
             <.form
               for={@email_form}
