@@ -7,7 +7,7 @@ The click dummy in `mockup/` shows the intended screens (example data only).
 
 ## Scope
 
-- 1–2 users, several portfolios (securities accounts), each with a cash account
+- 1–2 users, several portfolios (securities accounts) and cash accounts
 - mobile and desktop, one LiveView app
 - base currency EUR; securities and dividends may be in other currencies (USD), converted with ECB rates
 - runs on the home server behind Caddy at `https://folio.rocu.de`, HTTPS only
@@ -45,14 +45,15 @@ Mirrors PP so the import is lossless.
 - **Security**: name, ISIN, WKN, currency, quote feed + symbol (e.g. Yahoo `VGWL.DE`), dividend feed, retired
   flag, attributes (TER, fund size, provider, …), notes
 - **Price**: security, date, close; latest quote cached separately
-- **Portfolio**: name, owner, reference account, retired flag
-- **Account**: cash account, currency
-- **Transaction**: date, type, account and/or portfolio, security, shares, amount, currency, units (fee, tax,
-  gross value with FX rate), note, source (manual, PP import, receipt), optional document
+- **Portfolio**: name, owner, optional reference account, retired flag
+- **Account**: cash account on its own (not part of a portfolio), currency, retired flag
+- **Transaction**: one record per business event: date and time, type, portfolio side and/or account side
+  (a purchase is one transaction, not two linked entries), security, shares, amount, currency, units (fee,
+  tax, gross value with FX rate), ex date, note, source (manual, PP import, receipt), optional document
   - types as in PP: buy, sell, inbound/outbound delivery, security transfer, deposit, removal, dividend,
-    interest, fee, fee refund, tax, tax refund, cash transfer
-- **Taxonomy**: classifications with parent, colour, target weight; assignments security → classification
-  with weight
+    interest, interest charge, fee, fee refund, tax, tax refund, cash transfer
+- **Taxonomy**: classifications with parent, colour, target weight; assignments security or account →
+  classification with weight
 - **Dividend event**: security, ex date, pay date, amount per share, currency, source, `announced` flag
 - **Exchange rate**: ECB daily reference rates
 - **Document**: PDF, SHA-256, origin (upload, Paperless id)
@@ -95,11 +96,19 @@ All behind a small behaviour per kind, results stored locally; screens never cal
   `.proto` (EPL)
 - Imports securities, prices, accounts, portfolios, transactions (with units and cross entries), taxonomies with
   weights, attribute types and values, investment plans
+- Not imported: watchlists, dashboards, bookmarks, configuration sets, security events (splits are already in
+  the transactions' shares, dividends come from DivvyDiary)
 - Repeatable: re-import replaces everything that came from PP, keeps data entered in zipfelfolio; this allows
   running PP in parallel until the switch
+- Objects are matched by their PP UUID and updated in place, so data entered in zipfelfolio that refers to
+  them survives; objects deleted in PP are deleted
+- Upload in Settings (LiveView upload); one DB transaction, nothing half-imported; a summary shows created,
+  updated and deleted objects per kind
 - Quote feeds map to Yahoo where possible (`PP` feed → Xetra symbol, e.g. `LDGL.DE`); unmapped ones become
   manual
 - XML format only if needed later
+- The test against the owner's real file runs only when its path is given and asserts invariants, no real
+  numbers: every PP transaction is imported, cross entries match, a second import changes nothing
 
 ## Receipt import (v2)
 
