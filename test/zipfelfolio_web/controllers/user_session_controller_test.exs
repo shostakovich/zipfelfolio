@@ -1,9 +1,9 @@
 defmodule ZipfelfolioWeb.UserSessionControllerTest do
   use ZipfelfolioWeb.ConnCase
 
-  import Zipfelfolio.AccountsFixtures
+  import Zipfelfolio.UsersFixtures
 
-  alias Zipfelfolio.Accounts
+  alias Zipfelfolio.Users
   alias Zipfelfolio.FakeAuthenticator
 
   setup do
@@ -26,14 +26,14 @@ defmodule ZipfelfolioWeb.UserSessionControllerTest do
 
     test "confirms an unconfirmed user and expires their other sessions", %{conn: conn} do
       user = unconfirmed_user_fixture()
-      other_session = Accounts.generate_user_session_token(user)
+      other_session = Users.generate_user_session_token(user)
       {token, _hashed_token} = generate_user_magic_link_token(user)
 
       conn = post(conn, ~p"/users/log-in", %{"user" => %{"token" => token}})
 
       assert redirected_to(conn) == ~p"/"
-      assert Accounts.get_user!(user.id).confirmed_at
-      refute Accounts.get_user_by_session_token(other_session)
+      assert Users.get_user!(user.id).confirmed_at
+      refute Users.get_user_by_session_token(other_session)
     end
 
     test "rejects an invalid token", %{conn: conn} do
@@ -65,9 +65,9 @@ defmodule ZipfelfolioWeb.UserSessionControllerTest do
       conn = post(conn, ~p"/users/log-in", %{"passkey" => assertion})
 
       assert redirected_to(conn) == ~p"/"
-      assert {signed_in, _} = Accounts.get_user_by_session_token(get_session(conn, :user_token))
+      assert {signed_in, _} = Users.get_user_by_session_token(get_session(conn, :user_token))
       assert signed_in.id == user.id
-      assert Accounts.sudo_mode?(signed_in)
+      assert Users.sudo_mode?(signed_in)
     end
 
     test "uses each challenge only once", %{conn: conn, user: user, authenticator: authenticator} do

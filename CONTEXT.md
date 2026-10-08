@@ -4,6 +4,13 @@ Self-hosted portfolio tracker for one household. Replaces Portfolio Performance 
 
 ## Language
 
+### People
+
+**User**:
+A person who signs in. Portfolios, accounts and taxonomies belong to a user; securities and prices are shared by all users.
+_German UI_: Person
+_Avoid_: Account (that is a cash account)
+
 ### Holdings
 
 **Security**:

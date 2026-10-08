@@ -13,7 +13,7 @@ defmodule Mix.Tasks.Zipfelfolio.CreateUser do
 
   @impl true
   def run([email]) do
-    case Zipfelfolio.Accounts.create_user(%{email: email}) do
+    case Zipfelfolio.Users.create_user(%{email: email}) do
       {:ok, user} -> Mix.shell().info("Created #{user.email}.")
       {:error, changeset} -> Mix.raise("Could not create #{email}: #{inspect(changeset.errors)}")
     end

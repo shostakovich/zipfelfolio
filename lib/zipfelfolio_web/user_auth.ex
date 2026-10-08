@@ -8,8 +8,8 @@ defmodule ZipfelfolioWeb.UserAuth do
   import Plug.Conn
   import Phoenix.Controller
 
-  alias Zipfelfolio.Accounts
-  alias Zipfelfolio.Accounts.Scope
+  alias Zipfelfolio.Users
+  alias Zipfelfolio.Users.Scope
 
   # Matches the session validity in UserToken.
   @max_cookie_age_in_days 14
@@ -35,7 +35,7 @@ defmodule ZipfelfolioWeb.UserAuth do
 
   def log_out_user(conn) do
     user_token = get_session(conn, :user_token)
-    user_token && Accounts.delete_user_session_token(user_token)
+    user_token && Users.delete_user_session_token(user_token)
 
     if live_socket_id = get_session(conn, :live_socket_id) do
       ZipfelfolioWeb.Endpoint.broadcast(live_socket_id, "disconnect", %{})
@@ -50,7 +50,7 @@ defmodule ZipfelfolioWeb.UserAuth do
   @doc "Assigns the scope from the session or the remember-me cookie; reissues old tokens."
   def fetch_current_scope_for_user(conn, _opts) do
     with {token, conn} <- ensure_user_token(conn),
-         {user, token_inserted_at} <- Accounts.get_user_by_session_token(token) do
+         {user, token_inserted_at} <- Users.get_user_by_session_token(token) do
       conn
       |> assign(:current_scope, Scope.for_user(user))
       |> maybe_reissue_user_session_token(user, token_inserted_at)
@@ -83,7 +83,7 @@ defmodule ZipfelfolioWeb.UserAuth do
 
   # A new session clears the old one (session fixation); an extended one keeps it.
   defp create_or_extend_session(conn, user) do
-    token = Accounts.generate_user_session_token(user)
+    token = Users.generate_user_session_token(user)
 
     conn
     |> renew_session(user)
@@ -143,7 +143,7 @@ defmodule ZipfelfolioWeb.UserAuth do
   def on_mount(:require_sudo_mode, _params, session, socket) do
     socket = mount_current_scope(socket, session)
 
-    if Accounts.sudo_mode?(socket.assigns.current_scope.user, -10) do
+    if Users.sudo_mode?(socket.assigns.current_scope.user, -10) do
       {:cont, socket}
     else
       socket =
@@ -159,7 +159,7 @@ defmodule ZipfelfolioWeb.UserAuth do
     Phoenix.Component.assign_new(socket, :current_scope, fn ->
       {user, _} =
         if user_token = session["user_token"] do
-          Accounts.get_user_by_session_token(user_token)
+          Users.get_user_by_session_token(user_token)
         end || {nil, nil}
 
       Scope.for_user(user)

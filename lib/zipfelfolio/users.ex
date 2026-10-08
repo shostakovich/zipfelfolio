@@ -1,4 +1,4 @@
-defmodule Zipfelfolio.Accounts do
+defmodule Zipfelfolio.Users do
   @moduledoc """
   Users sign in with a passkey or, as a fallback, a magic link by email. There are no passwords
   and no sign-up: users are created by `mix zipfelfolio.create_user` or `Release.create_user/1`.
@@ -6,7 +6,7 @@ defmodule Zipfelfolio.Accounts do
 
   import Ecto.Query, warn: false
 
-  alias Zipfelfolio.Accounts.{Passkey, User, UserNotifier, UserToken}
+  alias Zipfelfolio.Users.{Passkey, User, UserNotifier, UserToken}
   alias Zipfelfolio.Repo
   alias Zipfelfolio.WebAuthn
 

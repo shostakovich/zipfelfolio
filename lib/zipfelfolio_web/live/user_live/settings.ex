@@ -3,7 +3,7 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
 
   on_mount {ZipfelfolioWeb.UserAuth, :require_sudo_mode}
 
-  alias Zipfelfolio.Accounts
+  alias Zipfelfolio.Users
 
   @impl true
   def render(assigns) do
@@ -98,7 +98,7 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
   @impl true
   def mount(%{"token" => token}, _session, socket) do
     socket =
-      case Accounts.update_user_email(socket.assigns.current_scope.user, token) do
+      case Users.update_user_email(socket.assigns.current_scope.user, token) do
         {:ok, _user} -> put_flash(socket, :info, "Die E-Mail-Adresse ist geändert.")
         {:error, _} -> put_flash(socket, :error, "Der Link ist ungültig oder abgelaufen.")
       end
@@ -114,7 +114,7 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
      |> assign(:page_title, "Einstellungen")
      |> assign(
        :email_form,
-       to_form(Accounts.change_user_email(user, %{}, validate_unique: false))
+       to_form(Users.change_user_email(user, %{}, validate_unique: false))
      )
      |> assign_passkeys()}
   end
@@ -123,7 +123,7 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
   def handle_event("validate_email", %{"user" => user_params}, socket) do
     email_form =
       socket.assigns.current_scope.user
-      |> Accounts.change_user_email(user_params, validate_unique: false)
+      |> Users.change_user_email(user_params, validate_unique: false)
       |> to_form(action: :validate)
 
     {:noreply, assign(socket, email_form: email_form)}
@@ -131,11 +131,11 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
 
   def handle_event("update_email", %{"user" => user_params}, socket) do
     user = socket.assigns.current_scope.user
-    true = Accounts.sudo_mode?(user)
+    true = Users.sudo_mode?(user)
 
-    case Accounts.change_user_email(user, user_params) do
+    case Users.change_user_email(user, user_params) do
       %{valid?: true} = changeset ->
-        Accounts.deliver_user_update_email_instructions(
+        Users.deliver_user_update_email_instructions(
           Ecto.Changeset.apply_action!(changeset, :insert),
           user.email,
           &url(~p"/users/settings/confirm-email/#{&1}")
@@ -162,7 +162,7 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
   end
 
   def handle_event("delete_passkey", %{"id" => id}, socket) do
-    case Accounts.delete_passkey(socket.assigns.current_scope.user, id) do
+    case Users.delete_passkey(socket.assigns.current_scope.user, id) do
       {:ok, _passkey} ->
         {:noreply, socket |> put_flash(:info, "Passkey gelöscht.") |> assign_passkeys()}
 
@@ -172,7 +172,7 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
   end
 
   defp assign_passkeys(socket),
-    do: assign(socket, :passkeys, Accounts.list_passkeys(socket.assigns.current_scope.user))
+    do: assign(socket, :passkeys, Users.list_passkeys(socket.assigns.current_scope.user))
 
   defp date(datetime), do: Calendar.strftime(datetime, "%d.%m.%Y")
 end

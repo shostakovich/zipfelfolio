@@ -24,7 +24,7 @@ defmodule Zipfelfolio.Release do
     {:ok, result, _apps} =
       Ecto.Migrator.with_repo(
         Zipfelfolio.Repo,
-        fn _repo -> Zipfelfolio.Accounts.create_user(%{email: email}) end,
+        fn _repo -> Zipfelfolio.Users.create_user(%{email: email}) end,
         @repo_opts
       )
 

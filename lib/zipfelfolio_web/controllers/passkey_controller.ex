@@ -6,7 +6,7 @@ defmodule ZipfelfolioWeb.PasskeyController do
   """
   use ZipfelfolioWeb, :controller
 
-  alias Zipfelfolio.Accounts
+  alias Zipfelfolio.Users
   alias Zipfelfolio.WebAuthn
 
   def relying_party do
@@ -47,12 +47,12 @@ defmodule ZipfelfolioWeb.PasskeyController do
   def registration_options(conn, _params) do
     user = conn.assigns.current_scope.user
 
-    if Accounts.sudo_mode?(user, -10) do
+    if Users.sudo_mode?(user, -10) do
       challenge = WebAuthn.new_challenge()
 
       conn
       |> put_challenge(:registration, challenge)
-      |> json(Accounts.passkey_registration_options(user, relying_party(), challenge))
+      |> json(Users.passkey_registration_options(user, relying_party(), challenge))
     else
       conn |> put_status(:forbidden) |> json(%{error: "Bitte melde dich erneut an."})
     end
@@ -63,9 +63,9 @@ defmodule ZipfelfolioWeb.PasskeyController do
     user = conn.assigns.current_scope.user
     {challenge, conn} = pop_challenge(conn, :registration)
 
-    with true <- is_binary(challenge) and Accounts.sudo_mode?(user, -10),
+    with true <- is_binary(challenge) and Users.sudo_mode?(user, -10),
          {:ok, passkey} <-
-           Accounts.register_passkey(user, response, challenge, relying_party(), name) do
+           Users.register_passkey(user, response, challenge, relying_party(), name) do
       json(conn, %{id: passkey.id})
     else
       {:error, %Ecto.Changeset{}} ->

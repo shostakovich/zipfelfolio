@@ -2,7 +2,7 @@ defmodule ZipfelfolioWeb.UserLive.Confirmation do
   @moduledoc "The page behind a magic link: a button, so mail scanners do not use up the link."
   use ZipfelfolioWeb, :live_view
 
-  alias Zipfelfolio.Accounts
+  alias Zipfelfolio.Users
 
   @impl true
   def render(assigns) do
@@ -28,7 +28,7 @@ defmodule ZipfelfolioWeb.UserLive.Confirmation do
 
   @impl true
   def mount(%{"token" => token}, _session, socket) do
-    if user = Accounts.get_user_by_magic_link_token(token) do
+    if user = Users.get_user_by_magic_link_token(token) do
       form = to_form(%{"token" => token}, as: "user")
 
       {:ok, assign(socket, page_title: "Anmelden", user: user, form: form, trigger_submit: false),

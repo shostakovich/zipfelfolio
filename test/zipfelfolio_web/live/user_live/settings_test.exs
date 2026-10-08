@@ -1,9 +1,9 @@
 defmodule ZipfelfolioWeb.UserLive.SettingsTest do
   use ZipfelfolioWeb.ConnCase
 
-  alias Zipfelfolio.Accounts
+  alias Zipfelfolio.Users
   import Phoenix.LiveViewTest
-  import Zipfelfolio.AccountsFixtures
+  import Zipfelfolio.UsersFixtures
 
   describe "Settings page" do
     test "renders settings page", %{conn: conn} do
@@ -57,7 +57,7 @@ defmodule ZipfelfolioWeb.UserLive.SettingsTest do
         |> render_submit()
 
       assert result =~ "Wir haben einen Bestätigungslink"
-      assert Accounts.get_user_by_email(user.email)
+      assert Users.get_user_by_email(user.email)
     end
 
     test "renders errors with invalid data (phx-change)", %{conn: conn} do
@@ -97,7 +97,7 @@ defmodule ZipfelfolioWeb.UserLive.SettingsTest do
 
       token =
         extract_user_token(fn url ->
-          Accounts.deliver_user_update_email_instructions(%{user | email: email}, user.email, url)
+          Users.deliver_user_update_email_instructions(%{user | email: email}, user.email, url)
         end)
 
       %{conn: log_in_user(conn, user), token: token, email: email, user: user}
@@ -110,8 +110,8 @@ defmodule ZipfelfolioWeb.UserLive.SettingsTest do
       assert path == ~p"/users/settings"
       assert %{"info" => message} = flash
       assert message == "Die E-Mail-Adresse ist geändert."
-      refute Accounts.get_user_by_email(user.email)
-      assert Accounts.get_user_by_email(email)
+      refute Users.get_user_by_email(user.email)
+      assert Users.get_user_by_email(email)
 
       # use confirm token again
       {:error, redirect} = live(conn, ~p"/users/settings/confirm-email/#{token}")
@@ -127,7 +127,7 @@ defmodule ZipfelfolioWeb.UserLive.SettingsTest do
       assert path == ~p"/users/settings"
       assert %{"error" => message} = flash
       assert message == "Der Link ist ungültig oder abgelaufen."
-      assert Accounts.get_user_by_email(user.email)
+      assert Users.get_user_by_email(user.email)
     end
 
     test "redirects if user is not logged in", %{token: token} do
@@ -155,7 +155,7 @@ defmodule ZipfelfolioWeb.UserLive.SettingsTest do
 
       lv |> element("#passkey-#{passkey.id} button", "Löschen") |> render_click()
       refute has_element?(lv, "#passkey-#{passkey.id}")
-      assert Zipfelfolio.Accounts.list_passkeys(user) == []
+      assert Zipfelfolio.Users.list_passkeys(user) == []
     end
 
     test "cannot delete another user's passkey", %{conn: conn} do
@@ -165,7 +165,7 @@ defmodule ZipfelfolioWeb.UserLive.SettingsTest do
       assert render_click(lv, "delete_passkey", %{"id" => passkey.id}) =~
                "Den Passkey gibt es nicht mehr."
 
-      assert Zipfelfolio.Repo.get(Zipfelfolio.Accounts.Passkey, passkey.id)
+      assert Zipfelfolio.Repo.get(Zipfelfolio.Users.Passkey, passkey.id)
     end
   end
 end

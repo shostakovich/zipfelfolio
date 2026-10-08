@@ -2,7 +2,7 @@ defmodule ZipfelfolioWeb.UserLive.LoginTest do
   use ZipfelfolioWeb.ConnCase
 
   import Phoenix.LiveViewTest
-  import Zipfelfolio.AccountsFixtures
+  import Zipfelfolio.UsersFixtures
 
   test "offers a passkey and a magic link, no password or sign-up", %{conn: conn} do
     {:ok, lv, html} = live(conn, ~p"/users/log-in")
@@ -26,7 +26,7 @@ defmodule ZipfelfolioWeb.UserLive.LoginTest do
 
     assert html =~ "Wenn die Adresse bei uns bekannt ist"
 
-    assert Zipfelfolio.Repo.get_by!(Zipfelfolio.Accounts.UserToken, user_id: user.id).context ==
+    assert Zipfelfolio.Repo.get_by!(Zipfelfolio.Users.UserToken, user_id: user.id).context ==
              "login"
   end
 

@@ -1,12 +1,12 @@
 defmodule ZipfelfolioWeb.UserSessionController do
   use ZipfelfolioWeb, :controller
 
-  alias Zipfelfolio.Accounts
+  alias Zipfelfolio.Users
   alias ZipfelfolioWeb.PasskeyController
   alias ZipfelfolioWeb.UserAuth
 
   def create(conn, %{"user" => %{"token" => token}}) do
-    case Accounts.login_user_by_magic_link(token) do
+    case Users.login_user_by_magic_link(token) do
       {:ok, {user, tokens_to_disconnect}} ->
         UserAuth.disconnect_sessions(tokens_to_disconnect)
 
@@ -26,7 +26,7 @@ defmodule ZipfelfolioWeb.UserSessionController do
 
     with challenge when is_binary(challenge) <- challenge,
          {:ok, user} <-
-           Accounts.authenticate_passkey(response, challenge, PasskeyController.relying_party()) do
+           Users.authenticate_passkey(response, challenge, PasskeyController.relying_party()) do
       UserAuth.log_in_user(conn, user)
     else
       _ ->
