@@ -1,6 +1,6 @@
 defmodule Zipfelfolio.PPImport do
   @moduledoc """
-  Imports a Portfolio Performance file for a user, repeatably (docs/SPEC.md, "PP import"). Objects
+  Imports a Portfolio Performance file for a user, repeatably (issue #2). Objects
   are matched by their PP UUID and updated in place, objects missing from the file are deleted,
   data entered in zipfelfolio stays. Runs in one database transaction and returns how many
   objects of each kind were created, updated and deleted.

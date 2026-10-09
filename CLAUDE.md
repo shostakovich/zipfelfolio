@@ -1,6 +1,6 @@
 # CLAUDE.md – zipfelfolio
 
-Self-hosted portfolio tracker; scope, domain and phases in [`docs/SPEC.md`](docs/SPEC.md). The deploy
+Self-hosted portfolio tracker; scope and decisions live in the GitHub issues, one spec per issue. The deploy
 runbook lives in Outline (zipfelfolio hub), not in the repo. UI text is German; code, comments and docs
 English, sparse comments.
 
