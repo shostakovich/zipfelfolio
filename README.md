@@ -8,7 +8,7 @@ and a [DivvyDiary](https://divvydiary.com/) subscription. **The user interface i
 
 Skeleton: sign-in with passkeys or a link by email, container and deploy. No portfolio features yet.
 
-- [docs/SPEC.md](docs/SPEC.md): scope, domain, data sources, phases
+- [Issues](https://github.com/shostakovich/zipfelfolio/issues): scope and decisions per feature, milestones v1–v4
 - `mockup/`: click dummy with example data, built with [felt-css](https://felt-css.rocu.de/)
 
 ## Development

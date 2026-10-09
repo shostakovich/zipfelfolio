@@ -40,6 +40,11 @@ config :zipfelfolio, ZipfelfolioWeb.Endpoint,
 
 config :phoenix_live_view, root_tag_attribute: "phx-r"
 
+config :zipfelfolio, Zipfelfolio.MarketData,
+  price_feed: Zipfelfolio.MarketData.Yahoo,
+  rate_source: Zipfelfolio.MarketData.ECB,
+  daily_job: true
+
 config :zipfelfolio, Zipfelfolio.Mailer, adapter: Swoosh.Adapters.Local
 config :zipfelfolio, :mail_from, {"zipfelfolio", "zipfelfolio@localhost"}
 config :swoosh, :api_client, false

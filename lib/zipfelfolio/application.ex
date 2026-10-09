@@ -5,13 +5,21 @@ defmodule Zipfelfolio.Application do
 
   @impl true
   def start(_type, _args) do
-    children = [
-      Zipfelfolio.Repo,
-      {Phoenix.PubSub, name: Zipfelfolio.PubSub},
-      ZipfelfolioWeb.Endpoint
-    ]
+    children =
+      [
+        Zipfelfolio.Repo,
+        {Phoenix.PubSub, name: Zipfelfolio.PubSub},
+        {Task.Supervisor, name: Zipfelfolio.TaskSupervisor},
+        ZipfelfolioWeb.Endpoint
+      ] ++ daily_job()
 
     Supervisor.start_link(children, strategy: :one_for_one, name: Zipfelfolio.Supervisor)
+  end
+
+  defp daily_job do
+    if Application.fetch_env!(:zipfelfolio, Zipfelfolio.MarketData)[:daily_job],
+      do: [Zipfelfolio.MarketData.Job],
+      else: []
   end
 
   @impl true

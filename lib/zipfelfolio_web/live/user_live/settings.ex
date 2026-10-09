@@ -71,6 +71,14 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
         </div>
 
         <div class="col-lg-5">
+          <.card title="Wertpapiere" id="securities">
+            <p class="text-body-secondary">
+              Woher die Kurse kommen, letzte Kurse und Wechselkurse, manuelle Kurse.
+            </p>
+            <.link navigate={~p"/settings/securities"} class="btn btn-outline-primary">
+              Kursquellen und Kurse
+            </.link>
+          </.card>
           <.card title="Import" id="import">
             <p class="text-body-secondary">
               Wertpapiere, Depots, Konten und Buchungen aus Portfolio Performance übernehmen.
