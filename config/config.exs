@@ -3,13 +3,13 @@ import Config
 config :zipfelfolio, :scopes,
   user: [
     default: true,
-    module: Zipfelfolio.Accounts.Scope,
+    module: Zipfelfolio.Users.Scope,
     assign_key: :current_scope,
     access_path: [:user, :id],
     schema_key: :user_id,
     schema_type: :id,
     schema_table: :users,
-    test_data_fixture: Zipfelfolio.AccountsFixtures,
+    test_data_fixture: Zipfelfolio.UsersFixtures,
     test_setup_helper: :register_and_log_in_user
   ]
 

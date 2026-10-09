@@ -1,8 +1,8 @@
-defmodule Zipfelfolio.Accounts.UserToken do
+defmodule Zipfelfolio.Users.UserToken do
   @moduledoc false
   use Zipfelfolio.Schema
   import Ecto.Query
-  alias Zipfelfolio.Accounts.UserToken
+  alias Zipfelfolio.Users.UserToken
 
   @hash_algorithm :sha256
   @rand_size 32
@@ -18,7 +18,7 @@ defmodule Zipfelfolio.Accounts.UserToken do
     field :context, :string
     field :sent_to, :string
     field :authenticated_at, :utc_datetime_usec
-    belongs_to :user, Zipfelfolio.Accounts.User
+    belongs_to :user, Zipfelfolio.Users.User
 
     timestamps(updated_at: false)
   end

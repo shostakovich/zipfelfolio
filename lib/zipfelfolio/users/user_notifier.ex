@@ -1,4 +1,4 @@
-defmodule Zipfelfolio.Accounts.UserNotifier do
+defmodule Zipfelfolio.Users.UserNotifier do
   @moduledoc false
   import Swoosh.Email
 

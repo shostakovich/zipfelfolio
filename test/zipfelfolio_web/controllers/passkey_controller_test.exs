@@ -1,8 +1,8 @@
 defmodule ZipfelfolioWeb.PasskeyControllerTest do
   use ZipfelfolioWeb.ConnCase
 
-  alias Zipfelfolio.Accounts
   alias Zipfelfolio.FakeAuthenticator
+  alias Zipfelfolio.Users
   alias ZipfelfolioWeb.PasskeyController
 
   test "the relying party is the endpoint's host and origin" do
@@ -31,7 +31,7 @@ defmodule ZipfelfolioWeb.PasskeyControllerTest do
         conn |> recycle() |> post(~p"/users/settings/passkeys", %{passkey: response, name: "Mac"})
 
       assert %{"id" => id} = json_response(conn, 200)
-      assert [%{id: ^id, name: "Mac", algorithm: -8}] = Accounts.list_passkeys(user)
+      assert [%{id: ^id, name: "Mac", algorithm: -8}] = Users.list_passkeys(user)
     end
 
     test "fails without a challenge in the session", %{conn: conn, user: user} do
@@ -39,7 +39,7 @@ defmodule ZipfelfolioWeb.PasskeyControllerTest do
       conn = post(conn, ~p"/users/settings/passkeys", %{passkey: response, name: "Mac"})
 
       assert json_response(conn, 422)["error"] == "Der Passkey konnte nicht geprüft werden."
-      assert Accounts.list_passkeys(user) == []
+      assert Users.list_passkeys(user) == []
     end
 
     test "asks for a name", %{conn: conn} do
@@ -64,7 +64,7 @@ defmodule ZipfelfolioWeb.PasskeyControllerTest do
         |> post(~p"/users/settings/passkeys", %{passkey: response, name: "Mac"})
 
       assert json_response(conn, 422)["error"] == "Der Passkey konnte nicht geprüft werden."
-      assert Accounts.list_passkeys(user) == []
+      assert Users.list_passkeys(user) == []
     end
 
     test "rejects an upload in place of the passkey fields", %{conn: conn} do

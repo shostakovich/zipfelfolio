@@ -2,13 +2,13 @@ defmodule ZipfelfolioWeb.UserLive.ConfirmationTest do
   use ZipfelfolioWeb.ConnCase
 
   import Phoenix.LiveViewTest
-  import Zipfelfolio.AccountsFixtures
+  import Zipfelfolio.UsersFixtures
 
-  alias Zipfelfolio.Accounts
+  alias Zipfelfolio.Users
 
   setup do
     user = unconfirmed_user_fixture()
-    token = extract_user_token(&Accounts.deliver_login_instructions(user, &1))
+    token = extract_user_token(&Users.deliver_login_instructions(user, &1))
     %{user: user, token: token}
   end
 
@@ -23,7 +23,7 @@ defmodule ZipfelfolioWeb.UserLive.ConfirmationTest do
     assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Willkommen!"
     assert redirected_to(conn) == ~p"/"
     assert get_session(conn, :user_token)
-    assert Accounts.get_user!(user.id).confirmed_at
+    assert Users.get_user!(user.id).confirmed_at
 
     {:ok, _lv, html} =
       build_conn()

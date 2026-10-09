@@ -1,7 +1,7 @@
 defmodule ZipfelfolioWeb.UserLive.Login do
   use ZipfelfolioWeb, :live_view
 
-  alias Zipfelfolio.Accounts
+  alias Zipfelfolio.Users
 
   @impl true
   def render(assigns) do
@@ -63,8 +63,8 @@ defmodule ZipfelfolioWeb.UserLive.Login do
 
   @impl true
   def handle_event("send_link", %{"user" => %{"email" => email}}, socket) do
-    if user = Accounts.get_user_by_email(email) do
-      Accounts.deliver_login_instructions(user, &url(~p"/users/log-in/#{&1}"))
+    if user = Users.get_user_by_email(email) do
+      Users.deliver_login_instructions(user, &url(~p"/users/log-in/#{&1}"))
     end
 
     # The same answer either way, so the form tells no one which addresses exist.

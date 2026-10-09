@@ -1,4 +1,4 @@
-defmodule Zipfelfolio.Accounts.Passkey do
+defmodule Zipfelfolio.Users.Passkey do
   @moduledoc "A WebAuthn credential: the public key as SPKI and its COSE algorithm."
   use Zipfelfolio.Schema
 
@@ -12,7 +12,7 @@ defmodule Zipfelfolio.Accounts.Passkey do
     field :name, :string
     field :last_used_at, :utc_datetime_usec
 
-    belongs_to :user, Zipfelfolio.Accounts.User
+    belongs_to :user, Zipfelfolio.Users.User
 
     timestamps()
   end

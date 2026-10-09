@@ -1,13 +1,13 @@
-defmodule Zipfelfolio.AccountsFixtures do
+defmodule Zipfelfolio.UsersFixtures do
   @moduledoc """
   This module defines test helpers for creating
-  entities via the `Zipfelfolio.Accounts` context.
+  entities via the `Zipfelfolio.Users` context.
   """
 
   import Ecto.Query
 
-  alias Zipfelfolio.Accounts
-  alias Zipfelfolio.Accounts.Scope
+  alias Zipfelfolio.Users
+  alias Zipfelfolio.Users.Scope
 
   def unique_user_email, do: "user#{System.unique_integer()}@example.com"
 
@@ -21,7 +21,7 @@ defmodule Zipfelfolio.AccountsFixtures do
     {:ok, user} =
       attrs
       |> valid_user_attributes()
-      |> Accounts.create_user()
+      |> Users.create_user()
 
     user
   end
@@ -31,11 +31,11 @@ defmodule Zipfelfolio.AccountsFixtures do
 
     token =
       extract_user_token(fn url ->
-        Accounts.deliver_login_instructions(user, url)
+        Users.deliver_login_instructions(user, url)
       end)
 
     {:ok, {user, _expired_tokens}} =
-      Accounts.login_user_by_magic_link(token)
+      Users.login_user_by_magic_link(token)
 
     user
   end
@@ -61,13 +61,13 @@ defmodule Zipfelfolio.AccountsFixtures do
     response = Zipfelfolio.FakeAuthenticator.registration(authenticator, challenge)
     rp = Zipfelfolio.FakeAuthenticator.relying_party()
 
-    {:ok, passkey} = Accounts.register_passkey(user, response, challenge, rp, "Testgerät")
+    {:ok, passkey} = Users.register_passkey(user, response, challenge, rp, "Testgerät")
     passkey
   end
 
   def override_token_authenticated_at(token, authenticated_at) when is_binary(token) do
     Zipfelfolio.Repo.update_all(
-      from(t in Accounts.UserToken,
+      from(t in Users.UserToken,
         where: t.token == ^token
       ),
       set: [authenticated_at: authenticated_at]
@@ -75,7 +75,7 @@ defmodule Zipfelfolio.AccountsFixtures do
   end
 
   def generate_user_magic_link_token(user) do
-    {encoded_token, user_token} = Accounts.UserToken.build_email_token(user, "login")
+    {encoded_token, user_token} = Users.UserToken.build_email_token(user, "login")
     Zipfelfolio.Repo.insert!(user_token)
     {encoded_token, user_token.token}
   end
@@ -84,7 +84,7 @@ defmodule Zipfelfolio.AccountsFixtures do
     dt = DateTime.add(DateTime.utc_now(), amount_to_add, unit)
 
     Zipfelfolio.Repo.update_all(
-      from(ut in Accounts.UserToken, where: ut.token == ^token),
+      from(ut in Users.UserToken, where: ut.token == ^token),
       set: [inserted_at: dt, authenticated_at: dt]
     )
   end

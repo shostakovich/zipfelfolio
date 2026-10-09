@@ -17,7 +17,7 @@ defmodule ZipfelfolioWeb.ConnCase do
 
   use ExUnit.CaseTemplate
 
-  alias Zipfelfolio.Accounts.Scope
+  alias Zipfelfolio.Users.Scope
 
   using do
     quote do
@@ -47,7 +47,7 @@ defmodule ZipfelfolioWeb.ConnCase do
   test context.
   """
   def register_and_log_in_user(%{conn: conn} = context) do
-    user = Zipfelfolio.AccountsFixtures.user_fixture()
+    user = Zipfelfolio.UsersFixtures.user_fixture()
     scope = Scope.for_user(user)
 
     opts =
@@ -64,7 +64,7 @@ defmodule ZipfelfolioWeb.ConnCase do
   It returns an updated `conn`.
   """
   def log_in_user(conn, user, opts \\ []) do
-    token = Zipfelfolio.Accounts.generate_user_session_token(user)
+    token = Zipfelfolio.Users.generate_user_session_token(user)
 
     maybe_set_token_authenticated_at(token, opts[:token_authenticated_at])
 
@@ -76,6 +76,6 @@ defmodule ZipfelfolioWeb.ConnCase do
   defp maybe_set_token_authenticated_at(_token, nil), do: nil
 
   defp maybe_set_token_authenticated_at(token, authenticated_at) do
-    Zipfelfolio.AccountsFixtures.override_token_authenticated_at(token, authenticated_at)
+    Zipfelfolio.UsersFixtures.override_token_authenticated_at(token, authenticated_at)
   end
 end

@@ -1,4 +1,4 @@
-defmodule Zipfelfolio.Accounts.User do
+defmodule Zipfelfolio.Users.User do
   @moduledoc false
   use Zipfelfolio.Schema
 
@@ -11,7 +11,7 @@ defmodule Zipfelfolio.Accounts.User do
     field :confirmed_at, :utc_datetime_usec
     field :authenticated_at, :utc_datetime_usec, virtual: true
 
-    has_many :passkeys, Zipfelfolio.Accounts.Passkey
+    has_many :passkeys, Zipfelfolio.Users.Passkey
 
     timestamps()
   end

@@ -2,11 +2,11 @@ defmodule ZipfelfolioWeb.UserAuthTest do
   use ZipfelfolioWeb.ConnCase
 
   alias Phoenix.LiveView
-  alias Zipfelfolio.Accounts
-  alias Zipfelfolio.Accounts.Scope
+  alias Zipfelfolio.Users
+  alias Zipfelfolio.Users.Scope
   alias ZipfelfolioWeb.UserAuth
 
-  import Zipfelfolio.AccountsFixtures
+  import Zipfelfolio.UsersFixtures
 
   @remember_me_cookie "_zipfelfolio_web_user_remember_me"
   @remember_me_cookie_max_age 60 * 60 * 24 * 14
@@ -26,7 +26,7 @@ defmodule ZipfelfolioWeb.UserAuthTest do
       assert token = get_session(conn, :user_token)
       assert get_session(conn, :live_socket_id) == "users_sessions:#{Base.url_encode64(token)}"
       assert redirected_to(conn) == ~p"/"
-      assert Accounts.get_user_by_session_token(token)
+      assert Users.get_user_by_session_token(token)
     end
 
     test "clears everything previously stored in the session", %{conn: conn, user: user} do
@@ -87,7 +87,7 @@ defmodule ZipfelfolioWeb.UserAuthTest do
 
   describe "logout_user/1" do
     test "erases session and cookies", %{conn: conn, user: user} do
-      user_token = Accounts.generate_user_session_token(user)
+      user_token = Users.generate_user_session_token(user)
 
       conn =
         conn
@@ -100,7 +100,7 @@ defmodule ZipfelfolioWeb.UserAuthTest do
       refute conn.cookies[@remember_me_cookie]
       assert %{max_age: 0} = conn.resp_cookies[@remember_me_cookie]
       assert redirected_to(conn) == ~p"/users/log-in"
-      refute Accounts.get_user_by_session_token(user_token)
+      refute Users.get_user_by_session_token(user_token)
     end
 
     test "broadcasts to the given live_socket_id", %{conn: conn} do
@@ -124,7 +124,7 @@ defmodule ZipfelfolioWeb.UserAuthTest do
 
   describe "fetch_current_scope_for_user/2" do
     test "authenticates user from session", %{conn: conn, user: user} do
-      user_token = Accounts.generate_user_session_token(user)
+      user_token = Users.generate_user_session_token(user)
 
       conn =
         conn |> put_session(:user_token, user_token) |> UserAuth.fetch_current_scope_for_user([])
@@ -155,7 +155,7 @@ defmodule ZipfelfolioWeb.UserAuthTest do
     end
 
     test "does not authenticate if data is missing", %{conn: conn, user: user} do
-      _ = Accounts.generate_user_session_token(user)
+      _ = Users.generate_user_session_token(user)
       conn = UserAuth.fetch_current_scope_for_user(conn, [])
       refute get_session(conn, :user_token)
       refute conn.assigns.current_scope
@@ -169,7 +169,7 @@ defmodule ZipfelfolioWeb.UserAuthTest do
       %{value: signed_token} = logged_in_conn.resp_cookies[@remember_me_cookie]
 
       offset_user_token(token, -10, :day)
-      {user, _} = Accounts.get_user_by_session_token(token)
+      {user, _} = Users.get_user_by_session_token(token)
 
       conn =
         conn
@@ -193,7 +193,7 @@ defmodule ZipfelfolioWeb.UserAuthTest do
     end
 
     test "assigns current_scope based on a valid user_token", %{conn: conn, user: user} do
-      user_token = Accounts.generate_user_session_token(user)
+      user_token = Users.generate_user_session_token(user)
       session = conn |> put_session(:user_token, user_token) |> get_session()
 
       {:cont, updated_socket} =
@@ -224,7 +224,7 @@ defmodule ZipfelfolioWeb.UserAuthTest do
 
   describe "on_mount :require_authenticated" do
     test "authenticates current_scope based on a valid user_token", %{conn: conn, user: user} do
-      user_token = Accounts.generate_user_session_token(user)
+      user_token = Users.generate_user_session_token(user)
       session = conn |> put_session(:user_token, user_token) |> get_session()
 
       {:cont, updated_socket} =
@@ -261,7 +261,7 @@ defmodule ZipfelfolioWeb.UserAuthTest do
 
   describe "on_mount :require_sudo_mode" do
     test "allows users that have authenticated in the last 10 minutes", %{conn: conn, user: user} do
-      user_token = Accounts.generate_user_session_token(user)
+      user_token = Users.generate_user_session_token(user)
       session = conn |> put_session(:user_token, user_token) |> get_session()
 
       socket = %LiveView.Socket{
@@ -276,8 +276,8 @@ defmodule ZipfelfolioWeb.UserAuthTest do
     test "redirects when authentication is too old", %{conn: conn, user: user} do
       eleven_minutes_ago = DateTime.utc_now() |> DateTime.add(-11, :minute)
       user = %{user | authenticated_at: eleven_minutes_ago}
-      user_token = Accounts.generate_user_session_token(user)
-      {user, token_inserted_at} = Accounts.get_user_by_session_token(user_token)
+      user_token = Users.generate_user_session_token(user)
+      {user, token_inserted_at} = Users.get_user_by_session_token(user_token)
       assert DateTime.compare(token_inserted_at, user.authenticated_at) == :gt
       session = conn |> put_session(:user_token, user_token) |> get_session()
 
