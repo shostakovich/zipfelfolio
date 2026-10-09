@@ -144,10 +144,24 @@ defmodule Zipfelfolio.PPImport do
     )
   end
 
-  defp update_security(ctx, %Security{quote_feed_set_by_user: true} = security, attrs),
-    do: update(ctx, :securities, security, Map.drop(attrs, [:quote_feed, :symbol]))
+  defp update_security(ctx, security, attrs) do
+    attrs = attrs |> keep_user_feed(security) |> keep_fetched_quote(security)
+    update(ctx, :securities, security, attrs)
+  end
 
-  defp update_security(ctx, security, attrs), do: update(ctx, :securities, security, attrs)
+  defp keep_user_feed(attrs, %Security{quote_feed_set_by_user: true}),
+    do: Map.drop(attrs, [:quote_feed, :symbol])
+
+  defp keep_user_feed(attrs, _security), do: attrs
+
+  # A quote fetched since PP's stays; PP's own latest quote has no time of day.
+  defp keep_fetched_quote(attrs, %Security{latest_at: nil}), do: attrs
+
+  defp keep_fetched_quote(attrs, security) do
+    if attrs.latest_date && Date.after?(attrs.latest_date, security.latest_date),
+      do: Map.put(attrs, :latest_at, nil),
+      else: Map.drop(attrs, [:latest_date, :latest_close])
+  end
 
   defp security_attrs(s, base_currency) do
     {quote_feed, symbol} =

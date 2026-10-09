@@ -34,6 +34,7 @@ defmodule ZipfelfolioWeb.Router do
       on_mount: [{ZipfelfolioWeb.UserAuth, :require_authenticated}] do
       live "/", OverviewLive
       live "/settings/import", ImportLive
+      live "/settings/securities", SecuritiesLive
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
     end

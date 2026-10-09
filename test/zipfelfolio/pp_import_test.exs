@@ -200,6 +200,31 @@ defmodule Zipfelfolio.PPImportTest do
     assert %{quote_feed: :yahoo, symbol: "APC.DE"} = security("US0378331005")
   end
 
+  test "keeps a latest quote fetched since, but not an older one", %{scope: scope} do
+    {:ok, _} = PPImport.run(scope, @sample)
+
+    world =
+      security("IE00B4L5Y983")
+      |> change(
+        latest_date: ~D[2026-10-09],
+        latest_close: 1,
+        latest_at: ~U[2026-10-09 15:35:00.000000Z]
+      )
+      |> Repo.update!()
+
+    {:ok, summary} = PPImport.run(scope, @sample)
+
+    assert import_unchanged?(summary)
+    assert %{latest_date: ~D[2026-10-09], latest_close: 1} = security("IE00B4L5Y983")
+
+    world |> change(latest_date: ~D[2024-01-01]) |> Repo.update!()
+
+    {:ok, _summary} = PPImport.run(scope, @sample)
+
+    assert %{latest_date: ~D[2024-03-04], latest_close: 9_095_000_000, latest_at: nil} =
+             security("IE00B4L5Y983")
+  end
+
   test "PP prices win over fetched ones on the same day, others stay", %{scope: scope} do
     {:ok, _} = PPImport.run(scope, @sample)
     world = security("IE00B4L5Y983")

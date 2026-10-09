@@ -1,7 +1,8 @@
 defmodule Zipfelfolio.Securities.Security do
   @moduledoc """
   A security, shared by all users. `quote_feed` and `symbol` say where prices come from; once a
-  user sets them, a PP import leaves them alone.
+  user sets them, a PP import leaves them alone. `latest_*` is the latest quote, `fetched_at` and
+  `fetch_error` the last successful and the last failed fetch, `checked_at` the last attempt.
   """
   use Zipfelfolio.Schema
 
@@ -22,6 +23,10 @@ defmodule Zipfelfolio.Securities.Security do
     field :quote_feed_set_by_user, :boolean, default: false
     field :latest_date, :date
     field :latest_close, :integer
+    field :latest_at, :utc_datetime_usec
+    field :fetched_at, :utc_datetime_usec
+    field :checked_at, :utc_datetime_usec
+    field :fetch_error, :string
 
     timestamps()
   end

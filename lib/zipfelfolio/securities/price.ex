@@ -1,5 +1,8 @@
 defmodule Zipfelfolio.Securities.Price do
-  @moduledoc "A closing price × 10⁸ per security and day. A price from PP wins over a fetched one."
+  @moduledoc """
+  A closing price × 10⁸ per security and day. On the same day a price from PP wins over a manual
+  one, a manual one over one from Yahoo.
+  """
   use Zipfelfolio.Schema
 
   schema "prices" do

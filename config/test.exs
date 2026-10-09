@@ -14,6 +14,11 @@ config :zipfelfolio, ZipfelfolioWeb.Endpoint,
 
 config :zipfelfolio, Zipfelfolio.Mailer, adapter: Swoosh.Adapters.Test
 
+config :zipfelfolio, Zipfelfolio.MarketData,
+  price_feed: Zipfelfolio.FakePriceFeed,
+  rate_source: Zipfelfolio.FakeRateSource,
+  daily_job: false
+
 config :logger, level: :warning
 
 config :phoenix, :plug_init_mode, :runtime

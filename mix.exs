@@ -19,7 +19,7 @@ defmodule Zipfelfolio.MixProject do
   def application do
     [
       mod: {Zipfelfolio.Application, []},
-      extra_applications: [:logger, :runtime_tools, :crypto, :public_key]
+      extra_applications: [:logger, :runtime_tools, :crypto, :public_key, :inets, :ssl]
     ]
   end
 
