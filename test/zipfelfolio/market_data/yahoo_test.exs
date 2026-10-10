@@ -40,6 +40,20 @@ defmodule Zipfelfolio.MarketData.YahooTest do
     end
   end
 
+  test "leaves out closes of 0" do
+    body =
+      @body
+      |> JSON.decode!()
+      |> update_in(
+        ["chart", "result", Access.at(0), "indicators", "quote", Access.at(0), "close"],
+        fn [_, _ | rest] -> [0, 0.0 | rest] end
+      )
+      |> JSON.encode!()
+
+    assert {:ok, %{closes: closes}} = Yahoo.parse(body, @after_close)
+    assert Enum.map(closes, &elem(&1, 0)) == [~D[2026-10-07], ~D[2026-10-09]]
+  end
+
   test "leaves out the day that is still trading" do
     assert {:ok, chart} = Yahoo.parse(@body, @during_trading)
 
