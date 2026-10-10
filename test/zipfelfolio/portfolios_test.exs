@@ -162,6 +162,144 @@ defmodule Zipfelfolio.PortfoliosTest do
     end
   end
 
+  describe "holdings/3" do
+    defp security_at(close, name) do
+      security = security_fixture(quote_feed: :manual, name: name)
+      price_fixture(security, @friday, price(close), :pp)
+      security
+    end
+
+    defp buy(scope, portfolio, security, count, amount) do
+      transaction_fixture(scope, @friday,
+        type: :buy,
+        portfolio_id: portfolio.id,
+        security_id: security.id,
+        shares: shares(count),
+        amount: money(amount)
+      )
+    end
+
+    defp deposit_on_friday(scope, account, amount) do
+      transaction_fixture(scope, @friday,
+        type: :deposit,
+        account_id: account.id,
+        amount: money(amount)
+      )
+    end
+
+    defp group_names(holdings),
+      do: Enum.map(holdings.groups, &(&1.portfolio && &1.portfolio.name))
+
+    defp account_names(group), do: Enum.map(group.accounts, & &1.account.name)
+
+    test "gives each portfolio's holdings by value, then its reference account", ctx do
+      account = account_fixture(ctx.scope, %{name: "Konto Langfristig"})
+      deposit_on_friday(ctx.scope, account, 2_000)
+      portfolio = Repo.update!(change(ctx.portfolio, reference_account_id: account.id))
+      small = security_at(10, "Klein")
+      large = security_at(100, "Groß")
+      buy(ctx.scope, portfolio, small, 10, 120)
+      buy(ctx.scope, portfolio, large, 10, 800)
+
+      assert %{groups: [group], portfolio: nil, net_worth: 310_000} =
+               Portfolios.holdings(ctx.scope, nil, @saturday)
+
+      assert [
+               %{security: ^large, shares: 1_000_000_000, price: 10_000_000_000} = groß,
+               %{security: ^small} = klein
+             ] = group.holdings
+
+      assert {groß.value, groß.purchase_value, groß.gain} ==
+               {money(1_000), money(800), money(200)}
+
+      assert {klein.value, klein.purchase_value, klein.gain} ==
+               {money(100), money(120), money(-20)}
+
+      assert [%{account: ^account, value: 200_000}] = group.accounts
+
+      assert {group.value, group.purchase_value, group.gain} ==
+               {money(3_100), money(920), money(180)}
+    end
+
+    test "shows an account two portfolios settle against under the first or the selected", ctx do
+      account = account_fixture(ctx.scope, %{name: "K"})
+      deposit_on_friday(ctx.scope, account, 50)
+
+      [a, b] =
+        for name <- ["A", "B"],
+            do: portfolio_fixture(ctx.scope, %{name: name, reference_account_id: account.id})
+
+      all = Portfolios.holdings(ctx.scope, nil, @saturday)
+
+      assert group_names(all) == ["A", "B", "Langfristig"]
+      assert Enum.map(all.groups, &account_names/1) == [["K"], [], []]
+      assert Enum.map(all.portfolios, & &1.name) == ["A", "B", "Langfristig"]
+
+      selected = Portfolios.holdings(ctx.scope, b.id, @saturday)
+
+      assert selected.portfolio == b
+      assert group_names(selected) == ["B"]
+      assert Enum.map(selected.groups, &account_names/1) == [["K"]]
+      assert selected.total == %{value: money(50), purchase_value: 0, gain: 0}
+      assert selected.net_worth == money(50)
+      assert Portfolios.holdings(ctx.scope, a.id, @saturday).portfolio == a
+    end
+
+    test "groups the accounts of no portfolio last, without retired ones once empty", ctx do
+      savings = account_fixture(ctx.scope, %{name: "Tagesgeld"})
+      deposit_on_friday(ctx.scope, savings, 1_000)
+      account_fixture(ctx.scope, %{name: "Geschlossen", retired: true})
+      kept = account_fixture(ctx.scope, %{name: "Noch offen", retired: true})
+      deposit_on_friday(ctx.scope, kept, 1)
+      buy(ctx.scope, ctx.portfolio, security_at(100, "Groß"), 10, 1_000)
+
+      holdings = Portfolios.holdings(ctx.scope, nil, @saturday)
+
+      assert group_names(holdings) == ["Langfristig", nil]
+      assert account_names(List.last(holdings.groups)) == ["Noch offen", "Tagesgeld"]
+
+      assert holdings.total == %{
+               value: money(2_001),
+               purchase_value: money(1_000),
+               gain: 0
+             }
+
+      assert group_names(Portfolios.holdings(ctx.scope, ctx.portfolio.id, @saturday)) ==
+               ["Langfristig"]
+    end
+
+    test "leaves out holdings without shares and retired portfolios once empty", ctx do
+      sold = security_at(100, "Verkauft")
+      buy(ctx.scope, ctx.portfolio, sold, 1, 100)
+
+      transaction_fixture(ctx.scope, @saturday,
+        type: :sell,
+        portfolio_id: ctx.portfolio.id,
+        security_id: sold.id,
+        shares: shares(1)
+      )
+
+      retired = portfolio_fixture(ctx.scope, %{name: "Alt", retired: true})
+      buy(ctx.scope, retired, security_at(100, "Groß"), 1, 100)
+      empty = portfolio_fixture(ctx.scope, %{name: "Leer", retired: true})
+
+      holdings = Portfolios.holdings(ctx.scope, empty.id, @saturday)
+
+      assert holdings.portfolio == nil
+      assert group_names(holdings) == ["Alt", "Langfristig"]
+      assert [[_held], []] = Enum.map(holdings.groups, & &1.holdings)
+    end
+
+    test "shows all portfolios for one of another user", ctx do
+      other = portfolio_fixture(user_scope_fixture(), %{name: "Fremd"})
+
+      holdings = Portfolios.holdings(ctx.scope, other.id, @saturday)
+
+      assert holdings.portfolio == nil
+      assert group_names(holdings) == ["Langfristig"]
+    end
+  end
+
   describe "net_worth/2" do
     test "values shares on a day without a price at the last close before it", ctx do
       security = security_fixture(quote_feed: :manual)

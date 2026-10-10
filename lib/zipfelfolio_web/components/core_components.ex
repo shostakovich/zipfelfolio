@@ -256,13 +256,17 @@ defmodule ZipfelfolioWeb.CoreComponents do
   attr :title_class, :any, default: nil
   slot :inner_block, required: true
   slot :leading
+  slot :subtitle
   slot :actions
 
   def header(assigns) do
     ~H"""
     <header class={["d-flex align-items-center gap-2 mb-3", @class]}>
       {render_slot(@leading)}
-      <h1 class={["h2 mb-0 me-auto", @title_class]}>{render_slot(@inner_block)}</h1>
+      <div class="me-auto">
+        <h1 class={["h2 mb-0", @title_class]}>{render_slot(@inner_block)}</h1>
+        <p :if={@subtitle != []} class="small text-body-secondary mb-0">{render_slot(@subtitle)}</p>
+      </div>
       {render_slot(@actions)}
     </header>
     """

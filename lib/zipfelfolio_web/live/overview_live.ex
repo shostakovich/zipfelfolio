@@ -108,11 +108,12 @@ defmodule ZipfelfolioWeb.OverviewLive do
         <div class="card-header">
           <h2 class="fs-6 fw-semibold mb-0" id="portfolios-title">Depots</h2>
         </div>
-        <ul class="list-group list-group-flush">
-          <li
+        <div class="list-group list-group-flush">
+          <.link
             :for={row <- @overview.portfolios}
             id={"portfolio-#{row.portfolio.id}"}
-            class="list-group-item d-flex align-items-center gap-3"
+            navigate={~p"/holdings?#{[portfolio: row.portfolio.id]}"}
+            class="list-group-item list-group-item-action d-flex align-items-center gap-3"
           >
             <span class="app-avatar rounded-circle bg-primary-subtle text-primary-emphasis d-flex align-items-center justify-content-center">
               <svg class="app-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -133,8 +134,8 @@ defmodule ZipfelfolioWeb.OverviewLive do
               </span>
               <span :if={row.securities == 0} class="small text-body-secondary">nur Cash</span>
             </span>
-          </li>
-        </ul>
+          </.link>
+        </div>
       </section>
     </Layouts.app>
     """

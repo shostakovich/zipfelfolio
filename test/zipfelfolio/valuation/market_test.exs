@@ -83,9 +83,11 @@ defmodule Zipfelfolio.Valuation.MarketTest do
     end
   end
 
-  test "currency/2 is the currency of the security" do
-    market = Market.new([%Security{id: 1, currency: "USD"}], [], [])
+  test "security/2 and currency/2 are the security and its currency" do
+    security = %Security{id: 1, currency: "USD"}
+    market = Market.new([security], [], [])
 
+    assert Market.security(market, 1) == security
     assert Market.currency(market, 1) == "USD"
   end
 

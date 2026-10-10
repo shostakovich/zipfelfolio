@@ -29,8 +29,9 @@ defmodule Zipfelfolio.Valuation.Market do
     end)
   end
 
-  def currency(%__MODULE__{securities: securities}, security_id),
-    do: securities[security_id].currency
+  def security(%__MODULE__{securities: securities}, security_id), do: securities[security_id]
+
+  def currency(market, security_id), do: security(market, security_id).currency
 
   @doc """
   The price of a security on `date`, as PP takes it: the latest quote from its day on unless a

@@ -258,8 +258,33 @@ defmodule Zipfelfolio.ValuationTest do
       assert Valuation.value(holding(21, 10, transactions), market, @friday) == money(800)
     end
 
+    test "takes a price of 0 as none, as PP does" do
+      transactions = [in_portfolio(:buy, @thursday, 1, 20, 10, amount: money(1_000))]
+      market = market([{20, @friday, 0}])
+
+      assert Valuation.value(holding(20, 10, transactions), market, @friday) == money(1_000)
+    end
+
     test "is nothing without any price or transaction" do
       assert Valuation.value(holding(20, 10), market([]), @friday) == 0
+    end
+  end
+
+  describe "price/3" do
+    test "is the price a holding is valued at, in the security's currency" do
+      market = market([{21, @friday, price(110)}], rates: [{"USD", @friday, Decimal.new("1.10")}])
+
+      assert Valuation.price(holding(21, 10), market, @saturday) == price(110)
+    end
+
+    test "is the gross price per share of the last transaction without any price" do
+      transactions = [in_portfolio(:buy, @friday, 1, 20, 4, amount: money(410))]
+
+      assert Valuation.price(holding(20, 4, transactions), market([]), @friday) == price(102.5)
+    end
+
+    test "is nil without any price or transaction" do
+      assert Valuation.price(holding(20, 10), market([]), @friday) == nil
     end
   end
 

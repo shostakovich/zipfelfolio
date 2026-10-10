@@ -33,6 +33,7 @@ defmodule ZipfelfolioWeb.Router do
     live_session :require_authenticated_user,
       on_mount: [{ZipfelfolioWeb.UserAuth, :require_authenticated}] do
       live "/", OverviewLive
+      live "/holdings", HoldingsLive
       live "/settings/import", ImportLive
       live "/settings/securities", SecuritiesLive
       live "/users/settings", UserLive.Settings, :edit

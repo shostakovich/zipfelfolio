@@ -28,8 +28,18 @@ defmodule ZipfelfolioWeb.Format do
   """
   def euros(cents, places \\ 0), do: number(Decimal.div(cents, 100), places, "") <> "\u00A0€"
 
-  @doc "A change in cents as whole euros with its sign, e.g. `+562 €`."
-  def signed_euros(cents), do: number(Decimal.div(cents, 100), 0, "+") <> "\u00A0€"
+  @doc "A change in cents as whole euros with its sign, e.g. `+562 €`, or with `places`."
+  def signed_euros(cents, places \\ 0),
+    do: number(Decimal.div(cents, 100), places, "+") <> "\u00A0€"
+
+  @doc "Shares × 10⁸ with as many decimal places as they have, e.g. `6.200` or `93,207`."
+  def shares(shares) do
+    shares = shares |> Decimal.div(100_000_000) |> Decimal.normalize()
+    number(shares, max(-shares.exp, 0), "")
+  end
+
+  @doc "A share of a total in percent, e.g. `58,1 %`; the % never wraps onto a line of its own."
+  def percent(%Decimal{} = percent, places \\ 1), do: number(percent, places, "") <> "\u00A0%"
 
   @doc """
   A change in percent with its sign and two or `places` decimal places, e.g. `+0,38 %`; the %

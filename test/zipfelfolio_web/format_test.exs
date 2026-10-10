@@ -30,6 +30,27 @@ defmodule ZipfelfolioWeb.FormatTest do
     assert Format.signed_euros(-40) == "0\u00A0€"
   end
 
+  test "changes in euros can have cents" do
+    assert Format.signed_euros(3_850_280, 2) == "+38.502,80\u00A0€"
+    assert Format.signed_euros(-2_000, 2) == "−20,00\u00A0€"
+    assert Format.signed_euros(0, 2) == "0,00\u00A0€"
+  end
+
+  test "shares have German separators and only the decimal places they need" do
+    assert Format.shares(52_000_000_000) == "520"
+    assert Format.shares(620_000_000_000) == "6.200"
+    assert Format.shares(9_320_700_000) == "93,207"
+    assert Format.shares(12_345_678) == "0,12345678"
+    assert Format.shares(-150_000_000_000) == "−1.500"
+    assert Format.shares(-150_000_000) == "−1,5"
+  end
+
+  test "shares of a total are in percent with one decimal place by default" do
+    assert Format.percent(Decimal.new("58.07")) == "58,1\u00A0%"
+    assert Format.percent(Decimal.new("0.04")) == "0,0\u00A0%"
+    assert Format.percent(Decimal.new("100"), 0) == "100\u00A0%"
+  end
+
   test "changes in percent carry their sign and two decimal places" do
     assert Format.signed_percent(Decimal.new("0.38")) == "+0,38\u00A0%"
     assert Format.signed_percent(Decimal.new("-2.505")) == "−2,51\u00A0%"

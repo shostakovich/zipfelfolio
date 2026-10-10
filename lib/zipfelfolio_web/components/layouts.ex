@@ -26,6 +26,15 @@ defmodule ZipfelfolioWeb.Layouts do
               Übersicht
             </.link>
           </li>
+          <li class="nav-item">
+            <.link
+              class={["nav-link", @current == :holdings && "active"]}
+              aria-current={@current == :holdings && "page"}
+              navigate={~p"/holdings"}
+            >
+              Bestand
+            </.link>
+          </li>
         </ul>
         <.avatar user={@current_scope.user} active={@current == :settings} />
       </div>
