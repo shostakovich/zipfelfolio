@@ -53,4 +53,21 @@ defmodule Zipfelfolio.Portfolios.Transaction do
   end
 
   def types, do: @types
+
+  @doc """
+  Whether the user may edit or delete the transaction: one booked in zipfelfolio, of a type the
+  transaction form knows. The PP import's are read-only.
+  """
+  def editable?(%__MODULE__{source: source, type: type}),
+    do:
+      source != :pp_import and
+        type in [
+          :buy,
+          :sell,
+          :inbound_delivery,
+          :outbound_delivery,
+          :dividend,
+          :deposit,
+          :removal
+        ]
 end

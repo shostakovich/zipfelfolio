@@ -4,7 +4,7 @@ defmodule Zipfelfolio.BookingTest do
   import Zipfelfolio.{PortfoliosFixtures, SecuritiesFixtures, UsersFixtures}
 
   alias Zipfelfolio.{LocalTime, Portfolios, PPImport, Valuation}
-  alias Zipfelfolio.Portfolios.{Receipt, Transaction}
+  alias Zipfelfolio.Portfolios.{Receipt, Transaction, TransactionForm}
   alias Zipfelfolio.Valuation.Market
 
   @day ~D[2026-10-01]
@@ -238,6 +238,17 @@ defmodule Zipfelfolio.BookingTest do
       assert {:ok, _} = book(ctx, "sale", %{"shares" => "5", "price" => "100"})
     end
 
+    test "no sale before a later one beyond what stays", ctx do
+      {:ok, _} = book(ctx, "purchase", %{"shares" => "5", "price" => "100"})
+      {:ok, _} = book(ctx, "sale", %{"date" => "2026-10-03", "shares" => "4", "price" => "100"})
+
+      backdated = %{"date" => "2026-10-02", "shares" => "2", "price" => "100"}
+      assert {:error, changeset} = book(ctx, "sale", backdated)
+      assert errors_on(changeset).shares == ["übersteigt den Bestand von 1 Stück"]
+
+      assert {:ok, _} = book(ctx, "sale", %{backdated | "shares" => "1"})
+    end
+
     test "required fields per type", ctx do
       empty = %{"date" => "2026-10-01", "portfolio_id" => "", "account_id" => ""}
 
@@ -277,6 +288,11 @@ defmodule Zipfelfolio.BookingTest do
                book(ctx, "deposit", %{"amount" => "1", "account_id" => foreign.id})
 
       assert errors_on(changeset).account_id == ["ist ungültig"]
+
+      foreign_portfolio = portfolio_fixture(other)
+      purchase = %{"shares" => "1", "price" => "1", "portfolio_id" => foreign_portfolio.id}
+      assert {:error, changeset} = book(ctx, "purchase", purchase)
+      assert errors_on(changeset).portfolio_id == ["ist ungültig"]
     end
 
     test "only accounts in euros", ctx do
@@ -348,6 +364,24 @@ defmodule Zipfelfolio.BookingTest do
       assert removal.receipt_id == nil
     end
 
+    test "leave no file behind when booking fails", ctx do
+      Repo.delete!(ctx.security)
+      sha256 = Base.encode16(:crypto.hash(:sha256, @pdf), case: :lower)
+
+      assert_raise Ecto.ConstraintError, fn ->
+        book(ctx, "dividend", %{"gross" => "10"}, {ctx.path, "d.pdf"})
+      end
+
+      refute Repo.exists?(Receipt)
+      refute File.exists?(Portfolios.receipt_file(sha256))
+
+      refute sha256
+             |> Portfolios.receipt_file()
+             |> Path.dirname()
+             |> File.ls!()
+             |> Enum.any?(&(&1 =~ sha256))
+    end
+
     test "must be PDFs", ctx do
       File.write!(ctx.path, "kein PDF")
 
@@ -366,5 +400,289 @@ defmodule Zipfelfolio.BookingTest do
     {:ok, _} = PPImport.run(ctx.scope, "test/fixtures/pp/sample.portfolio")
 
     assert Repo.get(Transaction, deposit.id)
+  end
+
+  describe "editing and deleting" do
+    @pdf "%PDF-1.4\nein Beleg\n%%EOF\n"
+
+    defp receipt_path(content) do
+      path = Path.join(System.tmp_dir!(), "receipt-#{System.unique_integer([:positive])}.pdf")
+      File.write!(path, content)
+      on_exit(fn -> File.rm(path) end)
+      path
+    end
+
+    defp edit(ctx, transaction, kind, attrs, receipt \\ nil) do
+      transaction = Portfolios.get_transaction(ctx.scope, transaction.id)
+
+      Portfolios.update_transaction(
+        ctx.scope,
+        ctx.choices,
+        transaction,
+        form(ctx, kind, attrs),
+        receipt
+      )
+    end
+
+    test "the form shows a booked transaction as it was entered", ctx do
+      attrs = %{"shares" => "31,07", "price" => "12,0699", "fees" => "1", "taxes" => "0,5"}
+      {:ok, [purchase]} = book(ctx, "purchase", attrs)
+
+      params = Portfolios.get_transaction(ctx.scope, purchase.id) |> TransactionForm.params_of()
+
+      assert params == %{
+               "kind" => "purchase",
+               "date" => "2026-10-01",
+               "portfolio_id" => to_string(ctx.portfolio.id),
+               "account_id" => to_string(ctx.account.id),
+               "security_id" => to_string(ctx.security.id),
+               "shares" => "31,07",
+               # Not stored: 375,01 € gross over 31,07 shares.
+               "price" => "12,0698",
+               "fees" => "1,00",
+               "taxes" => "0,50",
+               "amount" => "376,51",
+               "amount_set" => "false"
+             }
+
+      {:ok, [overwritten]} =
+        book(ctx, "sale", %{
+          "shares" => "1",
+          "price" => "10",
+          "amount" => "9,99",
+          "amount_set" => "true"
+        })
+
+      assert %{"price" => "9,99", "amount" => "9,99", "amount_set" => "false"} =
+               Portfolios.get_transaction(ctx.scope, overwritten.id)
+               |> TransactionForm.params_of()
+
+      {:ok, [dividend]} = book(ctx, "dividend", %{"gross" => "100", "taxes" => "18,5"})
+
+      assert %{"kind" => "dividend", "gross" => "100,00", "amount" => "81,50"} =
+               Portfolios.get_transaction(ctx.scope, dividend.id) |> TransactionForm.params_of()
+    end
+
+    test "editing a manual transaction updates the figures", ctx do
+      {:ok, [purchase]} =
+        book(ctx, "purchase", %{"shares" => "10", "price" => "100", "fees" => "1"})
+
+      assert {:ok, updated} =
+               edit(ctx, purchase, "purchase", %{
+                 "shares" => "12",
+                 "price" => "100",
+                 "account_id" => ""
+               })
+
+      assert updated.id == purchase.id
+
+      assert %{type: :inbound_delivery, shares: 1_200_000_000, amount: 120_000, units: []} =
+               booked(updated)
+
+      assert figures(ctx) == %{
+               holdings: [{ctx.portfolio.id, shares(12)}],
+               balances: %{},
+               invested_capital: money(1_200)
+             }
+    end
+
+    test "a sale being edited does not count against its own holding", ctx do
+      {:ok, _} = book(ctx, "purchase", %{"shares" => "5", "price" => "100"})
+      {:ok, [sale]} = book(ctx, "sale", %{"shares" => "5", "price" => "100"})
+
+      assert {:ok, _} = edit(ctx, sale, "sale", %{"shares" => "5", "price" => "110"})
+      assert {:error, changeset} = edit(ctx, sale, "sale", %{"shares" => "6", "price" => "110"})
+      assert errors_on(changeset).shares == ["übersteigt den Bestand von 5 Stück"]
+    end
+
+    test "a transaction keeps its retired portfolio and account", ctx do
+      {:ok, [purchase]} = book(ctx, "purchase", %{"shares" => "10", "price" => "100"})
+      Repo.update!(Ecto.Changeset.change(ctx.portfolio, retired: true))
+      Repo.update!(Ecto.Changeset.change(ctx.account, retired: true))
+      assert %{portfolios: [], accounts: []} = Portfolios.transaction_choices(ctx.scope)
+
+      purchase = Portfolios.get_transaction(ctx.scope, purchase.id)
+      choices = Portfolios.transaction_choices(ctx.scope, purchase)
+      assert [ctx.portfolio.id] == Enum.map(choices.portfolios, & &1.id)
+      assert [ctx.account.id] == Enum.map(choices.accounts, & &1.id)
+
+      params = Map.put(TransactionForm.params_of(purchase), "shares", "12")
+      {:ok, updated} = Portfolios.update_transaction(ctx.scope, choices, purchase, params)
+
+      assert %{type: :buy, portfolio_id: portfolio_id, account_id: account_id} = updated
+      assert {portfolio_id, account_id} == {ctx.portfolio.id, ctx.account.id}
+    end
+
+    test "a purchase a later sale needs cannot shrink, move or go", ctx do
+      {:ok, [purchase]} = book(ctx, "purchase", %{"shares" => "5", "price" => "100"})
+
+      {:ok, [sale]} =
+        book(ctx, "sale", %{"date" => "2026-10-03", "shares" => "4", "price" => "100"})
+
+      other = portfolio_fixture(ctx.scope, name: "Anderes Depot")
+      choices = Portfolios.transaction_choices(ctx.scope)
+      negative = ["würde den Bestand später unter null bringen"]
+
+      for attrs <- [
+            %{"shares" => "3"},
+            %{"date" => "2026-10-04"},
+            %{"portfolio_id" => other.id},
+            %{"kind" => "deposit", "amount" => "1"}
+          ] do
+        params = Map.merge(form(ctx, "purchase", %{"shares" => "5", "price" => "100"}), attrs)
+        loaded = Portfolios.get_transaction(ctx.scope, purchase.id)
+
+        assert {:error, changeset} =
+                 Portfolios.update_transaction(ctx.scope, choices, loaded, params)
+
+        assert negative in Map.values(errors_on(changeset))
+      end
+
+      assert {:error, :holding} = Portfolios.delete_transaction(ctx.scope, purchase)
+      assert {:ok, _} = edit(ctx, purchase, "purchase", %{"shares" => "4", "price" => "100"})
+
+      assert {:ok, _} =
+               edit(ctx, purchase, "purchase", %{
+                 "date" => "2026-10-03",
+                 "shares" => "4",
+                 "price" => "100"
+               })
+
+      assert {:ok, _} = Portfolios.delete_transaction(ctx.scope, sale)
+      assert {:ok, _} = Portfolios.delete_transaction(ctx.scope, purchase)
+    end
+
+    test "imported and other users' transactions are read-only", ctx do
+      {:ok, _} = PPImport.run(ctx.scope, "test/fixtures/pp/sample.portfolio")
+      imported = Repo.one!(from t in Transaction, where: t.type == :deposit, limit: 1)
+
+      assert {:error, :read_only} = edit(ctx, imported, "deposit", %{"amount" => "1"})
+      assert {:error, :read_only} = Portfolios.delete_transaction(ctx.scope, imported)
+
+      {:ok, [own]} = book(ctx, "deposit", %{"amount" => "1"})
+      other = user_scope_fixture()
+      assert {:error, :read_only} = Portfolios.delete_transaction(other, own)
+
+      other_account = account_fixture(other)
+
+      assert {:error, :read_only} =
+               Portfolios.update_transaction(
+                 other,
+                 Portfolios.transaction_choices(other),
+                 own,
+                 %{
+                   "kind" => "deposit",
+                   "date" => "2026-10-01",
+                   "amount" => "2",
+                   "account_id" => other_account.id
+                 }
+               )
+
+      assert %{amount: 100, account_id: account_id} = Repo.get!(Transaction, own.id)
+      assert account_id == ctx.account.id
+      assert Portfolios.get_transaction(other, own.id) == nil
+    end
+
+    test "a transaction deleted meanwhile is gone", ctx do
+      {:ok, [deposit]} = book(ctx, "deposit", %{"amount" => "1"})
+      loaded = Portfolios.get_transaction(ctx.scope, deposit.id)
+
+      assert {:ok, _} = Portfolios.delete_transaction(ctx.scope, deposit)
+      assert Portfolios.get_transaction(ctx.scope, deposit.id) == nil
+      assert {:ok, _} = Portfolios.delete_transaction(ctx.scope, deposit)
+
+      assert {:error, :gone} =
+               Portfolios.update_transaction(
+                 ctx.scope,
+                 ctx.choices,
+                 loaded,
+                 form(ctx, "deposit", %{"amount" => "2"})
+               )
+
+      assert Portfolios.list_transactions(ctx.scope) == []
+    end
+
+    test "deleting removes the receipt file once no transaction uses it", ctx do
+      path = receipt_path(@pdf)
+      {:ok, [first]} = book(ctx, "deposit", %{"amount" => "1"}, {path, "a.pdf"})
+      {:ok, [second]} = book(ctx, "deposit", %{"amount" => "2"}, {path, "a.pdf"})
+      file = Portfolios.receipt_file(Repo.get!(Receipt, first.receipt_id))
+
+      assert {:ok, _} = Portfolios.delete_transaction(ctx.scope, first)
+      refute Repo.get(Transaction, first.id)
+      assert File.exists?(file)
+
+      assert {:ok, _} = Portfolios.delete_transaction(ctx.scope, second)
+      refute Repo.get(Receipt, second.receipt_id)
+      refute File.exists?(file)
+    end
+
+    test "a receipt file another user's receipt needs stays", ctx do
+      path = receipt_path(@pdf)
+      {:ok, [own]} = book(ctx, "deposit", %{"amount" => "1"}, {path, "a.pdf"})
+
+      other = user_scope_fixture()
+      other_account = account_fixture(other)
+
+      {:ok, _} =
+        Portfolios.book_transaction(
+          other,
+          Portfolios.transaction_choices(other),
+          %{
+            "kind" => "deposit",
+            "date" => "2026-10-01",
+            "amount" => "1",
+            "account_id" => other_account.id
+          },
+          {path, "b.pdf"}
+        )
+
+      assert {:ok, _} = Portfolios.delete_transaction(ctx.scope, own)
+
+      assert File.exists?(
+               Portfolios.receipt_file(Base.encode16(:crypto.hash(:sha256, @pdf), case: :lower))
+             )
+    end
+
+    test "a new receipt replaces the old one, whose file goes", ctx do
+      old = "%PDF-1.4\nalt\n%%EOF\n"
+      {:ok, [deposit]} = book(ctx, "deposit", %{"amount" => "1"}, {receipt_path(old), "alt.pdf"})
+      old_file = Portfolios.receipt_file(Repo.get!(Receipt, deposit.receipt_id))
+
+      {:ok, kept} = edit(ctx, deposit, "deposit", %{"amount" => "2"})
+      assert kept.receipt_id == deposit.receipt_id
+
+      {:ok, updated} =
+        edit(ctx, deposit, "deposit", %{"amount" => "2"}, {receipt_path(@pdf), "neu.pdf"})
+
+      assert updated.receipt.filename == "neu.pdf"
+      refute File.exists?(old_file)
+      assert File.exists?(Portfolios.receipt_file(updated.receipt))
+    end
+  end
+
+  describe "transactions_by_month/2" do
+    test "groups by month, newest first, filtered by kind", ctx do
+      {:ok, [deposit]} = book(ctx, "deposit", %{"amount" => "100", "date" => "2026-09-30"})
+      {:ok, [purchase]} = book(ctx, "purchase", %{"shares" => "1", "price" => "50"})
+      {:ok, [dividend]} = book(ctx, "dividend", %{"gross" => "1"})
+
+      assert [{~D[2026-10-01], [first, second]}, {~D[2026-09-01], [third]}] =
+               Portfolios.transactions_by_month(ctx.scope)
+
+      assert Enum.map([first, second, third], & &1.id) == [dividend.id, purchase.id, deposit.id]
+      assert first.security.name == ctx.security.name
+
+      ids = fn filter ->
+        for {_month, transactions} <- Portfolios.transactions_by_month(ctx.scope, filter),
+            transaction <- transactions,
+            do: transaction.id
+      end
+
+      assert ids.(:trades) == [purchase.id]
+      assert ids.(:earnings) == [dividend.id]
+      assert ids.(:account) == [deposit.id]
+      assert Portfolios.transactions_by_month(user_scope_fixture()) == []
+    end
   end
 end

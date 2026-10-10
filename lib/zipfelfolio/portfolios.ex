@@ -572,40 +572,145 @@ defmodule Zipfelfolio.Portfolios do
     )
   end
 
+  ## Transactions
+
+  @filters %{
+    trades: [:buy, :sell, :inbound_delivery, :outbound_delivery, :security_transfer],
+    earnings: [:dividend, :interest],
+    account: [
+      :deposit,
+      :removal,
+      :cash_transfer,
+      :interest_charge,
+      :tax,
+      :tax_refund,
+      :fee,
+      :fee_refund
+    ]
+  }
+
+  @transaction_preloads [
+    :units,
+    :security,
+    :portfolio,
+    :account,
+    :other_portfolio,
+    :other_account,
+    :receipt
+  ]
+
+  @doc """
+  The user's transactions grouped by month, newest first, as `{first day of month, transactions}`;
+  `filter` is nil for all, `:trades`, `:earnings` or `:account`.
+  """
+  def transactions_by_month(%Scope{} = scope, filter \\ nil) do
+    from(t in Transaction,
+      where: t.user_id == ^scope.user.id,
+      order_by: [desc: t.date_time, desc: t.id],
+      preload: ^@transaction_preloads
+    )
+    |> where_filter(filter)
+    |> Repo.all()
+    |> Enum.chunk_by(&month_of/1)
+    |> Enum.map(&{month_of(hd(&1)), &1})
+  end
+
+  defp where_filter(query, nil), do: query
+  defp where_filter(query, filter), do: where(query, [t], t.type in ^Map.fetch!(@filters, filter))
+
+  defp month_of(%Transaction{date_time: date_time}),
+    do: date_time |> NaiveDateTime.to_date() |> Date.beginning_of_month()
+
+  @doc """
+  A transaction of the user with what the transactions screen shows of it, nil for an unknown one
+  or another user's.
+  """
+  def get_transaction(%Scope{} = scope, id) do
+    Repo.one(
+      from t in Transaction,
+        where: t.id == ^id and t.user_id == ^scope.user.id,
+        preload: ^@transaction_preloads
+    )
+  end
+
+  @doc "A receipt of the user, nil for an unknown one or another user's."
+  def get_receipt(%Scope{} = scope, id),
+    do: Repo.get_by(Receipt, id: id, user_id: scope.user.id)
+
   ## Booking
 
   @doc """
   What the transaction form offers: the user's portfolios and accounts in euros by name, without
-  retired ones, and all securities.
+  retired ones but those of the transaction being edited, and all securities.
   """
-  def transaction_choices(%Scope{} = scope) do
+  def transaction_choices(%Scope{} = scope, editing \\ nil) do
     %{
-      portfolios: Enum.reject(list_portfolios(scope), & &1.retired),
-      accounts: Enum.filter(list_accounts(scope), &(&1.currency == "EUR" and not &1.retired)),
+      portfolios:
+        Enum.filter(list_portfolios(scope), &offered?(&1, editing && editing.portfolio_id)),
+      accounts:
+        Enum.filter(
+          list_accounts(scope),
+          &(&1.currency == "EUR" and offered?(&1, editing && editing.account_id))
+        ),
       securities: Securities.list_securities(scope)
     }
   end
 
-  @doc "The transaction form with `attrs`, checked against `choices`, see `transaction_choices/1`."
-  def change_transaction_form(%Scope{} = scope, choices, attrs \\ %{}),
-    do: TransactionForm.changeset(%TransactionForm{}, attrs, checks(scope, choices))
+  defp offered?(portfolio_or_account, own_id),
+    do: not portfolio_or_account.retired or portfolio_or_account.id == own_id
 
-  defp checks(scope, choices) do
+  @doc """
+  The transaction form with `attrs`, checked against `choices`, see `transaction_choices/2`. A sale
+  may not exceed the holding on its day or later, which leaves out the transaction being edited.
+  """
+  def change_transaction_form(%Scope{} = scope, choices, attrs \\ %{}, editing \\ nil),
+    do: TransactionForm.changeset(%TransactionForm{}, attrs, checks(scope, choices, editing))
+
+  defp checks(scope, choices, editing) do
     %{
       portfolio_ids: MapSet.new(choices.portfolios, & &1.id),
       account_ids: MapSet.new(choices.accounts, & &1.id),
       security_ids: MapSet.new(choices.securities, & &1.id),
-      held_shares: &held_shares(scope, &1, &2, &3)
+      held_shares: &held_shares(scope, &1, &2, &3, editing)
     }
   end
 
-  @doc "The shares × 10⁸ of a security a portfolio of the user holds at the end of `date`."
-  def held_shares(%Scope{} = scope, portfolio_id, security_id, date) do
-    scope
-    |> list_transactions_of(%Security{id: security_id})
-    |> Valuation.holdings(date)
-    |> Enum.find_value(0, &(&1.portfolio_id == portfolio_id && &1.shares))
+  @doc """
+  The fewest shares × 10⁸ of a security a portfolio of the user holds from the end of `date` on,
+  without the transaction `except` if given and with the transactions `extra`.
+  """
+  def held_shares(%Scope{} = scope, portfolio_id, security_id, date, except \\ nil, extra \\ []) do
+    transactions =
+      scope
+      |> list_transactions_of(%Security{id: security_id})
+      |> Enum.reject(&(except && &1.id == except.id))
+      |> Enum.concat(Enum.filter(extra, &(&1.security_id == security_id)))
+
+    later =
+      for t <- transactions,
+          day = NaiveDateTime.to_date(t.date_time),
+          Date.after?(day, date),
+          do: day
+
+    [date | later]
+    |> Enum.uniq()
+    |> Enum.map(fn day ->
+      transactions
+      |> Valuation.holdings(day)
+      |> Enum.find_value(0, &(&1.portfolio_id == portfolio_id && &1.shares))
+    end)
+    |> Enum.min()
   end
+
+  # Without a purchase or inbound delivery, or with `replacement` instead, no later sale may exceed
+  # the holding.
+  defp keeps_holding?(scope, %Transaction{type: type} = t, replacement)
+       when type in [:buy, :inbound_delivery] do
+    date = NaiveDateTime.to_date(t.date_time)
+    held_shares(scope, t.portfolio_id, t.security_id, date, t, List.wrap(replacement)) >= 0
+  end
+
+  defp keeps_holding?(_scope, _transaction, _replacement), do: true
 
   @doc """
   Books the transaction form with `attrs`, marked as booked manually, and returns the booked
@@ -615,7 +720,7 @@ defmodule Zipfelfolio.Portfolios do
   def book_transaction(%Scope{} = scope, choices, attrs, receipt \\ nil) do
     changeset = change_transaction_form(scope, choices, attrs)
 
-    Repo.transact(fn ->
+    transact_with_receipt(receipt, fn ->
       with {:ok, form} <- Ecto.Changeset.apply_action(changeset, :insert),
            {:ok, receipt_id} <- store_receipt(scope, receipt, changeset) do
         [first | rest] = TransactionForm.to_transactions(form)
@@ -641,16 +746,139 @@ defmodule Zipfelfolio.Portfolios do
     )
   end
 
+  @doc "The params that show a transaction the user booked in the transaction form."
+  def transaction_form_params(%Transaction{} = transaction),
+    do: TransactionForm.params_of(transaction)
+
+  @doc """
+  Saves the transaction form with `attrs` over `transaction`, one the user booked: its fields and
+  units. A new PDF `receipt` replaces the attached one, which goes once nothing uses it.
+  """
+  def update_transaction(
+        %Scope{} = scope,
+        choices,
+        %Transaction{} = transaction,
+        attrs,
+        receipt \\ nil
+      ) do
+    changeset = change_transaction_form(scope, choices, attrs, transaction)
+
+    with :ok <- check_editable(scope, transaction),
+         {:ok, {updated, unused}} <-
+           transact_with_receipt(receipt, fn ->
+             save_transaction(scope, changeset, transaction, receipt)
+           end) do
+      remove_receipt_file(unused)
+      {:ok, updated}
+    end
+  end
+
+  defp save_transaction(scope, changeset, transaction, receipt) do
+    with {:ok, form} <- Ecto.Changeset.apply_action(changeset, :update),
+         %Transaction{} <- Repo.get(Transaction, transaction.id) || {:error, :gone},
+         [attrs] = TransactionForm.to_transactions(%{form | remove_at_once: false}),
+         {units, attrs} = Map.pop!(attrs, :units),
+         true <-
+           keeps_holding?(scope, transaction, struct!(Transaction, attrs)) ||
+             {:error, holding_error(changeset, form.kind)},
+         {:ok, receipt_id} <- store_receipt(scope, receipt, changeset) do
+      attrs =
+        attrs |> Map.delete(:source) |> Map.put(:receipt_id, receipt_id || transaction.receipt_id)
+
+      Repo.delete_all(from u in TransactionUnit, where: u.transaction_id == ^transaction.id)
+      Repo.update!(Ecto.Changeset.change(transaction, attrs))
+
+      Repo.insert_all(
+        TransactionUnit,
+        Enum.map(units, &Map.put(&1, :transaction_id, transaction.id))
+      )
+
+      unused = if receipt_id, do: drop_unused_receipt(transaction.receipt_id)
+      {:ok, {get_transaction(scope, transaction.id), unused}}
+    end
+  end
+
+  defp holding_error(changeset, kind) do
+    field = if kind in [:purchase, :sale], do: :shares, else: :date
+
+    Ecto.Changeset.add_error(
+      %{changeset | action: :update},
+      field,
+      "würde den Bestand später unter null bringen"
+    )
+  end
+
+  @doc """
+  Deletes a transaction the user booked, and its receipt and the receipt's file once nothing uses
+  them; refused with `{:error, :holding}` when a later sale would exceed the holding without it.
+  """
+  def delete_transaction(%Scope{} = scope, %Transaction{} = transaction) do
+    with :ok <- check_editable(scope, transaction),
+         true <- keeps_holding?(scope, transaction, nil) || {:error, :holding},
+         {:ok, unused} <-
+           Repo.transact(fn ->
+             Repo.delete!(transaction, allow_stale: true)
+             {:ok, drop_unused_receipt(transaction.receipt_id)}
+           end) do
+      remove_receipt_file(unused)
+      {:ok, transaction}
+    end
+  end
+
+  defp check_editable(%Scope{user: %{id: user_id}}, %Transaction{user_id: user_id} = transaction) do
+    if Transaction.editable?(transaction), do: :ok, else: {:error, :read_only}
+  end
+
+  defp check_editable(_scope, _transaction), do: {:error, :read_only}
+
+  # Drops the receipt with `id` if no transaction uses it any more; returns the hash of its file if
+  # no user's receipt needs the file either.
+  defp drop_unused_receipt(nil), do: nil
+
+  defp drop_unused_receipt(id) do
+    with false <- Repo.exists?(from t in Transaction, where: t.receipt_id == ^id),
+         %Receipt{sha256: sha256} = receipt <- Repo.get(Receipt, id) do
+      Repo.delete!(receipt)
+      unless Repo.exists?(from r in Receipt, where: r.sha256 == ^sha256), do: sha256
+    else
+      _used -> nil
+    end
+  end
+
+  defp remove_receipt_file(nil), do: :ok
+
+  defp remove_receipt_file(sha256) do
+    _gone_already_is_fine = File.rm(receipt_file(sha256))
+    :ok
+  end
+
+  # A receipt's file is written before its record commits; it goes again if none is committed.
+  defp transact_with_receipt(receipt, fun) do
+    Repo.transact(fun)
+  after
+    remove_orphan_receipt_file(receipt)
+  end
+
+  defp remove_orphan_receipt_file(nil), do: :ok
+
+  defp remove_orphan_receipt_file({path, _filename}) do
+    sha256 = path |> File.read!() |> sha256()
+
+    if Repo.exists?(from r in Receipt, where: r.sha256 == ^sha256),
+      do: :ok,
+      else: remove_receipt_file(sha256)
+  end
+
   defp store_receipt(_scope, nil, _changeset), do: {:ok, nil}
 
   defp store_receipt(scope, {path, filename}, changeset) do
     content = File.read!(path)
 
     if pdf?(content) do
-      sha256 = :sha256 |> :crypto.hash(content) |> Base.encode16(case: :lower)
+      sha256 = sha256(content)
       file = receipt_file(sha256)
       File.mkdir_p!(Path.dirname(file))
-      unless File.exists?(file), do: File.write!(file, content)
+      unless File.exists?(file), do: write_atomically(file, content)
       {:ok, receipt_record(scope, sha256, filename, byte_size(content)).id}
     else
       {:error,
@@ -659,6 +887,19 @@ defmodule Zipfelfolio.Portfolios do
   end
 
   defp pdf?(content), do: String.starts_with?(content, "%PDF-")
+
+  defp sha256(content), do: :sha256 |> :crypto.hash(content) |> Base.encode16(case: :lower)
+
+  defp write_atomically(file, content) do
+    temp = "#{file}.#{System.unique_integer([:positive])}.tmp"
+
+    try do
+      File.write!(temp, content)
+      File.rename!(temp, file)
+    after
+      File.rm(temp)
+    end
+  end
 
   defp receipt_record(scope, sha256, filename, byte_size) do
     Repo.get_by(Receipt, user_id: scope.user.id, sha256: sha256) ||

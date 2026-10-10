@@ -39,6 +39,7 @@ defmodule ZipfelfolioWeb.Router do
       live "/", OverviewLive
       live "/holdings", HoldingsLive
       live "/dividends", DividendsLive
+      live "/transactions", TransactionsLive
       live "/portfolios", PortfoliosLive
       live "/securities/:id", SecurityLive
       live "/settings/import", ImportLive
@@ -46,6 +47,8 @@ defmodule ZipfelfolioWeb.Router do
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
     end
+
+    get "/receipts/:id", ReceiptController, :show
   end
 
   scope "/", ZipfelfolioWeb do

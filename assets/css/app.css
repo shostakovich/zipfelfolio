@@ -317,3 +317,11 @@
 .app-tree .app-sub > .app-icon:first-child { width: .875rem; height: .875rem; margin-right: -.25rem; }
 .app-tree .list-group-item:has(+ .app-sub) { border-bottom-width: 0; }
 .app-tree .app-chev { width: 1rem; height: 1rem; color: var(--felt-tertiary-color); }
+/* „Buchungen“: a row the user booked opens the dialog through its title, which covers the row. */
+.app-tx-text { flex: 1; min-width: 0; hyphens: auto; overflow-wrap: break-word; }
+.app-tx-edit { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; }
+.app-tx-edit:focus-visible { outline: none; }
+.list-group-item:has(.app-tx-edit:focus-visible) { outline: 2px solid var(--felt-primary); outline-offset: -2px; z-index: 2; }
+.app-tx-receipt { position: relative; z-index: 2; }
+.app-filter { scrollbar-width: none; }
+@media (max-width: 575.98px) { .app-filter { gap: .75rem; } }

@@ -14,6 +14,7 @@ defmodule Zipfelfolio.Portfolios.TransactionForm do
 
   alias Zipfelfolio.DecimalInput
   alias Zipfelfolio.LocalTime
+  alias Zipfelfolio.Portfolios.Transaction
 
   @kinds [:purchase, :sale, :dividend, :deposit, :removal]
 
@@ -61,7 +62,7 @@ defmodule Zipfelfolio.Portfolios.TransactionForm do
   @doc """
   Casts and checks `attrs`. `choices` holds the `portfolio_ids`, `account_ids` and
   `security_ids` the user may book on, as sets, and `held_shares`, a function of portfolio id,
-  security id and date that gives the shares × 10⁸ held at the end of that day.
+  security id and date that gives the fewest shares × 10⁸ held from the end of that day on.
   """
   def changeset(%__MODULE__{} = form, attrs, choices) do
     form
@@ -204,7 +205,7 @@ defmodule Zipfelfolio.Portfolios.TransactionForm do
   defp round_cents(nil), do: nil
   defp round_cents(decimal), do: Decimal.round(decimal, 2, :half_up)
 
-  # No sale or outbound delivery beyond the shares held on its day.
+  # No sale or outbound delivery beyond the shares held on its day or later.
   defp validate_holding(changeset, held_shares) do
     with :sale <- get_field(changeset, :kind),
          [] <- changeset.errors,
@@ -229,6 +230,82 @@ defmodule Zipfelfolio.Portfolios.TransactionForm do
     shares
     |> Decimal.div(100_000_000)
     |> Decimal.normalize()
+    |> Decimal.to_string(:normal)
+    |> String.replace(".", ",")
+  end
+
+  @doc """
+  The params that show `transaction`, one `Transaction.editable?/1`, in the form, in German
+  notation. The price comes from gross value and shares; the amount counts as overwritten when
+  that price, rounded to four places, gives another one.
+  """
+  def params_of(%Transaction{} = transaction) do
+    kind = kind_of(transaction.type)
+    fees = unit_sum(transaction, :fee)
+    taxes = unit_sum(transaction, :tax)
+    amount = Decimal.div(transaction.amount, 100)
+    shares = transaction.shares && Decimal.div(transaction.shares, 100_000_000)
+
+    %{
+      "kind" => to_string(kind),
+      "date" => transaction.date_time |> NaiveDateTime.to_date() |> Date.to_iso8601(),
+      "portfolio_id" => id_param(transaction.portfolio_id),
+      "account_id" => id_param(transaction.account_id),
+      "security_id" => id_param(transaction.security_id),
+      "shares" => typed(shares),
+      "fees" => typed(fees, 2),
+      "taxes" => typed(taxes, 2),
+      "amount" => typed(amount, 2),
+      "amount_set" => "false"
+    }
+    |> Map.merge(entered_values(kind, shares, amount, fees, taxes))
+  end
+
+  defp kind_of(type) when type in [:buy, :inbound_delivery], do: :purchase
+  defp kind_of(type) when type in [:sell, :outbound_delivery], do: :sale
+  defp kind_of(type) when type in [:dividend, :deposit, :removal], do: type
+
+  defp unit_sum(transaction, type) do
+    transaction.units
+    |> Enum.filter(&(&1.type == type))
+    |> Enum.sum_by(& &1.amount)
+    |> Decimal.div(100)
+  end
+
+  defp entered_values(:dividend, _shares, amount, fees, taxes),
+    do: %{"gross" => amount |> Decimal.add(fees) |> Decimal.add(taxes) |> typed(2)}
+
+  defp entered_values(kind, shares, amount, fees, taxes) when kind in [:purchase, :sale] do
+    fees_and_taxes = Decimal.add(fees, taxes)
+
+    {gross, computed} =
+      if kind == :purchase,
+        do: {Decimal.sub(amount, fees_and_taxes), &Decimal.add(&1, fees_and_taxes)},
+        else: {Decimal.add(amount, fees_and_taxes), &Decimal.sub(&1, fees_and_taxes)}
+
+    price = gross |> Decimal.div(shares) |> Decimal.round(4)
+    computed_amount = shares |> Decimal.mult(price) |> computed.() |> round_cents()
+
+    %{
+      "price" => typed(price, 2),
+      "amount_set" => to_string(not Decimal.equal?(computed_amount, amount))
+    }
+  end
+
+  defp entered_values(_deposit_or_removal, _shares, _amount, _fees, _taxes), do: %{}
+
+  defp id_param(nil), do: ""
+  defp id_param(id), do: to_string(id)
+
+  # In German notation, with at least `places` decimal places.
+  defp typed(decimal, places \\ 0)
+  defp typed(nil, _places), do: ""
+
+  defp typed(decimal, places) do
+    normalized = Decimal.normalize(decimal)
+
+    normalized
+    |> Decimal.round(max(-normalized.exp, places))
     |> Decimal.to_string(:normal)
     |> String.replace(".", ",")
   end

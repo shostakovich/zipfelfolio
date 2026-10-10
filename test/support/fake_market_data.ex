@@ -32,6 +32,31 @@ defmodule Zipfelfolio.FakePriceFeed do
   end
 end
 
+defmodule Zipfelfolio.FakeSymbolSearch do
+  @moduledoc """
+  The symbol search in tests, like `Zipfelfolio.FakePriceFeed`; reports `{:search, query}`.
+  Without a stub, Yahoo is unreachable.
+  """
+  @behaviour Zipfelfolio.MarketData.SymbolSearch
+
+  def stub(fun) do
+    Application.put_env(:zipfelfolio, __MODULE__, {self(), fun})
+    ExUnit.Callbacks.on_exit(fn -> Application.delete_env(:zipfelfolio, __MODULE__) end)
+  end
+
+  @impl true
+  def search(query) do
+    case Application.get_env(:zipfelfolio, __MODULE__) do
+      {test, fun} ->
+        send(test, {:search, query})
+        fun.(query)
+
+      nil ->
+        {:error, :unreachable}
+    end
+  end
+end
+
 defmodule Zipfelfolio.FakeRateSource do
   @moduledoc "The rate source in tests, like `Zipfelfolio.FakePriceFeed`; reports `{:rates, from}`."
   @behaviour Zipfelfolio.MarketData.RateSource

@@ -7,6 +7,7 @@ defmodule Zipfelfolio.MarketDataTest do
     ExchangeRates,
     FakePriceFeed,
     FakeRateSource,
+    FakeSymbolSearch,
     FakeSymbolSource,
     MarketData
   }
@@ -388,6 +389,52 @@ defmodule Zipfelfolio.MarketDataTest do
       assert_receive :market_data_updated
       assert_received {:chart, "VGWL.DE", nil}
       assert {~D[2017-10-26], 50, :yahoo} in prices_of(security)
+    end
+  end
+
+  describe "lookup_isin/1" do
+    defp listing(symbol, exchange, name \\ "iShares Core MSCI EM IMI"),
+      do: %{symbol: symbol, name: name, exchange: exchange}
+
+    test "prefers a listing in euros, found by the name of the ISIN's listing" do
+      FakeSymbolSearch.stub(fn
+        "IE00BKM4GZ66" ->
+          {:ok, [listing("EIMI.L", "LSE")]}
+
+        "iShares Core MSCI EM IMI" ->
+          {:ok,
+           [
+             listing("EIMI.L", "LSE"),
+             listing("EMIM.AS", "AMS"),
+             listing("IS3N.DE", "GER"),
+             listing("ACC.DE", "GER", "iShares Core MSCI EM IMI Acc")
+           ]}
+      end)
+
+      assert MarketData.lookup_isin("IE00BKM4GZ66") ==
+               {:ok, %{name: "iShares Core MSCI EM IMI", symbol: "IS3N.DE"}}
+
+      assert_received {:search, "IE00BKM4GZ66"}
+      assert_received {:search, "iShares Core MSCI EM IMI"}
+    end
+
+    test "takes the first listing without one in euros" do
+      FakeSymbolSearch.stub(fn
+        "IE00BKM4GZ66" -> {:ok, [listing("EIMI.L", "LSE")]}
+        _name -> {:error, :unreachable}
+      end)
+
+      assert {:ok, %{symbol: "EIMI.L"}} = MarketData.lookup_isin("IE00BKM4GZ66")
+    end
+
+    test "says why it found nothing" do
+      FakeSymbolSearch.stub(fn _query -> {:ok, []} end)
+      assert {:error, :not_found} = MarketData.lookup_isin("IE00BKM4GZ66")
+      assert MarketData.lookup_error(:not_found) == "Yahoo kennt diese ISIN nicht."
+
+      FakeSymbolSearch.stub(fn _query -> {:error, :unreachable} end)
+      assert {:error, :unreachable} = MarketData.lookup_isin("IE00BKM4GZ66")
+      assert MarketData.lookup_error(:unreachable) == "Yahoo ist nicht erreichbar."
     end
   end
 end

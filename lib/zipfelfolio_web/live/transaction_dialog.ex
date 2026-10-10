@@ -2,13 +2,18 @@ defmodule ZipfelfolioWeb.TransactionDialog do
   @moduledoc """
   The dialog „Buchung erfassen“ on every signed-in page, opened by `open/0` from the sidebar and
   on the phone: a purchase, sale, dividend, deposit or removal with an optional PDF receipt. The
-  amount follows the other fields until the user overwrites it. Once booked, every page loads its
-  figures again, and the page shows what was booked: components cannot show a flash themselves,
-  so `on_mount/4` lets the page do it.
+  amount follows the other fields until the user overwrites it. A security missing from the list
+  is created by its ISIN, with name and Yahoo symbol from Yahoo's search.
+
+  `edit/1` opens it as „Buchung bearbeiten“ for a transaction the user booked, which it saves or
+  deletes. Once booked, every page loads its figures again, and the page shows what was booked:
+  components cannot show a flash themselves, so `on_mount/4` lets the page do it.
   """
   use ZipfelfolioWeb, :live_component
 
-  alias Zipfelfolio.{LocalTime, MarketData, Portfolios}
+  alias Zipfelfolio.{LocalTime, MarketData, Portfolios, Securities}
+  alias Zipfelfolio.Portfolios.Transaction
+  alias Zipfelfolio.Securities.ISIN
   alias ZipfelfolioWeb.Format
 
   @id "transaction-dialog"
@@ -20,17 +25,23 @@ defmodule ZipfelfolioWeb.TransactionDialog do
     removal: "Entnahme"
   ]
 
+  @holding_error "Ohne diese Buchung fiele der Bestand später unter null. " <>
+                   "Bitte zuerst die späteren Verkäufe ändern."
+
   @doc "The id the layout renders the dialog with."
   def id, do: @id
 
   @doc "Opens the dialog."
   def open, do: JS.push("open", target: "##{@id}")
 
+  @doc "Opens the dialog for the transaction with `id`, one the user booked."
+  def edit(id), do: JS.push("edit", value: %{id: id}, target: "##{@id}")
+
   @doc "Shows the dialog's message on the page that renders it."
   def on_mount(:default, _params, _session, socket),
     do: {:cont, Phoenix.LiveView.attach_hook(socket, :transaction_dialog, :handle_info, &flash/2)}
 
-  defp flash({__MODULE__, :booked, message}, socket),
+  defp flash({__MODULE__, :done, message}, socket),
     do: {:halt, put_flash(socket, :info, message)}
 
   defp flash(_message, socket), do: {:cont, socket}
@@ -39,7 +50,7 @@ defmodule ZipfelfolioWeb.TransactionDialog do
   def mount(socket) do
     {:ok,
      socket
-     |> assign(:open, false)
+     |> assign(open: false, editing: nil, new_security: nil, delete_error: nil)
      |> allow_upload(:receipt, accept: ~w(.pdf), max_entries: 1, max_file_size: 20_000_000)}
   end
 
@@ -70,7 +81,9 @@ defmodule ZipfelfolioWeb.TransactionDialog do
               phx-mounted={JS.focus_first(to: "#transaction-form .modal-body")}
             >
               <div class="modal-header">
-                <h2 class="modal-title h4" id="transaction-title">Buchung erfassen</h2>
+                <h2 class="modal-title h4" id="transaction-title">
+                  {if @editing, do: "Buchung bearbeiten", else: "Buchung erfassen"}
+                </h2>
                 <button
                   type="button"
                   class="btn-close"
@@ -110,6 +123,22 @@ defmodule ZipfelfolioWeb.TransactionDialog do
                       prompt="Wertpapier wählen"
                       wrapper_class={nil}
                     />
+                    <button
+                      :if={!@new_security}
+                      id="new-security"
+                      type="button"
+                      class="btn btn-link btn-sm px-0"
+                      phx-click="new_security"
+                      phx-target={@myself}
+                    >
+                      Neues Wertpapier per ISIN
+                    </button>
+                    <.new_security
+                      :if={@new_security}
+                      form={@new_security.form}
+                      lookup={@new_security.lookup}
+                      myself={@myself}
+                    />
                   </div>
                   <div :if={@kind != :deposit and @kind != :removal} class="col-6 col-sm-4">
                     <.number field={@form[:shares]} label="Stück" />
@@ -139,7 +168,7 @@ defmodule ZipfelfolioWeb.TransactionDialog do
                   <div class="col-12">
                     <.amount form={@form} kind={@kind} />
                   </div>
-                  <div :if={@kind == :dividend} class="col-12">
+                  <div :if={@kind == :dividend and !@editing} class="col-12">
                     <.input
                       field={@form[:remove_at_once]}
                       type="checkbox"
@@ -153,21 +182,62 @@ defmodule ZipfelfolioWeb.TransactionDialog do
                   </div>
                   <div class="col-12">
                     <label class="form-label" for={@uploads.receipt.ref}>
-                      Beleg <span class="text-body-secondary">(optional)</span>
+                      {if @editing && @editing.receipt, do: "Beleg ersetzen", else: "Beleg"}
+                      <span class="text-body-secondary">(optional)</span>
                     </label>
                     <.live_file_input
                       upload={@uploads.receipt}
                       class={["form-control", receipt_errors(@uploads, @form) != [] && "is-invalid"]}
                     />
                     <.error :for={message <- receipt_errors(@uploads, @form)}>{message}</.error>
+                    <div :if={@editing && @editing.receipt} class="form-text">
+                      Angehängt:
+                      <a href={~p"/receipts/#{@editing.receipt_id}"} target="_blank" rel="noopener">
+                        {@editing.receipt.filename}
+                      </a>
+                    </div>
                   </div>
+                </div>
+                <div
+                  :if={@delete_error}
+                  id="transaction-delete-error"
+                  class="alert alert-danger mt-3 mb-0"
+                  role="alert"
+                >
+                  {@delete_error}
                 </div>
               </div>
               <div class="modal-footer">
+                <button
+                  :if={@editing}
+                  id="transaction-delete"
+                  type="button"
+                  class="btn btn-outline-danger me-auto"
+                  phx-click="delete"
+                  phx-target={@myself}
+                  data-confirm="Diese Buchung löschen?"
+                >
+                  Löschen
+                </button>
                 <button type="button" class="btn" phx-click="close" phx-target={@myself}>
                   Abbrechen
                 </button>
-                <.button phx-disable-with="Wird gebucht …">Buchen</.button>
+                <.button
+                  :if={!@editing}
+                  name="intent"
+                  value="book"
+                  phx-disable-with="Wird gebucht …"
+                >
+                  Buchen
+                </.button>
+                <.button
+                  :if={@editing}
+                  name="intent"
+                  value="book"
+                  phx-disable-with="Wird gespeichert …"
+                >
+                  Speichern
+                </.button>
               </div>
             </.form>
           </div>
@@ -177,6 +247,75 @@ defmodule ZipfelfolioWeb.TransactionDialog do
     </div>
     """
   end
+
+  attr :form, Phoenix.HTML.Form, required: true
+  attr :lookup, :any, required: true, doc: "nil, `:searching`, `:found` or `{:error, message}`"
+  attr :myself, :any, required: true
+
+  # Inside the transaction form, as forms do not nest: its fields are sent as `security`. „Anlegen“
+  # comes first of the form's submit buttons, so Enter while it shows creates the security.
+  defp new_security(assigns) do
+    ~H"""
+    <fieldset id="new-security-panel" class="border rounded p-3 mt-2 bg-body-tertiary">
+      <legend class="float-none w-auto fs-6 fw-semibold px-1 mb-0">Neues Wertpapier</legend>
+      <div class="row g-3">
+        <div class="col-sm-5">
+          <.input
+            field={@form[:isin]}
+            label="ISIN"
+            autocomplete="off"
+            spellcheck="false"
+            class="text-uppercase font-monospace"
+            phx-debounce="300"
+            aria-describedby="new-security-lookup"
+            wrapper_class={nil}
+          />
+          <div
+            id="new-security-lookup"
+            class={["form-text", lookup_tone(@lookup)]}
+            aria-live="polite"
+          >
+            {lookup_text(@lookup, @form[:isin].value)}
+          </div>
+        </div>
+        <div class="col-sm-7">
+          <.input field={@form[:name]} label="Name" autocomplete="off" wrapper_class={nil} />
+        </div>
+        <div class="col-sm-5">
+          <label class="form-label" for={@form[:symbol].id}>
+            Yahoo-Symbol <span class="text-body-secondary">(leer: Kurse von Hand)</span>
+          </label>
+          <.input field={@form[:symbol]} autocomplete="off" spellcheck="false" wrapper_class={nil} />
+        </div>
+        <div class="col-sm-7 d-flex align-items-end justify-content-end gap-2">
+          <button type="button" class="btn" phx-click="cancel_security" phx-target={@myself}>
+            Abbrechen
+          </button>
+          <button
+            id="new-security-create"
+            type="submit"
+            name="intent"
+            value="create_security"
+            class="btn btn-primary"
+          >
+            Anlegen
+          </button>
+        </div>
+      </div>
+    </fieldset>
+    """
+  end
+
+  defp lookup_text(nil, isin) when isin in [nil, ""],
+    do: "Name und Symbol kommen aus Yahoos Suche."
+
+  defp lookup_text(nil, _isin), do: nil
+  defp lookup_text(:searching, _isin), do: "Suche bei Yahoo …"
+  defp lookup_text(:found, _isin), do: "Von Yahoo übernommen, bitte prüfen."
+  defp lookup_text({:error, message}, _isin), do: message
+
+  defp lookup_tone({:error, _message}), do: "text-warning-emphasis"
+  defp lookup_tone(_lookup), do: nil
 
   attr :field, Phoenix.HTML.FormField, required: true
 
@@ -349,27 +488,45 @@ defmodule ZipfelfolioWeb.TransactionDialog do
 
     {:noreply,
      socket
-     |> assign(open: true, choices: choices, today: LocalTime.today())
+     |> assign(open: true, editing: nil, new_security: nil, delete_error: nil)
+     |> assign(choices: choices, today: LocalTime.today())
      |> put_form(Portfolios.change_transaction_form(scope, choices, params))}
+  end
+
+  def handle_event("edit", %{"id" => id}, socket) do
+    scope = socket.assigns.current_scope
+
+    case Portfolios.get_transaction(scope, id) do
+      nil ->
+        done(socket, "Diese Buchung gibt es nicht mehr.")
+
+      transaction ->
+        if Transaction.editable?(transaction),
+          do: {:noreply, open_for(socket, transaction)},
+          else: {:noreply, socket}
+    end
   end
 
   def handle_event("close", _params, socket), do: {:noreply, close(socket)}
 
   def handle_event("validate", %{"transaction" => params} = event, socket) do
     params = follow(params, event["_target"], socket.assigns.choices)
-    scope = socket.assigns.current_scope
+    changeset = socket |> change_form(params) |> Map.put(:action, :validate)
 
-    changeset =
-      scope
-      |> Portfolios.change_transaction_form(socket.assigns.choices, params)
-      |> Map.put(:action, :validate)
+    {:noreply,
+     socket
+     |> put_form(changeset)
+     |> change_new_security(event["security"], event["_target"])}
+  end
 
-    {:noreply, put_form(socket, changeset)}
+  def handle_event("book", %{"intent" => "create_security"}, socket) do
+    if socket.assigns.new_security,
+      do: create_security(socket),
+      else: {:noreply, socket}
   end
 
   def handle_event("book", %{"transaction" => params}, socket) do
-    %{current_scope: scope, choices: choices} = socket.assigns
-    changeset = Portfolios.change_transaction_form(scope, choices, params)
+    changeset = change_form(socket, params)
 
     cond do
       not changeset.valid? ->
@@ -379,7 +536,110 @@ defmodule ZipfelfolioWeb.TransactionDialog do
         {:noreply, socket}
 
       true ->
-        socket |> book(params) |> booked(socket)
+        socket |> save(params) |> saved(socket)
+    end
+  end
+
+  def handle_event("delete", _params, %{assigns: %{editing: %{} = transaction}} = socket) do
+    case Portfolios.delete_transaction(socket.assigns.current_scope, transaction) do
+      {:ok, _deleted} -> socket |> close() |> done("Buchung gelöscht.")
+      {:error, :read_only} -> {:noreply, close(socket)}
+      {:error, :holding} -> {:noreply, assign(socket, :delete_error, @holding_error)}
+    end
+  end
+
+  def handle_event("new_security", _params, socket) do
+    {:noreply,
+     assign(socket, :new_security, %{form: security_form(%{}, nil), lookup: nil, isin: nil})}
+  end
+
+  def handle_event("cancel_security", _params, socket),
+    do: {:noreply, assign(socket, :new_security, nil)}
+
+  @impl true
+  def handle_async(:lookup, result, %{assigns: %{new_security: %{} = new_security}} = socket) do
+    {:noreply, assign(socket, :new_security, looked_up(new_security, result))}
+  end
+
+  def handle_async(:lookup, _result, socket), do: {:noreply, socket}
+
+  defp open_for(socket, transaction) do
+    scope = socket.assigns.current_scope
+    choices = Portfolios.transaction_choices(scope, transaction)
+    params = Portfolios.transaction_form_params(transaction)
+
+    socket
+    |> assign(open: true, editing: transaction, new_security: nil, delete_error: nil)
+    |> assign(choices: choices, today: LocalTime.today())
+    |> put_form(Portfolios.change_transaction_form(scope, choices, params, transaction))
+  end
+
+  defp change_form(socket, params) do
+    %{current_scope: scope, choices: choices, editing: editing} = socket.assigns
+    Portfolios.change_transaction_form(scope, choices, params, editing)
+  end
+
+  defp security_form(params, action) do
+    params
+    |> Securities.change_new_security()
+    |> Map.put(:action, action)
+    |> to_form(as: :security)
+  end
+
+  # A new, valid ISIN is looked up at Yahoo; its name and symbol replace what is in the fields.
+  defp change_new_security(
+         %{assigns: %{new_security: %{} = new_security}} = socket,
+         params,
+         target
+       )
+       when is_map(params) do
+    isin = params |> Map.get("isin", "") |> String.replace(" ", "") |> String.upcase()
+    lookup? = target == ["security", "isin"] and isin != new_security.isin and ISIN.valid?(isin)
+    new_security = %{new_security | form: security_form(params, :validate)}
+
+    if lookup? do
+      socket
+      |> assign(:new_security, %{new_security | isin: isin, lookup: :searching})
+      |> start_async(:lookup, fn -> {isin, MarketData.lookup_isin(isin)} end)
+    else
+      assign(socket, :new_security, new_security)
+    end
+  end
+
+  defp change_new_security(socket, _params, _target), do: socket
+
+  defp looked_up(%{isin: isin} = new_security, {:ok, {isin, {:ok, found}}}) do
+    params =
+      new_security.form.params
+      |> Map.put("isin", isin)
+      |> Map.merge(%{"name" => found.name, "symbol" => found.symbol})
+
+    %{new_security | form: security_form(params, :validate), lookup: :found}
+  end
+
+  defp looked_up(%{isin: isin} = new_security, {:ok, {isin, {:error, reason}}}),
+    do: %{new_security | lookup: {:error, MarketData.lookup_error(reason)}}
+
+  defp looked_up(new_security, {:exit, _reason}),
+    do: %{new_security | lookup: {:error, MarketData.lookup_error(:unreachable)}}
+
+  # The answer for an ISIN typed over meanwhile.
+  defp looked_up(new_security, _stale), do: new_security
+
+  defp create_security(socket) do
+    %{current_scope: scope, new_security: new_security, editing: editing} = socket.assigns
+
+    case Securities.create_security(scope, new_security.form.params) do
+      {:ok, security} ->
+        if security.quote_feed == :yahoo, do: MarketData.fetch_in_background(security)
+        choices = Portfolios.transaction_choices(scope, editing)
+        socket = assign(socket, choices: choices, new_security: nil)
+        params = Map.put(socket.assigns.form.params, "security_id", to_string(security.id))
+        {:noreply, put_form(socket, Map.put(change_form(socket, params), :action, :validate))}
+
+      {:error, changeset} ->
+        form = to_form(changeset, as: :security)
+        {:noreply, assign(socket, :new_security, %{new_security | form: form})}
     end
   end
 
@@ -403,27 +663,40 @@ defmodule ZipfelfolioWeb.TransactionDialog do
     end
   end
 
-  defp book(socket, params) do
-    %{current_scope: scope, choices: choices} = socket.assigns
-
+  defp save(socket, params) do
     case consume_uploaded_entries(socket, :receipt, fn %{path: path}, entry ->
-           {:ok, Portfolios.book_transaction(scope, choices, params, {path, entry.client_name})}
+           {:ok, save(socket, params, {path, entry.client_name})}
          end) do
       [result] -> result
-      [] -> Portfolios.book_transaction(scope, choices, params)
+      [] -> save(socket, params, nil)
     end
   end
 
-  defp booked({:ok, transactions}, socket) do
-    MarketData.broadcast()
-    send(self(), {__MODULE__, :booked, booked_message(transactions)})
-    {:noreply, assign(socket, :open, false)}
+  defp save(%{assigns: %{editing: nil}} = socket, params, receipt) do
+    %{current_scope: scope, choices: choices} = socket.assigns
+    Portfolios.book_transaction(scope, choices, params, receipt)
   end
 
-  defp booked({:error, changeset}, socket), do: {:noreply, put_form(socket, changeset)}
+  defp save(socket, params, receipt) do
+    %{current_scope: scope, choices: choices, editing: transaction} = socket.assigns
+    Portfolios.update_transaction(scope, choices, transaction, params, receipt)
+  end
 
-  defp booked_message([_dividend, _removal]), do: "Dividende und Entnahme gebucht."
-  defp booked_message([_transaction]), do: "Buchung gespeichert."
+  defp saved({:ok, [_dividend, _removal]}, socket),
+    do: done(socket, "Dividende und Entnahme gebucht.")
+
+  defp saved({:ok, _transaction_or_transactions}, socket),
+    do: done(socket, "Buchung gespeichert.")
+
+  defp saved({:error, :read_only}, socket), do: {:noreply, close(socket)}
+  defp saved({:error, :gone}, socket), do: done(socket, "Diese Buchung gibt es nicht mehr.")
+  defp saved({:error, changeset}, socket), do: {:noreply, put_form(socket, changeset)}
+
+  defp done(socket, message) do
+    MarketData.broadcast()
+    send(self(), {__MODULE__, :done, message})
+    {:noreply, assign(socket, open: false, editing: nil, new_security: nil)}
+  end
 
   defp close(socket) do
     socket =
@@ -431,7 +704,7 @@ defmodule ZipfelfolioWeb.TransactionDialog do
         cancel_upload(socket, :receipt, entry.ref)
       end)
 
-    assign(socket, :open, false)
+    assign(socket, open: false, editing: nil, new_security: nil)
   end
 
   defp put_form(socket, changeset) do
