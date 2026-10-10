@@ -437,4 +437,125 @@ defmodule Zipfelfolio.MarketDataTest do
       assert MarketData.lookup_error(:unreachable) == "Yahoo ist nicht erreichbar."
     end
   end
+
+  describe "create_yahoo_security/3" do
+    setup do
+      FakePriceFeed.stub(fn _symbol, _from, _now ->
+        {:ok, FakePriceFeed.chart_result([{~D[2026-10-07], 100}, {~D[2026-10-08], 101}])}
+      end)
+
+      %{scope: Zipfelfolio.UsersFixtures.user_scope_fixture()}
+    end
+
+    test "stores the name, currency and price history Yahoo gives", %{scope: scope} do
+      assert {:ok, security} =
+               MarketData.create_yahoo_security(scope, %{"symbol" => " iusq.de "}, @now)
+
+      assert_received {:chart, "IUSQ.DE", nil}
+
+      assert %Security{
+               name: "Weltindex-ETF",
+               currency: "EUR",
+               quote_feed: :yahoo,
+               symbol: "IUSQ.DE",
+               isin: nil,
+               latest_close: 16_666_000_000,
+               fetched_at: @now
+             } = Repo.reload!(security)
+
+      assert prices_of(security) == [{~D[2026-10-07], 100, :yahoo}, {~D[2026-10-08], 101, :yahoo}]
+    end
+
+    test "reuses the security of a symbol it knows", %{scope: scope} do
+      {:ok, first} = MarketData.create_yahoo_security(scope, %{"symbol" => "IUSQ.DE"}, @now)
+      assert_received {:chart, "IUSQ.DE", nil}
+
+      assert {:ok, ^first} =
+               MarketData.create_yahoo_security(scope, %{"symbol" => "iusq.de"}, @now)
+
+      refute_received {:chart, _symbol, _from}
+
+      known = security_fixture(%{symbol: "VGWL.DE"})
+
+      assert {:ok, %{id: id}} =
+               MarketData.create_yahoo_security(scope, %{"symbol" => "VGWL.DE"}, @now)
+
+      assert id == known.id
+      assert Repo.aggregate(Security, :count) == 2
+    end
+
+    test "reuses the security another request created while Yahoo answered", %{scope: scope} do
+      FakePriceFeed.stub(fn _symbol, _from, _now ->
+        security_fixture(%{symbol: "IUSQ.DE"})
+        {:ok, FakePriceFeed.chart_result([])}
+      end)
+
+      assert {:ok, security} =
+               MarketData.create_yahoo_security(scope, %{"symbol" => "IUSQ.DE"}, @now)
+
+      assert [%{id: id}] = Repo.all(Security)
+      assert security.id == id
+    end
+
+    test "names the security after its symbol when Yahoo gives no name", %{scope: scope} do
+      FakePriceFeed.stub(fn _symbol, _from, _now ->
+        {:ok, %{FakePriceFeed.chart_result([]) | name: nil}}
+      end)
+
+      assert {:ok, %{name: "IUSQ.DE"}} =
+               MarketData.create_yahoo_security(scope, %{"symbol" => "IUSQ.DE"}, @now)
+    end
+
+    test "creates nothing for a symbol Yahoo does not know or cannot deliver", %{scope: scope} do
+      FakePriceFeed.stub(fn _symbol, _from, _now -> {:error, :not_found} end)
+
+      assert {:error, changeset} =
+               MarketData.create_yahoo_security(scope, %{"symbol" => "NOPE"}, @now)
+
+      assert "Yahoo kennt das Symbol NOPE nicht." in errors_on(changeset).symbol
+
+      FakePriceFeed.stub(fn _symbol, _from, _now -> {:error, :unreachable} end)
+
+      assert {:error, changeset} =
+               MarketData.create_yahoo_security(scope, %{"symbol" => "X"}, @now)
+
+      assert "Yahoo ist nicht erreichbar." in errors_on(changeset).symbol
+
+      FakePriceFeed.stub(fn _symbol, _from, _now -> exit(:timeout) end)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, changeset} =
+                   MarketData.create_yahoo_security(scope, %{"symbol" => "X"}, @now)
+
+          assert "Die Kurse ließen sich nicht abrufen." in errors_on(changeset).symbol
+        end)
+
+      assert log =~ "The request for the prices of X exited"
+
+      assert Repo.aggregate(Security, :count) == 0
+    end
+
+    test "asks Yahoo nothing for an empty or invalid symbol", %{scope: scope} do
+      assert {:error, changeset} =
+               MarketData.create_yahoo_security(scope, %{"symbol" => " "}, @now)
+
+      assert "braucht ein Symbol" in errors_on(changeset).symbol
+
+      for symbol <- ["IUSQ DE", "..", ".", "-X", "=X"] do
+        assert {:error, changeset} =
+                 MarketData.create_yahoo_security(scope, %{"symbol" => symbol}, @now)
+
+        assert "ist kein Yahoo-Symbol" in errors_on(changeset).symbol
+      end
+
+      refute_received {:chart, _symbol, _from}
+    end
+
+    test "takes indices and currency pairs" do
+      for symbol <- ["^GDAXI", "EURUSD=X", "BRK-B", "0P0000IUSQ.F"] do
+        assert Zipfelfolio.Securities.change_yahoo_symbol(%{"symbol" => symbol}).valid?
+      end
+    end
+  end
 end

@@ -7,11 +7,13 @@ and a [DivvyDiary](https://divvydiary.com/) subscription. **The user interface i
 ## Status
 
 Built so far: the import of a Portfolio Performance file, prices from Yahoo and ECB exchange rates fetched daily,
-the overview (net worth, its chart, TTWROR, IRR, dividends with the next ones), the holdings with costs, allocation
-and dividend yield, a page per security with its next payments, the dividends received per month and year with
-a calendar of the coming ones, the dialog to book purchases, sales, dividends, deposits and removals with a PDF
-receipt, new securities by ISIN, and the transactions screen to edit and delete them; sign-in with passkeys or a
-link by email, container and deploy.
+the overview (net worth, its chart, TTWROR, IRR, dividends with the next ones), the performance screen (TTWROR, IRR,
+drawdown and volatility, the breakdown of the change in value, monthly returns as a heatmap), a benchmark of the
+user's choice (its TTWROR beside the portfolios' and a shadow portfolio in it on the overview's chart), the holdings
+with costs, allocation and dividend yield, a page per security with its next payments, the dividends received per
+month and year with a calendar of the coming ones, the dialog to book purchases, sales, dividends, deposits and
+removals with a PDF receipt, new securities by ISIN, and the transactions screen to edit and delete them; sign-in
+with passkeys or a link by email, container and deploy.
 
 - [Issues](https://github.com/shostakovich/zipfelfolio/issues): scope and decisions per feature, milestones v1–v4
 - `mockup/`: click dummy with example data, built with [felt-css](https://felt-css.rocu.de/)

@@ -41,6 +41,7 @@ defmodule ZipfelfolioWeb.Router do
       live "/dividends", DividendsLive
       live "/transactions", TransactionsLive
       live "/portfolios", PortfoliosLive
+      live "/performance", PerformanceLive
       live "/securities/:id", SecurityLive
       live "/settings/import", ImportLive
       live "/settings/securities", SecuritiesLive

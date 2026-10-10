@@ -9,6 +9,7 @@ defmodule Zipfelfolio.MarketData do
 
   alias Zipfelfolio.{ExchangeRates, Repo, Securities}
   alias Zipfelfolio.MarketData.JobRun
+  alias Zipfelfolio.Users.Scope
 
   @topic "market_data"
   @first_rate_date ~D[1999-01-04]
@@ -109,6 +110,41 @@ defmodule Zipfelfolio.MarketData do
   @doc "A sentence on why `lookup_isin/1` found nothing."
   def lookup_error(:not_found), do: "Yahoo kennt diese ISIN nicht."
   def lookup_error(reason), do: source_error("Yahoo", reason)
+
+  @doc """
+  The security that takes its prices from the Yahoo symbol in `attrs`: an existing one, or one
+  created with the name, currency and price history Yahoo gives. Returns the form with the error
+  when the symbol is invalid or Yahoo cannot deliver it.
+  """
+  def create_yahoo_security(%Scope{} = scope, attrs, now \\ DateTime.utc_now()) do
+    changeset = Securities.change_yahoo_symbol(attrs)
+
+    with {:ok, %{symbol: symbol}} <- Ecto.Changeset.apply_action(changeset, :insert) do
+      case Securities.get_yahoo_security(symbol) do
+        nil -> fetch_new_security(scope, changeset, symbol, now)
+        security -> {:ok, security}
+      end
+    end
+  end
+
+  defp fetch_new_security(scope, changeset, symbol, now) do
+    case price_feed().chart(symbol, nil, now) do
+      {:ok, chart} ->
+        {:ok, security} = Securities.create_yahoo_security(scope, symbol, chart, now)
+        broadcast()
+        {:ok, security}
+
+      {:error, reason} ->
+        symbol_error(changeset, fetch_error(reason, %{symbol: symbol}))
+    end
+  catch
+    :exit, _reason ->
+      symbol_error(changeset, exited("the prices of #{symbol}", "Die Kurse"))
+  end
+
+  defp symbol_error(changeset, message) do
+    {:error, changeset |> Ecto.Changeset.add_error(:symbol, message) |> Map.put(:action, :insert)}
+  end
 
   @doc """
   Fetches, in the background, the prices of a security from `from` on, the whole history when

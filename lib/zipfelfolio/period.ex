@@ -1,11 +1,12 @@
 defmodule Zipfelfolio.Period do
   @moduledoc """
   A period up to today, as the overview offers it for its chart and returns: six months, the year
-  to date, one year, or everything since the first transaction (`:max`); the price chart of a
-  security also offers five years.
+  to date, one year, or everything since the first transaction (`:max`); the performance screen
+  also offers one month and three years, the price chart of a security five years.
   """
 
-  @type t :: :six_months | :year_to_date | :one_year | :five_years | :max
+  @type t ::
+          :one_month | :six_months | :year_to_date | :one_year | :three_years | :five_years | :max
 
   @doc """
   The days of `period` up to `today`, from `first_day` on at the earliest, such as the day of the
@@ -38,9 +39,11 @@ defmodule Zipfelfolio.Period do
   defp reference_day(:year_to_date, today), do: Date.new!(today.year - 1, 12, 31)
   defp reference_day(period, today), do: start(period, today)
 
+  defp start(:one_month, today), do: Date.shift(today, month: -1)
   defp start(:six_months, today), do: Date.shift(today, month: -6)
   defp start(:year_to_date, today), do: Date.new!(today.year, 1, 1)
   defp start(:one_year, today), do: Date.shift(today, year: -1)
+  defp start(:three_years, today), do: Date.shift(today, year: -3)
   defp start(:five_years, today), do: Date.shift(today, year: -5)
   defp start(:max, _today), do: nil
 

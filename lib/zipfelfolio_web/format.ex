@@ -110,7 +110,18 @@ defmodule ZipfelfolioWeb.Format do
   never wraps onto a line of its own.
   """
   def signed_percent(%Decimal{} = percent, places \\ 2),
-    do: number(percent, places, "+") <> "\u00A0%"
+    do: signed_number(percent, places) <> "\u00A0%"
+
+  @doc """
+  A rate, a fraction such as 0.0038, as a change in percent with its sign, e.g. `+0,38 %`; `–`
+  for none.
+  """
+  def signed_rate(rate, places \\ 2)
+  def signed_rate(nil, _places), do: "–"
+  def signed_rate(rate, places), do: Decimal.from_float(rate * 100) |> signed_percent(places)
+
+  @doc "A number with its sign and `places` decimal places, e.g. `+1,2` or `−0,38`."
+  def signed_number(%Decimal{} = number, places), do: number(number, places, "+")
 
   @doc "`part` in percent of `whole`, for `percent/2` and `signed_percent/2`."
   def percent_of(part, whole), do: part |> Decimal.mult(100) |> Decimal.div(whole)
@@ -149,6 +160,39 @@ defmodule ZipfelfolioWeb.Format do
 
   def date(%DateTime{} = utc),
     do: utc |> LocalTime.from_utc() |> NaiveDateTime.to_date() |> date()
+
+  @doc "The days from `first` to `last`, e.g. `1. Januar bis 7. Oktober 2026`."
+  def days(day, day), do: long_date(day)
+
+  def days(%Date{year: year} = first, %Date{year: year} = last),
+    do: "#{first.day}. #{month_name(first)} bis #{long_date(last)}"
+
+  def days(first, last), do: "#{long_date(first)} bis #{long_date(last)}"
+
+  @doc """
+  The days from `first` to `last` in short, e.g. `12.–28.01.2026`, `12.01.–03.02.2026` or
+  `12.12.2025–03.01.2026`; without the year, e.g. `12.–28.01.`, when `year?` is false.
+  """
+  def date_span(first, last, year? \\ true)
+
+  def date_span(day, day, year?), do: short_date(day, year?)
+
+  def date_span(
+        %Date{year: year, month: month} = first,
+        %Date{year: year, month: month} = last,
+        year?
+      ),
+      do: Calendar.strftime(first, "%d.–") <> short_date(last, year?)
+
+  def date_span(%Date{year: year} = first, %Date{year: year} = last, year?),
+    do: Calendar.strftime(first, "%d.%m.–") <> short_date(last, year?)
+
+  def date_span(first, last, _year?), do: date(first) <> "–" <> date(last)
+
+  defp short_date(date, true), do: date(date)
+  defp short_date(date, false), do: Calendar.strftime(date, "%d.%m.")
+
+  defp long_date(date), do: "#{date.day}. #{month_name(date)} #{date.year}"
 
   def datetime(nil), do: "–"
 

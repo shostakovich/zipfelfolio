@@ -10,8 +10,13 @@
 .app-chart { position: relative; height: 14rem; }
 @media (min-width: 992px) { .app-chart { height: 19rem; } }
 .app-swatch { display: inline-block; width: .75rem; height: .75rem; border-radius: .2rem; vertical-align: -.05rem; }
-.app-swatch-primary { background: var(--felt-primary); }
-.app-swatch-secondary { background: var(--felt-secondary); }
+/* Lines keyed as lines: net worth bold, invested capital dashed as on the chart, the benchmark solid. */
+:is(.app-swatch-primary, .app-swatch-secondary, .app-swatch-benchmark) { width: 1rem; height: 2px; border-radius: 1px; vertical-align: .25em; }
+.app-swatch-primary { height: 3px; background: var(--net-worth-line); vertical-align: .22em; }
+.app-swatch-secondary { background: repeating-linear-gradient(90deg, var(--felt-secondary) 0 4px, transparent 4px 7px); }
+.app-swatch-benchmark { background: var(--benchmark); }
+.app-legend .app-swatch { margin-right: .125rem; }
+@media (max-width: 575.98px) { .app-legend { flex-basis: 100%; font-size: .8125rem; column-gap: .75rem !important; } }
 :root {
   --app-year-taupe: light-dark(var(--felt-taupe), #a89a89); --app-year-mustard: light-dark(var(--felt-mustard), #d3a43a);
   --app-year-now: light-dark(var(--felt-primary), #5a82c2);
@@ -141,7 +146,7 @@
 
 /* Shell: a dark sidebar from 768 px, an icon rail below 1280 px and from 1280 px when collapsed on this
  * device (sidebar.js); a header and a tab bar below 768 px. */
-.app { max-width: 1200px; padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+.app { max-width: 1200px; padding-bottom: calc(6.25rem + env(safe-area-inset-bottom)); }
 @media (min-width: 768px) { .app { padding-top: 1.75rem; padding-bottom: 3rem; } }
 /* The sidebar's colours follow the page's theme, so they are computed on :root as registered colours;
  * a look other than clean overrides these tokens. */
@@ -325,3 +330,192 @@
 .app-tx-receipt { position: relative; z-index: 2; }
 .app-filter { scrollbar-width: none; }
 @media (max-width: 575.98px) { .app-filter { gap: .75rem; } }
+/* Period buttons and the benchmark toggle: neutral outlines, the chosen or pressed one in the primary colour;
+ * on a phone the periods across the width. */
+:is(.app-periods .btn, .app-benchmark-toggle) {
+  --felt-btn-color: color-mix(in oklab, var(--felt-body-color) 85%, transparent);
+  --felt-btn-border-color: var(--felt-border-color);
+  --felt-btn-bg: var(--felt-surface-raised); font-variant-numeric: tabular-nums;
+  --felt-btn-active-bg: light-dark(var(--felt-primary), #3f66b0); --felt-btn-active-color: #fff;
+  --felt-btn-active-border-color: light-dark(var(--felt-primary), #3f66b0);
+  min-width: 3.5rem;
+}
+/* The benchmark's mustard, deeper on a light page and dimmer on a dark one, so that it keys clearly and the net worth
+ * line still leads. */
+:root { --benchmark: light-dark(#a06604, #b7893b); }
+/* The net worth line, lighter on a dark page so that it leads over the benchmark's. */
+:root { --net-worth-line: light-dark(var(--felt-primary), #6a92d6); }
+/* The benchmark toggle: while it is shown, its key filled and its border in the benchmark's colour; the selected
+ * period alone is filled. */
+.btn.app-benchmark-toggle {
+  --felt-btn-active-bg: var(--felt-btn-bg);
+  --felt-btn-active-color: var(--felt-emphasis-color);
+  --felt-btn-active-border-color: color-mix(in srgb, var(--benchmark) 85%, var(--felt-border-color));
+  display: inline-flex; align-items: center; gap: .5rem; white-space: nowrap;
+}
+@media (prefers-color-scheme: dark) {
+  .btn.app-benchmark-toggle { --felt-btn-active-border-color: color-mix(in srgb, var(--benchmark) 70%, var(--felt-border-color)); }
+}
+.app-benchmark-key {
+  --key: .625rem;
+  display: inline-block; flex: none; width: var(--key); height: var(--key); border-radius: 50%;
+  border: 2px solid var(--benchmark);
+}
+.app-benchmark-toggle.active .app-benchmark-key { background: var(--benchmark); }
+/* The benchmark under the TTWROR, keyed like the toggle: its label and TTWROR, its name on the next line, which
+ * gives way. Both cards of the row keep room for two lines whenever a benchmark is picked, so that nothing moves
+ * when it is shown. */
+.app-benchmark-note { display: flex; flex-direction: column; min-width: 0; }
+.app-benchmark-note .app-benchmark-key { --key: .5rem; border: 0; margin-right: .375rem; background: var(--benchmark); vertical-align: .08em; }
+.app-benchmark-ttwror { margin-left: .3em; font-variant-numeric: tabular-nums; color: var(--felt-emphasis-color); font-weight: 600; }
+.app-benchmark-name { min-width: 0; padding-left: .875rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-stats-benchmark :is(#ttwror, #irr) .stat > :last-child { min-height: calc(2 * 1.5em); }
+.app-stats-benchmark #ttwror { container-type: inline-size; }
+/* In a phone's card the label gives way to the figure; the key ties it to the toggle above. */
+@container (max-width: 13rem) {
+  .app-benchmark-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .app-benchmark-ttwror { margin-left: 0; }
+}
+/* The shadow portfolio's key on the net worth chart: the name gives way first. */
+.app-benchmark-legend { min-width: 0; max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The benchmark among the securities, keyed like the toggle. */
+.badge.app-benchmark-badge {
+  display: inline-flex; align-items: center; gap: .375rem; padding: .2em .6em; vertical-align: .1em;
+  border: 1px solid color-mix(in srgb, var(--benchmark) 70%, var(--felt-border-color)); background: none;
+  color: var(--felt-body-color); font-size: .75rem; font-weight: 600;
+}
+.app-benchmark-badge .app-benchmark-key { --key: .5rem; border: 0; background: var(--benchmark); }
+@media (min-width: 576px) { header > .app-benchmark-toggle { margin-right: .25rem; } }
+@media (max-width: 575.98px) {
+  /* On the overview the toggle joins the title and the periods take a row of their own. */
+  header:has(> .app-benchmark-toggle) > .app-periods { order: 3; display: flex; width: 100%; margin-top: .25rem; }
+  header:has(> .app-benchmark-toggle) > .app-periods .btn { flex: 1 1 0; min-height: 44px; }
+  header > .app-benchmark-toggle, .app-head-benchmark .btn { min-height: 44px; }
+  header > .app-benchmark-toggle { padding-inline: .875rem; }
+  /* On the performance screen the portfolio switcher and the toggle share a row of their own, both as wide. */
+  .app-head:has(.app-head-benchmark) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "title title" "subtitle subtitle" "switcher benchmark" "periods periods";
+  }
+  .app-head:has(.app-head-benchmark) :is(.app-head-switcher, .app-head-benchmark) { margin: .75rem 0 0; }
+  .app-head:has(.app-head-benchmark) .app-head-periods { margin-top: .5rem; }
+  .app-head:has(.app-head-benchmark) :is(.app-head-switcher .dropdown, .app-head-switcher .btn, .app-head-benchmark .btn) {
+    width: 100%; justify-content: center;
+  }
+}
+/* A page header with title and subtitle on the left, the controls on the right. */
+.app-head {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; column-gap: .75rem;
+  grid-template-areas: "title benchmark periods switcher" "subtitle subtitle subtitle subtitle"; margin-bottom: 1rem;
+}
+.app-head-benchmark { grid-area: benchmark; }
+.app-head-title { grid-area: title; }
+.app-head-subtitle { grid-area: subtitle; }
+.app-head-periods { grid-area: periods; }
+.app-head-switcher { grid-area: switcher; }
+@media (max-width: 575.98px) {
+  .app-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "title switcher" "subtitle benchmark" "periods periods";
+  }
+  .app-head-periods { display: flex; margin-top: .75rem; }
+  .app-head-periods .btn { flex: 1 1 0; }
+  .app-head .btn { min-height: 44px; }
+  /* The switcher centres on the title without pushing the subtitle down. */
+  .app-head-switcher { margin-block: -.25rem; }
+  .app-head-switcher .btn { padding-inline: .75rem; }
+  .app-stats .card-body { padding: 1rem; }
+  .app-stats .stat-label { white-space: nowrap; letter-spacing: .02em; }
+}
+/* The breakdown's rows in line with its heading, the final value as the sum below a rule. */
+.app-breakdown .list-group-item { padding-inline: var(--felt-card-cap-padding-x); padding-block: .625rem; }
+.app-breakdown .app-breakdown-total { border-top: 2px solid color-mix(in oklab, var(--felt-border-color), var(--felt-emphasis-color) 25%); }
+.app-breakdown .list-group-item > :first-child { min-width: 0; }
+.app-breakdown .list-group-item:has(+ .app-breakdown-total) { border-bottom-width: 0; }
+.app-breakdown-date { font-variant-numeric: normal; }
+/* Its heading sits in the card like the labels of the key figures. */
+.app-breakdown .card-header { background: transparent; border-bottom: 0; padding-block: 1.25rem .75rem; }
+/* Wide rows: the row under the pointer is tinted, so that its value is easy to find from its label. */
+.app-breakdown .list-group-item:hover { background-color: color-mix(in oklab, var(--felt-body-color) 5%, transparent); }
+.app-stats .stat-value { font-variant-numeric: tabular-nums; }
+.app-stats .stat { gap: .25rem; }
+.app-stats .stat-label { margin-bottom: .125rem; }
+@media (min-width: 576px) { .app-stats .card-body { padding-block: 1.25rem; } }
+@media (max-width: 575.98px) {
+  .app-breakdown { --felt-card-cap-padding-x: 1rem; }
+  .app-head-subtitle { line-height: 1.35; }
+  .app-breakdown .list-group-item { font-size: .9375rem; }
+  .app-head { margin-top: .5rem; }
+  .app-stats .stat > :last-child { font-size: .8125rem; }
+}
+/* Monthly returns: a cell per month, green up and red down, the stronger the further from zero (--heat, 0 to 1);
+ * ±0,0 grey, months without returns outlined; the year's column set apart. On a phone each year folds into its
+ * year with the year's return and two rows of six months, each with its name. */
+.app-heatmap {
+  --heat-up-low: oklch(92.5% .065 145); --heat-up-high: oklch(72% .14 145);
+  --heat-down-low: oklch(92.5% .055 15); --heat-down-high: oklch(69% .15 15);
+  --heat-flat: oklch(93.5% .003 260); --heat-none: color-mix(in oklab, var(--felt-border-color), var(--felt-body-color) 55%);
+}
+/* On a dark page the scale runs from a tint that still stands off the card to a full colour that keeps light text
+ * at 4.5:1. */
+@media (prefers-color-scheme: dark) {
+  .app-heatmap {
+    --heat-up-low: oklch(35% .055 150); --heat-up-high: oklch(47% .125 148);
+    --heat-down-low: oklch(35% .06 20); --heat-down-high: oklch(47% .15 22);
+    --heat-flat: oklch(37% .004 260); --heat-none: rgb(255 255 255 / .5);
+  }
+  .app-heat { color: oklch(97% 0 0); }
+}
+/* Where the content is 75rem wide (from 1440 px with the rail) the heatmap takes the larger share beside the
+ * breakdown, its months still about 3.5rem wide; narrower, e.g. with the sidebar open, both span the width. */
+.app-performance-grid { container-type: inline-size; }
+@container (min-width: 75rem) {
+  .row > .app-col-breakdown { width: 36%; }
+  .row > .app-col-heatmap { width: 64%; }
+}
+.app-heatmap .card-header { background: transparent; border-bottom: 0; padding-block: 1.25rem .75rem; }
+.app-heatmap .card-body { padding: 0 var(--felt-card-cap-padding-x) .625rem; container-type: inline-size; }
+.app-heatmap-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: .8125rem; }
+@container (min-width: 44rem) { .app-heatmap-table { font-size: .875rem; } }
+.app-heatmap-table :is(th, td) { padding: 1.5px; }
+.app-heatmap-table th { color: color-mix(in oklab, var(--felt-body-color) 72%, transparent); font-size: .75rem; font-weight: 600; text-align: center; }
+.app-heatmap-table thead th { padding-bottom: .25rem; }
+.app-heatmap-table thead th:first-child { width: 2.75rem; }
+.app-heatmap-table thead .app-heatmap-total { font-weight: 700; }
+.app-heatmap-table .app-heatmap-total { width: 4.875rem; padding-left: 1rem; }
+.app-heatmap-table tbody th { padding: 0; color: var(--felt-body-color); font-size: .8125rem; text-align: left; }
+.app-heatmap-table abbr { text-decoration: none; cursor: help; }
+.app-heat {
+  display: flex; align-items: center; justify-content: center; height: 2.625rem; border-radius: .375rem;
+  background: var(--heat-flat); color: var(--felt-body-color); font-weight: 600; white-space: nowrap;
+}
+.app-heat-up { background: color-mix(in oklab, var(--heat-up-high) calc(var(--heat) * 100%), var(--heat-up-low)); }
+.app-heat-down { background: color-mix(in oklab, var(--heat-down-high) calc(var(--heat) * 100%), var(--heat-down-low)); }
+.app-heat.app-heat-none { background: none; border: 1px dashed var(--heat-none); }
+.app-heatmap-total .app-heat { font-weight: 700; }
+.app-heat::before { display: none; content: attr(data-label) / ""; }
+@media (max-width: 575.98px) {
+  .app-heatmap { --felt-card-cap-padding-x: 1rem; }
+  .app-heatmap .card-body { padding-bottom: 1rem; }
+  .app-heatmap-table, .app-heatmap-table tbody { display: block; }
+  .app-heatmap-table { margin-top: .25rem; }
+  .app-heatmap-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .app-heatmap-table tr { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .5rem; }
+  .app-heatmap-table tr + tr { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--felt-border-color); }
+  .app-heatmap-table :is(th, td) { padding: 0; }
+  .app-heatmap-table tbody tr > :is(th, .app-heatmap-total) { margin-bottom: .375rem; align-self: baseline; }
+  .app-heatmap-table tbody th { grid-area: 1 / 1 / 2 / 4; font-size: .9375rem; line-height: 1.75rem; }
+  .app-heatmap-table td.app-heatmap-total { grid-area: 1 / 4 / 2 / 7; width: auto; padding-left: 0; line-height: 1.5; }
+  .app-heat { flex-direction: column; gap: 1px; height: 2.5rem; line-height: 1.15; }
+  .app-heat::before { display: block; font-size: .75rem; font-weight: 500; }
+  .app-heat.app-heat-none::before { color: var(--felt-secondary-color); }
+  /* The year's return as a paler bar over the last three columns, at most 40 % of the scale. */
+  .app-heatmap-total .app-heat {
+    flex-direction: row; justify-content: space-between; align-items: baseline; gap: .375rem; height: auto;
+    padding: .125rem .625rem; font-size: .9375rem; line-height: 1.5rem;
+  }
+  .app-heatmap-total .app-heat-up { background: color-mix(in oklab, var(--heat-up-high) calc(var(--heat) * 40%), var(--heat-up-low)); }
+  .app-heatmap-total .app-heat-down { background: color-mix(in oklab, var(--heat-down-high) calc(var(--heat) * 40%), var(--heat-down-low)); }
+  .app-heatmap-total .app-heat::before { font-size: .875em; }
+  .app-heatmap-note { padding-top: 1.75rem !important; font-size: .8125rem; }
+}

@@ -1,13 +1,17 @@
 import { chartHook, cssColor, day, formatAxisEuros, formatDay, formatEuros, reducedMotion, timeAxis, transparent } from "../charts.js"
 
-// Net worth against invested capital; the overview pushes the days of its period with the amounts
-// in cents.
-export const NetWorthChart = chartHook("net-worth-chart", ({ dates, net_worth, invested_capital }, el) => {
+// Net worth against invested capital and, while the benchmark is shown, the shadow portfolio in it;
+// the overview pushes the days of its period with the amounts in cents, and the benchmark's line
+// for a user who picked one.
+const chart = chartHook("net-worth-chart", (data, el) => {
+  const { dates, net_worth, invested_capital, benchmark, benchmark_name, benchmark_shown } = data
   const color = (name) => cssColor(el, name)
-  const [primary, secondary, muted, grid, background] =
-    ["--felt-primary", "--felt-secondary", "--felt-secondary-color", "--felt-border-color", "--felt-card-bg"].map(color)
+  const [primary, line, secondary, mustard, muted, grid, background] = [
+    "--felt-primary", "--net-worth-line", "--felt-secondary", "--benchmark", "--felt-secondary-color",
+    "--felt-border-color", "--felt-card-bg",
+  ].map(color)
   const days = dates.map(day)
-  const points = (cents) => cents.map((amount, i) => ({ x: days[i], y: amount / 100 }))
+  const points = (cents) => cents.map((amount, i) => ({ x: days[i], y: amount === null ? null : amount / 100 }))
   const last = days.length - 1
   const font = { family: getComputedStyle(el).fontFamily, size: 12 }
   const narrow = el.clientWidth < 576
@@ -18,20 +22,22 @@ export const NetWorthChart = chartHook("net-worth-chart", ({ dates, net_worth, i
       datasets: [
         {
           label: "Vermögen",
+          order: 0,
           data: points(net_worth),
-          borderColor: primary,
-          borderWidth: narrow ? 1.75 : 2.5,
+          borderColor: line,
+          borderWidth: narrow ? 2.25 : 2.5,
           backgroundColor: transparent(primary, 0.14),
           fill: "start",
           clip: false,
           pointRadius: (context) => (context.dataIndex === last ? 4 : 0),
           pointHoverRadius: 4,
-          pointBackgroundColor: primary,
+          pointBackgroundColor: line,
           pointBorderColor: background,
           pointBorderWidth: 2,
         },
         {
           label: "Investiert",
+          order: 2,
           data: points(invested_capital),
           borderColor: secondary,
           borderWidth: narrow ? 1.5 : 1.75,
@@ -41,6 +47,22 @@ export const NetWorthChart = chartHook("net-worth-chart", ({ dates, net_worth, i
           pointHoverRadius: 4,
           pointBackgroundColor: secondary,
         },
+        ...(benchmark ? [{
+          label: benchmark_name,
+          order: 1,
+          data: points(benchmark),
+          hidden: !benchmark_shown,
+          borderColor: mustard,
+          borderWidth: 1.5,
+          borderJoinStyle: "round",
+          borderCapStyle: "round",
+          clip: false,
+          pointRadius: (context) => (context.dataIndex === last ? 3 : 0),
+          pointBorderColor: background,
+          pointBorderWidth: 1.5,
+          pointHoverRadius: 3,
+          pointBackgroundColor: mustard,
+        }] : []),
       ],
     },
     options: {
@@ -57,12 +79,16 @@ export const NetWorthChart = chartHook("net-worth-chart", ({ dates, net_worth, i
         y: {
           grid: { color: grid },
           border: { display: false, dash: [3, 4] },
-          ticks: { maxTicksLimit: 6, color: muted, font, callback: formatAxisEuros },
+          ticks: { maxTicksLimit: narrow ? 6 : 7, color: muted, font, callback: formatAxisEuros },
         },
       },
       plugins: {
+        // All areas first, so that the net worth area does not tint the lines under it.
+        filler: { drawTime: "beforeDatasetsDraw" },
         legend: { display: false },
         tooltip: {
+          filter: (item) => item.parsed.y !== null,
+          itemSort: (a, b) => a.datasetIndex - b.datasetIndex,
           callbacks: {
             title: ([item]) => formatDay(item.parsed.x),
             label: (item) => ` ${item.dataset.label}: ${formatEuros(item.parsed.y)}`,
@@ -72,3 +98,12 @@ export const NetWorthChart = chartHook("net-worth-chart", ({ dates, net_worth, i
     },
   }
 })
+
+// Shows or hides the benchmark's line when the „Benchmark“ button is pressed (benchmark.ex).
+export const NetWorthChart = {
+  ...chart,
+  mounted() {
+    chart.mounted.call(this)
+    this.handleEvent("benchmark", ({ shown }) => this.data && this.draw({ ...this.data, benchmark_shown: shown }))
+  },
+}

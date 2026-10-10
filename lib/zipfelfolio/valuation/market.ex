@@ -45,6 +45,27 @@ defmodule Zipfelfolio.Valuation.Market do
     if quote_applies?(quote, closes, date), do: elem(quote, 1), else: on(closes, date)
   end
 
+  @doc """
+  The first and the last day with a price of a security as `{first, last}`, its latest quote
+  among them, as PP lists a security's prices; nil without any price.
+  """
+  def price_days(%__MODULE__{} = market, security_id) do
+    closes = Map.get(market.closes, security_id, {})
+
+    close_days =
+      if closes == {},
+        do: [],
+        else: [elem(elem(closes, 0), 0), elem(elem(closes, tuple_size(closes) - 1), 0)]
+
+    quote_days =
+      market.securities[security_id] |> latest_quote() |> List.wrap() |> Enum.map(&elem(&1, 0))
+
+    case close_days ++ quote_days do
+      [] -> nil
+      days -> {Enum.min(days, Date), Enum.max(days, Date)}
+    end
+  end
+
   defp latest_quote(%Security{latest_date: %Date{} = date, latest_close: close})
        when is_integer(close),
        do: {date, close}

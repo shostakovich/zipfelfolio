@@ -13,6 +13,7 @@ defmodule ZipfelfolioWeb.DividendsLive do
     {"received", :received, "Erhalten"}
   ]
   @amounts [{"net", :net, "Netto"}, {"gross", :gross, "Brutto"}]
+
   @year_colours ~w(taupe mustard now)
   @recent_years 2
 

@@ -179,4 +179,95 @@ defmodule Zipfelfolio.Valuation.FilterTest do
           do: assert(Filter.flows(with_account(), transaction) == [])
     end
   end
+
+  describe "view/2" do
+    defp fee_unit, do: %TransactionUnit{type: :fee, amount: money(1), currency: "EUR"}
+
+    test "keeps every transaction of all portfolios and accounts as it is" do
+      buy = hd(history())
+
+      assert Filter.view(Filter.all(), buy) == [buy]
+    end
+
+    test "turns a purchase from an account outside into an inbound delivery, a sale into an outbound one" do
+      buy =
+        transaction(:buy, portfolio_id: 1, account_id: 12, security_id: 20, units: [fee_unit()])
+
+      sell = %{buy | type: :sell}
+
+      assert Filter.view(with_account(), buy) == [
+               %{buy | type: :inbound_delivery, account_id: nil}
+             ]
+
+      assert Filter.view(with_account(), sell) == [
+               %{sell | type: :outbound_delivery, account_id: nil}
+             ]
+    end
+
+    test "turns a purchase by a portfolio outside into a removal, a sale into a deposit" do
+      buy =
+        transaction(:buy, portfolio_id: 2, account_id: 10, security_id: 21, units: [fee_unit()])
+
+      seen = %{buy | portfolio_id: nil, security_id: nil, shares: nil, units: []}
+
+      assert Filter.view(with_account(), buy) == [%{seen | type: :removal}]
+      assert Filter.view(with_account(), %{buy | type: :sell}) == [%{seen | type: :deposit}]
+    end
+
+    test "turns a transfer across the edge into a delivery, deposit or removal" do
+      out =
+        transaction(:security_transfer, portfolio_id: 1, other_portfolio_id: 2, shares: shares(1))
+
+      into = %{out | portfolio_id: 2, other_portfolio_id: 1}
+
+      assert Filter.view(with_account(), out) ==
+               [%{out | type: :outbound_delivery, other_portfolio_id: nil}]
+
+      assert Filter.view(with_account(), into) ==
+               [%{into | type: :inbound_delivery, portfolio_id: 1, other_portfolio_id: nil}]
+
+      assert [%{type: :removal, account_id: 10, other_account_id: nil, units: []}] =
+               Filter.view(with_account(), usd_transfer(10, 11))
+
+      assert [
+               %{
+                 type: :deposit,
+                 account_id: 10,
+                 other_account_id: nil,
+                 amount: 11_000,
+                 currency: "USD",
+                 units: []
+               }
+             ] = Filter.view(with_account(), usd_transfer(11, 10))
+    end
+
+    test "turns a dividend, tax or fee of a security never held into a deposit or removal" do
+      dividend = dividend(:dividend, 10, 21)
+      tax = dividend(:tax, 10, 21)
+
+      assert Filter.view(with_account(), dividend) ==
+               [%{dividend | type: :deposit, security_id: nil}]
+
+      assert Filter.view(with_account(), tax) == [%{tax | type: :removal, security_id: nil}]
+
+      assert Filter.view(with_account(), dividend(:dividend, 10, 20)) == [
+               dividend(:dividend, 10, 20)
+             ]
+    end
+
+    test "pays out a dividend on the reference account outside at once, and pays in a tax" do
+      dividend = dividend(:dividend, 10, 20)
+      tax = dividend(:tax, 10, 20)
+      plain = %{dividend | security_id: nil}
+
+      assert Filter.view(without_account(), dividend) == [dividend, %{plain | type: :removal}]
+      assert Filter.view(without_account(), tax) == [tax, %{plain | type: :deposit}]
+    end
+
+    test "leaves out what happens outside" do
+      assert Filter.view(with_account(), transaction(:deposit, account_id: 11)) == []
+      assert Filter.view(with_account(), Enum.at(history(), 1)) == []
+      assert Filter.view(without_account(), dividend(:dividend, 10, 21)) == []
+    end
+  end
 end

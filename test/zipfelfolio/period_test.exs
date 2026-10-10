@@ -8,9 +8,11 @@ defmodule Zipfelfolio.PeriodTest do
 
   describe "range/3" do
     for {period, first} <- [
+          one_month: ~D[2026-09-09],
           six_months: ~D[2026-04-09],
           year_to_date: ~D[2026-01-01],
           one_year: ~D[2025-10-09],
+          three_years: ~D[2023-10-09],
           five_years: ~D[2021-10-09],
           max: @long_ago
         ] do
@@ -32,9 +34,11 @@ defmodule Zipfelfolio.PeriodTest do
 
   describe "interval/3" do
     for {period, reference_day} <- [
+          one_month: ~D[2026-09-09],
           six_months: ~D[2026-04-09],
           year_to_date: ~D[2025-12-31],
           one_year: ~D[2025-10-09],
+          three_years: ~D[2023-10-09],
           max: ~D[2019-12-31]
         ] do
       test "#{period} starts from the close of #{reference_day}" do
