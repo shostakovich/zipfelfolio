@@ -8,7 +8,7 @@ defmodule Zipfelfolio.Securities do
   import Ecto.Changeset
   import Ecto.Query, warn: false
 
-  alias Zipfelfolio.{Allocation, LocalTime, Repo}
+  alias Zipfelfolio.{Allocation, DecimalInput, LocalTime, Repo}
   alias Zipfelfolio.Securities.{AttributeType, Composition, DivvyDiaryDividend, Price, Security}
   alias Zipfelfolio.Users.Scope
 
@@ -171,23 +171,12 @@ defmodule Zipfelfolio.Securities do
 
   @doc "A form for a manual price: a day up to today and a price, in German or English notation."
   def change_manual_price(%Security{} = security, attrs \\ %{}) do
-    attrs = Map.update(attrs, "close", nil, &normalize_number/1)
-
-    {%{}, %{date: :date, close: :decimal}}
+    {%{}, %{date: :date, close: DecimalInput}}
     |> cast(attrs, [:date, :close])
     |> validate_required([:date, :close])
     |> validate_number(:close, greater_than: 0, less_than: 1_000_000_000)
     |> validate_not_in_future()
     |> validate_no_pp_price(security)
-  end
-
-  # "1.234,56" and "1234.56" both mean 1234.56.
-  defp normalize_number(nil), do: nil
-
-  defp normalize_number(text) do
-    if String.contains?(text, ","),
-      do: text |> String.replace(".", "") |> String.replace(",", "."),
-      else: text
   end
 
   defp validate_not_in_future(changeset) do

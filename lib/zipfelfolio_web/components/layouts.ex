@@ -2,7 +2,7 @@ defmodule ZipfelfolioWeb.Layouts do
   @moduledoc false
   use ZipfelfolioWeb, :html
 
-  alias ZipfelfolioWeb.{Format, Sidebar}
+  alias ZipfelfolioWeb.{Format, Sidebar, TransactionDialog}
 
   embed_templates "layouts/*"
 
@@ -24,7 +24,7 @@ defmodule ZipfelfolioWeb.Layouts do
 
   @doc """
   Signed-in pages: from 768 px a dark sidebar, open or collapsed to an icon rail (`sidebar.js`),
-  below it a header and a tab bar.
+  below it a header and a tab bar; both open the dialog „Buchung erfassen“.
   """
   def app(assigns) do
     ~H"""
@@ -39,6 +39,16 @@ defmodule ZipfelfolioWeb.Layouts do
     >
       <.account_menu user={@current_scope.user} />
       <div class="app-side-scroll">
+        <button
+          id="side-book"
+          type="button"
+          class="app-side-book"
+          phx-click={TransactionDialog.open()}
+        >
+          <.icon name="plus" />
+          <span class="app-side-text">Buchung</span>
+          <span class="app-fly" aria-hidden="true">Buchung erfassen</span>
+        </button>
         <nav class="nav flex-column" aria-label="Ansichten">
           <.side_link
             id="side-overview"
@@ -119,6 +129,23 @@ defmodule ZipfelfolioWeb.Layouts do
       <.flash_group flash={@flash} />
       {render_slot(@inner_block)}
     </main>
+
+    <div class="app-fab d-md-none">
+      <button
+        id="fab-book"
+        type="button"
+        class="btn btn-primary btn-lg rounded-pill shadow-lg"
+        phx-click={TransactionDialog.open()}
+      >
+        <.icon name="plus" /> Buchung
+      </button>
+    </div>
+
+    <.live_component
+      module={TransactionDialog}
+      id={TransactionDialog.id()}
+      current_scope={@current_scope}
+    />
 
     <nav
       id="tabbar"

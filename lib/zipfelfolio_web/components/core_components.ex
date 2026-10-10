@@ -327,6 +327,7 @@ defmodule ZipfelfolioWeb.CoreComponents do
     "key" => ["M12 15a4 4 0 1 1-8 0 4 4 0 0 1 8 0", "m11 12 9-9M16 7l3 3M14 9l2 2"],
     "layers" => ["m12 3 9 5-9 5-9-5zM3 13l9 5 9-5M3 17.5l9 5 9-5"],
     "logout" => ["M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"],
+    "plus" => ["M12 5v14M5 12h14"],
     "sidebar" => [
       "M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
       "M9 4v16M16 9l-3 3 3 3"

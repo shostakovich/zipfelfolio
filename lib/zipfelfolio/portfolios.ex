@@ -1,8 +1,9 @@
 defmodule Zipfelfolio.Portfolios do
   @moduledoc """
-  Portfolios, accounts, their transactions and savings plans, each of one user, and what the
-  screens show of them: net worth, the overview, the holdings, the dividends, the sidebar and the
-  user's holding of a security, computed from the transactions on every request.
+  Portfolios, accounts, their transactions and savings plans, each of one user, the transactions
+  the user books with their receipts, and what the screens show of them: net worth, the overview,
+  the holdings, the dividends, the sidebar and the user's holding of a security, computed from the
+  transactions on every request.
   """
 
   import Ecto.Query, warn: false
@@ -20,7 +21,17 @@ defmodule Zipfelfolio.Portfolios do
   }
 
   alias Zipfelfolio.Allocation.Classifications
-  alias Zipfelfolio.Portfolios.{Account, Portfolio, SavingsPlan, Transaction}
+
+  alias Zipfelfolio.Portfolios.{
+    Account,
+    Portfolio,
+    Receipt,
+    SavingsPlan,
+    Transaction,
+    TransactionForm,
+    TransactionUnit
+  }
+
   alias Zipfelfolio.Securities
   alias Zipfelfolio.Securities.Security
   alias Zipfelfolio.Taxonomies
@@ -559,5 +570,113 @@ defmodule Zipfelfolio.Portfolios do
     Repo.exists?(
       from t in Transaction, where: t.user_id == ^scope.user.id and t.source != :pp_import
     )
+  end
+
+  ## Booking
+
+  @doc """
+  What the transaction form offers: the user's portfolios and accounts in euros by name, without
+  retired ones, and all securities.
+  """
+  def transaction_choices(%Scope{} = scope) do
+    %{
+      portfolios: Enum.reject(list_portfolios(scope), & &1.retired),
+      accounts: Enum.filter(list_accounts(scope), &(&1.currency == "EUR" and not &1.retired)),
+      securities: Securities.list_securities(scope)
+    }
+  end
+
+  @doc "The transaction form with `attrs`, checked against `choices`, see `transaction_choices/1`."
+  def change_transaction_form(%Scope{} = scope, choices, attrs \\ %{}),
+    do: TransactionForm.changeset(%TransactionForm{}, attrs, checks(scope, choices))
+
+  defp checks(scope, choices) do
+    %{
+      portfolio_ids: MapSet.new(choices.portfolios, & &1.id),
+      account_ids: MapSet.new(choices.accounts, & &1.id),
+      security_ids: MapSet.new(choices.securities, & &1.id),
+      held_shares: &held_shares(scope, &1, &2, &3)
+    }
+  end
+
+  @doc "The shares × 10⁸ of a security a portfolio of the user holds at the end of `date`."
+  def held_shares(%Scope{} = scope, portfolio_id, security_id, date) do
+    scope
+    |> list_transactions_of(%Security{id: security_id})
+    |> Valuation.holdings(date)
+    |> Enum.find_value(0, &(&1.portfolio_id == portfolio_id && &1.shares))
+  end
+
+  @doc """
+  Books the transaction form with `attrs`, marked as booked manually, and returns the booked
+  transactions: one, or a dividend and its removal. `receipt` is an optional PDF as
+  `{path, filename}`, attached to the first of them.
+  """
+  def book_transaction(%Scope{} = scope, choices, attrs, receipt \\ nil) do
+    changeset = change_transaction_form(scope, choices, attrs)
+
+    Repo.transact(fn ->
+      with {:ok, form} <- Ecto.Changeset.apply_action(changeset, :insert),
+           {:ok, receipt_id} <- store_receipt(scope, receipt, changeset) do
+        [first | rest] = TransactionForm.to_transactions(form)
+
+        {:ok,
+         [
+           insert_transaction(scope, Map.put(first, :receipt_id, receipt_id))
+           | Enum.map(rest, &insert_transaction(scope, &1))
+         ]}
+      end
+    end)
+  end
+
+  defp insert_transaction(scope, attrs) do
+    {units, attrs} = Map.pop!(attrs, :units)
+
+    Repo.insert!(
+      struct!(Transaction, attrs)
+      |> Map.merge(%{
+        user_id: scope.user.id,
+        units: Enum.map(units, &struct!(TransactionUnit, &1))
+      })
+    )
+  end
+
+  defp store_receipt(_scope, nil, _changeset), do: {:ok, nil}
+
+  defp store_receipt(scope, {path, filename}, changeset) do
+    content = File.read!(path)
+
+    if pdf?(content) do
+      sha256 = :sha256 |> :crypto.hash(content) |> Base.encode16(case: :lower)
+      file = receipt_file(sha256)
+      File.mkdir_p!(Path.dirname(file))
+      unless File.exists?(file), do: File.write!(file, content)
+      {:ok, receipt_record(scope, sha256, filename, byte_size(content)).id}
+    else
+      {:error,
+       Ecto.Changeset.add_error(%{changeset | action: :insert}, :receipt, "ist keine PDF-Datei")}
+    end
+  end
+
+  defp pdf?(content), do: String.starts_with?(content, "%PDF-")
+
+  defp receipt_record(scope, sha256, filename, byte_size) do
+    Repo.get_by(Receipt, user_id: scope.user.id, sha256: sha256) ||
+      Repo.insert!(%Receipt{
+        user_id: scope.user.id,
+        sha256: sha256,
+        filename: filename,
+        byte_size: byte_size
+      })
+  end
+
+  @doc "Where the file of a receipt lies: in `receipts/` next to the database, named by its hash."
+  def receipt_file(%Receipt{sha256: sha256}), do: receipt_file(sha256)
+
+  def receipt_file(sha256) when is_binary(sha256) do
+    Repo.config()
+    |> Keyword.fetch!(:database)
+    |> Path.dirname()
+    |> Path.join("receipts/#{sha256}.pdf")
   end
 end
