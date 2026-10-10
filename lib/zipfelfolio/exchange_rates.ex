@@ -22,19 +22,6 @@ defmodule Zipfelfolio.ExchangeRates do
     )
   end
 
-  @doc "The last rate on or before `date`, so weekends and holidays get the one before."
-  def rate_on("EUR", _date), do: Decimal.new(1)
-
-  def rate_on(currency, date) do
-    Repo.one(
-      from r in ExchangeRate,
-        where: r.currency == ^currency and r.date <= ^date,
-        order_by: [desc: r.date],
-        limit: 1,
-        select: r.rate
-    )
-  end
-
   @doc """
   The rates of the currencies as `{currency, date, rate}` from the last one on or before `date`
   on, so that every day from `date` on finds its rate; all of them when none is that old.

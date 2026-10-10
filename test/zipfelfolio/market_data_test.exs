@@ -30,7 +30,7 @@ defmodule Zipfelfolio.MarketDataTest do
 
       assert_received {:rates, ~D[1999-01-04]}
       assert_received {:chart, "VGWL.DE", nil}
-      assert ExchangeRates.rate_on("USD", ~D[2026-10-09]) == Decimal.new("1.1186")
+      assert ExchangeRates.latest("USD").rate == Decimal.new("1.1186")
       assert prices_of(security) == [{~D[2026-10-08], 100, :yahoo}]
 
       security = Repo.reload!(security)
