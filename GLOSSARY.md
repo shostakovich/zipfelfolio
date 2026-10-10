@@ -19,6 +19,11 @@ Self-hosted portfolio tracker for one household. Replaces Portfolio Performance 
 - A securities account at a bank; it holds shares of securities.
 - _Avoid:_ Securities account, depot (in code)
 
+**Depot number** · _de:_ Depotnummer
+- The number the bank gives a **Portfolio**, as receipts print it. A **Receipt** finds its portfolio by it, comparing
+  digits only.
+- _Example:_ "Depot 0815 4472 on a receipt belongs to the portfolio with depot number 08154472"
+
 **Account** · _de:_ Konto
 - A cash account in one currency. It exists on its own, not as part of a portfolio.
 - _Avoid:_ Cash account, Verrechnungskonto (in code)
