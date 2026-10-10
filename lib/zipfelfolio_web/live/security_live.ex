@@ -52,12 +52,12 @@ defmodule ZipfelfolioWeb.SecurityLive do
         <:subtitle>{subtitle(@security)}</:subtitle>
         <:actions :if={@price}>
           <div id="price" class="text-end text-nowrap tabular-nums">
-            <div class="fs-3 fw-bold">{Format.price(@price, currency(@security))}</div>
+            <div class="fs-3 fw-bold">{Format.price(@price, @security.currency)}</div>
             <div
               :if={@price_yesterday}
-              class={["small", tone(change_note(@price, @price_yesterday, currency(@security)))]}
+              class={["small", tone(change_note(@price, @price_yesterday, @security.currency))]}
             >
-              {change_note(@price, @price_yesterday, currency(@security))}
+              {change_note(@price, @price_yesterday, @security.currency)}
             </div>
           </div>
         </:actions>
@@ -230,7 +230,7 @@ defmodule ZipfelfolioWeb.SecurityLive do
             >
               <td :if={@ex_dates} class="d-none d-sm-table-cell">{Format.date(row.ex_date)}</td>
               <td>{Format.date(row.date)}</td>
-              <td class="text-end">{Format.price(row.per_share, Format.currency(row.currency))}</td>
+              <td class="text-end">{Format.price(row.per_share, row.currency)}</td>
               <td class="text-end d-none d-sm-table-cell">
                 {if row.shares > 0, do: Format.shares(row.shares), else: "–"}
               </td>
@@ -318,8 +318,6 @@ defmodule ZipfelfolioWeb.SecurityLive do
   end
 
   defp profile_rows(%{profile: profile, security: security, costs_per_year: costs_per_year}) do
-    currency = currency(security)
-
     ter =
       if profile.ter,
         do: [{"TER", {:text, ter(profile.ter, costs_per_year)}}],
@@ -327,12 +325,12 @@ defmodule ZipfelfolioWeb.SecurityLive do
 
     fund_size =
       if profile.fund_size,
-        do: [{"Fondsgröße", {:text, Format.fund_size(profile.fund_size, currency)}}],
+        do: [{"Fondsgröße", {:text, Format.fund_size(profile.fund_size, security.currency)}}],
         else: []
 
     attributes =
       for {type, value} <- profile.attributes,
-          shown = AttributeValue.display(type, value, currency),
+          shown = AttributeValue.display(type, value, security.currency),
           do: {type.name, shown}
 
     ter ++ fund_size ++ attributes
@@ -466,8 +464,6 @@ defmodule ZipfelfolioWeb.SecurityLive do
     |> Enum.join(" · ")
   end
 
-  defp currency(security), do: Format.currency(security.currency)
-
   defp change_note(price, yesterday, currency) do
     change = price - yesterday
 
@@ -535,7 +531,7 @@ defmodule ZipfelfolioWeb.SecurityLive do
   defp push_chart(socket, chart) do
     if connected?(socket) do
       push_event(socket, "price-chart", %{
-        currency: currency(socket.assigns.security),
+        currency: Format.currency(socket.assigns.security.currency),
         dates: Enum.map(chart.prices, & &1.date),
         prices: Enum.map(chart.prices, & &1.price),
         trades: chart.trades

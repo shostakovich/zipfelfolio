@@ -4,7 +4,7 @@ defmodule ZipfelfolioWeb.AttributeValueTest do
   alias Zipfelfolio.Securities.AttributeType
   alias ZipfelfolioWeb.AttributeValue
 
-  defp display(converter, value, currency \\ "€") do
+  defp display(converter, value, currency \\ "EUR") do
     type = %AttributeType{converter: "name.abuchen.portfolio.model.AttributeType$" <> converter}
     AttributeValue.display(type, value, currency)
   end
@@ -22,9 +22,9 @@ defmodule ZipfelfolioWeb.AttributeValueTest do
   test "amounts are in cents without a currency, quotes and limits in the security's" do
     assert display("AmountConverter", 123_456) == {:text, "1.234,56"}
     assert display("AmountPlainConverter", 5_000) == {:text, "50,00"}
-    assert display("QuoteConverter", 15_012_500_000, "USD") == {:text, "150,125 USD"}
-    assert display("LimitPriceConverter", ">=15000000000") == {:text, "≥ 150,00 €"}
-    assert display("LimitPriceConverter", "<9000000000") == {:text, "< 90,00 €"}
+    assert display("QuoteConverter", 15_012_500_000, "USD") == {:text, "150,125\u00A0USD"}
+    assert display("LimitPriceConverter", ">=15000000000") == {:text, "≥ 150,00\u00A0€"}
+    assert display("LimitPriceConverter", "<9000000000") == {:text, "< 90,00\u00A0€"}
   end
 
   test "shares, dates and yes or no" do

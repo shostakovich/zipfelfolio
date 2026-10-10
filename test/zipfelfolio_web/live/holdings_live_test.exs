@@ -72,7 +72,7 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
     assert row =~ "Vanguard FTSE All-World"
     assert row =~ "IE00B3RBWM25"
     assert row =~ ~r/>\s*5\s*</
-    assert row =~ "130,00 €"
+    assert row =~ "130,00\u00A0€"
     assert row =~ "650,00\u00A0€"
     assert row =~ "605,00\u00A0€"
     assert row =~ "+45,00\u00A0€"

@@ -50,7 +50,7 @@ defmodule ZipfelfolioWeb.SecuritiesLiveTest do
     {:ok, lv, html} = live(conn, ~p"/settings/securities")
 
     assert html =~ "Vanguard FTSE All-World"
-    assert html =~ "166,66 EUR"
+    assert html =~ "166,66\u00A0€"
     assert html =~ "Yahoo notiert LDGL.L in USD, das Wertpapier ist in EUR."
     assert lv |> element("#retired") |> render() =~ "iShares Dividend"
   end
@@ -96,7 +96,7 @@ defmodule ZipfelfolioWeb.SecuritiesLiveTest do
 
     assert_received {:chart, "VGWL.DE", _today}
     refute_received {:chart, "LDGL.DE", _today}
-    assert lv |> element("#security-#{stale.id}") |> render() =~ "170,12 EUR"
+    assert lv |> element("#security-#{stale.id}") |> render() =~ "170,12\u00A0€"
   end
 
   test "a new symbol drops the old Yahoo prices and fetches the whole history", %{conn: conn} do

@@ -475,8 +475,7 @@ defmodule ZipfelfolioWeb.HoldingsLive do
   defp account_note(%{portfolio: nil}, account), do: account.currency
   defp account_note(_portfolio_group, account), do: "Referenzkonto · #{account.currency}"
 
-  defp price(%{price: price, security: security}),
-    do: Format.price(price, Format.currency(security.currency))
+  defp price(%{price: price, security: security}), do: Format.price(price, security.currency)
 
   defp deviation_tone(:above), do: "text-warning-emphasis"
   defp deviation_tone(:below), do: "text-danger"

@@ -4,11 +4,11 @@ defmodule ZipfelfolioWeb.FormatTest do
   alias Zipfelfolio.LocalTime
   alias ZipfelfolioWeb.Format
 
-  test "prices have two to four decimal places and German separators" do
-    assert Format.price(16_666_000_000, "EUR") == "166,66 EUR"
-    assert Format.price(16_600_000_000, "EUR") == "166,00 EUR"
-    assert Format.price(123_456_780_000, "USD") == "1.234,5678 USD"
-    assert Format.price(123_456_789_999, "USD") == "1.234,5679 USD"
+  test "prices have two to four decimal places, German separators and a currency that never wraps" do
+    assert Format.price(16_666_000_000, "EUR") == "166,66\u00A0€"
+    assert Format.price(16_600_000_000, "EUR") == "166,00\u00A0€"
+    assert Format.price(123_456_780_000, "USD") == "1.234,5678\u00A0USD"
+    assert Format.price(123_456_789_999, "USD") == "1.234,5679\u00A0USD"
     assert Format.price(100_000_000_000_000, nil) == "1.000.000,00"
     assert Format.price(nil, "EUR") == "–"
   end
@@ -19,15 +19,15 @@ defmodule ZipfelfolioWeb.FormatTest do
   end
 
   test "changes in prices carry their sign and a real minus" do
-    assert Format.signed_price(106_000_000, "€") == "+1,06 €"
-    assert Format.signed_price(-106_000_000, "USD") == "−1,06 USD"
-    assert Format.signed_price(0, "€") == "0,00 €"
+    assert Format.signed_price(106_000_000, "EUR") == "+1,06\u00A0€"
+    assert Format.signed_price(-106_000_000, "USD") == "−1,06\u00A0USD"
+    assert Format.signed_price(0, "EUR") == "0,00\u00A0€"
   end
 
   test "a change in price that rounds to zero has no sign" do
-    assert Format.signed_price(153, "€") == "0,00 €"
-    assert Format.signed_price(-4_999, "€") == "0,00 €"
-    assert Format.signed_price(5_000, "€") == "+0,0001 €"
+    assert Format.signed_price(153, "EUR") == "0,00\u00A0€"
+    assert Format.signed_price(-4_999, "EUR") == "0,00\u00A0€"
+    assert Format.signed_price(5_000, "EUR") == "+0,0001\u00A0€"
   end
 
   test "euros are whole, with German separators, a real minus and a € that never wraps" do

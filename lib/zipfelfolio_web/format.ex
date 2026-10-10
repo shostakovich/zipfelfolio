@@ -3,7 +3,10 @@ defmodule ZipfelfolioWeb.Format do
 
   alias Zipfelfolio.LocalTime
 
-  @doc "A price × 10⁸ with two to four decimal places, e.g. `1.234,5678 EUR`."
+  @doc """
+  A price × 10⁸ with two to four decimal places and its currency as `currency/1` names it, e.g.
+  `1.234,5678 USD` or `166,66 €`; the currency never wraps onto a line of its own.
+  """
   def price(nil, _currency), do: "–"
 
   def price(close, currency) do
@@ -19,7 +22,9 @@ defmodule ZipfelfolioWeb.Format do
     [whole, fraction] =
       amount |> Decimal.round(places) |> Decimal.to_string(:normal) |> String.split(".")
 
-    Enum.join([group_thousands(whole) <> "," <> fraction, currency], " ") |> String.trim()
+    [group_thousands(whole) <> "," <> fraction, currency(currency)]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join("\u00A0")
   end
 
   @doc "A currency as prices name it: `€` for euros, otherwise its code."

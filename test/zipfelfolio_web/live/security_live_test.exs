@@ -57,8 +57,10 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
       assert page_title(lv) =~ "Vanguard FTSE All-World"
       assert has_element?(lv, "h1", "Vanguard FTSE All-World")
       assert has_element?(lv, "header", "IE00B3RBWM25 · WKN A1JX52 · EUR")
-      assert lv |> element("#price") |> render() =~ "102,00 €"
-      assert lv |> element("#price .text-success") |> render() =~ "+2,00 € (+2,00\u00A0%) heute"
+      assert lv |> element("#price") |> render() =~ "102,00\u00A0€"
+
+      assert lv |> element("#price .text-success") |> render() =~
+               "+2,00\u00A0€ (+2,00\u00A0%) heute"
     end
 
     test "charts a year of prices with the user's purchases and sales", ctx do
@@ -139,7 +141,7 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
       Repo.update!(Ecto.Changeset.change(security, latest_close: price(110)))
       send(lv.pid, :market_data_updated)
 
-      assert lv |> element("#price") |> render() =~ "110,00 €"
+      assert lv |> element("#price") |> render() =~ "110,00\u00A0€"
       assert_push_event(lv, "price-chart", %{prices: [_yesterday, today]})
       assert today == price(110)
     end
@@ -178,8 +180,8 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
                ["Ex-Tag", "Zahltag", "je Anteil", "Stück", "Brutto"]
 
       assert cells(lv, "#distributions tbody tr", "td") == [
-               [day(-20), day(-10), "1,50 €", "8", "12,00\u00A0€"],
-               ["–", day(-100), "1,80 €", "12", "21,60\u00A0€"]
+               [day(-20), day(-10), "1,50\u00A0€", "8", "12,00\u00A0€"],
+               ["–", day(-100), "1,80\u00A0€", "12", "21,60\u00A0€"]
              ]
 
       assert has_element?(lv, "#distributions .card-header", "33,60\u00A0€")
@@ -202,7 +204,7 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
       {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{security}")
 
       assert cells(lv, "#distributions tbody tr", "td") ==
-               [[day(-3), "0,50 USD", "10", "4,29\u00A0€"]]
+               [[day(-3), "0,50\u00A0USD", "10", "4,29\u00A0€"]]
     end
 
     test "shows the eight newest until all are asked for", ctx do
