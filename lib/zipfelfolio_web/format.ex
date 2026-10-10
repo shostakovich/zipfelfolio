@@ -1,5 +1,5 @@
 defmodule ZipfelfolioWeb.Format do
-  @moduledoc "German formats for prices, dates and times; times in the host's local time."
+  @moduledoc "German formats for amounts, dates and times; times in the host's local time."
 
   alias Zipfelfolio.LocalTime
 
@@ -20,6 +20,32 @@ defmodule ZipfelfolioWeb.Format do
       amount |> Decimal.round(places) |> Decimal.to_string(:normal) |> String.split(".")
 
     Enum.join([group_thousands(whole) <> "," <> fraction, currency], " ") |> String.trim()
+  end
+
+  @doc "Cents as whole euros, e.g. `149.118 €`."
+  def euros(cents), do: number(Decimal.div(cents, 100), 0, "") <> " €"
+
+  @doc "A change in cents as whole euros with its sign, e.g. `+562 €`."
+  def signed_euros(cents), do: number(Decimal.div(cents, 100), 0, "+") <> " €"
+
+  @doc "A change in percent with its sign, e.g. `+0,38 %`; the % never wraps onto a line of its own."
+  def signed_percent(%Decimal{} = percent), do: number(percent, 2, "+") <> "\u00A0%"
+
+  # German notation with a real minus sign; `plus` goes before a positive number.
+  defp number(decimal, places, plus) do
+    rounded = Decimal.round(decimal, places)
+
+    sign =
+      cond do
+        Decimal.positive?(rounded) -> plus
+        Decimal.negative?(rounded) -> "−"
+        true -> ""
+      end
+
+    [whole | fraction] =
+      rounded |> Decimal.abs() |> Decimal.to_string(:normal) |> String.split(".")
+
+    sign <> group_thousands(whole) <> Enum.map_join(fraction, &("," <> &1))
   end
 
   defp group_thousands("-" <> digits), do: "-" <> group_thousands(digits)

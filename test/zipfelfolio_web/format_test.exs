@@ -12,6 +12,26 @@ defmodule ZipfelfolioWeb.FormatTest do
     assert Format.price(nil, "EUR") == "–"
   end
 
+  test "euros are whole, with German separators and a real minus" do
+    assert Format.euros(14_911_750) == "149.118 €"
+    assert Format.euros(14_911_749) == "149.117 €"
+    assert Format.euros(-123_456) == "−1.235 €"
+    assert Format.euros(0) == "0 €"
+  end
+
+  test "changes in euros carry their sign" do
+    assert Format.signed_euros(56_200) == "+562 €"
+    assert Format.signed_euros(-123_450) == "−1.235 €"
+    assert Format.signed_euros(-40) == "0 €"
+  end
+
+  test "changes in percent carry their sign and two decimal places" do
+    assert Format.signed_percent(Decimal.new("0.38")) == "+0,38\u00A0%"
+    assert Format.signed_percent(Decimal.new("-2.505")) == "−2,51\u00A0%"
+    assert Format.signed_percent(Decimal.new("1234.5")) == "+1.234,50\u00A0%"
+    assert Format.signed_percent(Decimal.new("0")) == "0,00\u00A0%"
+  end
+
   test "dates are German" do
     assert Format.date(~D[2026-10-09]) == "09.10.2026"
   end

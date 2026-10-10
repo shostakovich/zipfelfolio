@@ -22,6 +22,9 @@ defmodule Zipfelfolio.SecuritiesFixtures do
     Repo.insert!(%Price{security_id: id, date: date, close: close, source: source})
   end
 
+  @doc "A price as stored, × 10⁸."
+  def price(value), do: round(value * 100_000_000)
+
   @doc "The stored prices of a security as `{date, close, source}`, oldest first."
   def prices_of(%Security{} = security) do
     security

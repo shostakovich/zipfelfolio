@@ -87,6 +87,27 @@ defmodule Zipfelfolio.Securities do
     result
   end
 
+  def list_securities_by_id(ids), do: Repo.all(from s in Security, where: s.id in ^ids)
+
+  @doc """
+  The closes of the securities as `{security_id, date, close}` from the last one on or before
+  `date` on, so that every day from `date` on finds its price; all of them when none is that old.
+  """
+  def list_closes_since(security_ids, date) do
+    Repo.all(
+      from p in Price,
+        as: :price,
+        where: p.security_id in ^security_ids,
+        where:
+          not exists(
+            from q in Price,
+              where: q.security_id == parent_as(:price).security_id,
+              where: q.date > parent_as(:price).date and q.date <= ^date
+          ),
+        select: {p.security_id, p.date, p.close}
+    )
+  end
+
   def last_price_date(%Security{id: id}),
     do: Repo.one(from p in Price, where: p.security_id == ^id, select: max(p.date))
 
@@ -162,7 +183,7 @@ defmodule Zipfelfolio.Securities do
   defp validate_not_in_future(changeset) do
     date = get_field(changeset, :date)
 
-    if date && Date.after?(date, NaiveDateTime.to_date(LocalTime.now())),
+    if date && Date.after?(date, LocalTime.today()),
       do: add_error(changeset, :date, "darf nicht in der Zukunft liegen"),
       else: changeset
   end

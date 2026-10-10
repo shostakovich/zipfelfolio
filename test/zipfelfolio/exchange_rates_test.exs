@@ -34,6 +34,22 @@ defmodule Zipfelfolio.ExchangeRatesTest do
     assert ExchangeRates.last_date() == ~D[2026-10-09]
   end
 
+  test "rates since a date start at the last one on or before it, or at the first one" do
+    ExchangeRates.store([
+      rate("USD", ~D[2026-10-01], "1.1"),
+      rate("USD", ~D[2026-10-02], "1.2"),
+      rate("USD", ~D[2026-10-05], "1.5"),
+      rate("JPY", ~D[2026-10-05], "160"),
+      rate("CHF", ~D[2026-10-05], "0.9")
+    ])
+
+    assert Enum.sort(ExchangeRates.list_rates_since(["USD", "JPY"], ~D[2026-10-03])) == [
+             rate("JPY", ~D[2026-10-05], "160"),
+             rate("USD", ~D[2026-10-02], "1.2"),
+             rate("USD", ~D[2026-10-05], "1.5")
+           ]
+  end
+
   test "without rates there is no last date" do
     assert ExchangeRates.last_date() == nil
   end

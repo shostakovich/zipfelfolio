@@ -3,6 +3,8 @@ defmodule Zipfelfolio.LocalTime do
 
   def now, do: NaiveDateTime.local_now()
 
+  def today, do: NaiveDateTime.to_date(now())
+
   def from_utc(%DateTime{} = utc) do
     utc
     |> DateTime.to_naive()

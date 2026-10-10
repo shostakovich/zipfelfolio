@@ -61,6 +61,26 @@ defmodule Zipfelfolio.SecuritiesTest do
     end
   end
 
+  describe "list_closes_since/2" do
+    test "starts at the last close on or before the date, or at the first one" do
+      security = security_fixture()
+      later = security_fixture(name: "Später notiert")
+
+      for {date, close} <- [{~D[2026-10-01], 1}, {~D[2026-10-02], 2}, {~D[2026-10-05], 5}],
+          do: price_fixture(security, date, close, :pp)
+
+      price_fixture(later, ~D[2026-10-05], 50, :pp)
+      price_fixture(security_fixture(name: "Nicht gefragt"), ~D[2026-10-05], 9, :pp)
+
+      assert Enum.sort(Securities.list_closes_since([security.id, later.id], ~D[2026-10-03])) ==
+               [
+                 {security.id, ~D[2026-10-02], 2},
+                 {security.id, ~D[2026-10-05], 5},
+                 {later.id, ~D[2026-10-05], 50}
+               ]
+    end
+  end
+
   describe "last_price_date/1" do
     test "is the date of the last price from any source" do
       security = security_fixture()
