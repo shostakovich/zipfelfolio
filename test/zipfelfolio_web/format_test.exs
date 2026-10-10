@@ -1,6 +1,7 @@
 defmodule ZipfelfolioWeb.FormatTest do
   use ExUnit.Case, async: true
 
+  alias Zipfelfolio.LocalTime
   alias ZipfelfolioWeb.Format
 
   test "prices have two to four decimal places and German separators" do
@@ -82,6 +83,18 @@ defmodule ZipfelfolioWeb.FormatTest do
     assert Format.fund_size(nil, "EUR") == "\u2013"
   end
 
+  test "a TER, a fraction, is in percent with two decimal places" do
+    assert Format.ter(Decimal.new("0.0022")) == "0,22\u00A0%"
+    assert Format.ter(Decimal.new("0.012345")) == "1,23\u00A0%"
+    assert Format.ter(nil) == "\u2013"
+  end
+
+  test "exchange rates have the decimal places the ECB gives them" do
+    assert Format.rate(Decimal.new("1.1652")) == "1,1652"
+    assert Format.rate(Decimal.new("161.20")) == "161,2"
+    assert Format.rate(Decimal.new("7843.5")) == "7.843,5"
+  end
+
   test "changes in percent carry their sign and two decimal places" do
     assert Format.signed_percent(Decimal.new("0.38")) == "+0,38\u00A0%"
     assert Format.signed_percent(Decimal.new("-2.505")) == "−2,51\u00A0%"
@@ -96,5 +109,12 @@ defmodule ZipfelfolioWeb.FormatTest do
 
   test "dates are German" do
     assert Format.date(~D[2026-10-09]) == "09.10.2026"
+  end
+
+  test "a point in time has the date of the host's local time" do
+    utc = ~U[2026-10-09 23:30:00.000000Z]
+
+    assert Format.date(utc) ==
+             utc |> LocalTime.from_utc() |> NaiveDateTime.to_date() |> Format.date()
   end
 end

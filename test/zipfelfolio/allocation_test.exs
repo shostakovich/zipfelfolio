@@ -104,6 +104,23 @@ defmodule Zipfelfolio.AllocationTest do
     end
   end
 
+  describe "of_composition/1" do
+    test "gives the regions and sectors of one fund, as of when it was fetched" do
+      allocation =
+        Allocation.of_composition(
+          composition(%{"US" => 0.6, "JP" => 0.25, "BR" => 0.15}, %{"Energy" => 1})
+        )
+
+      assert shares(allocation.regions) == [usa: 60.0, japan: 25.0, emerging_markets: 15.0]
+      assert shares(allocation.sectors) == [{"Energy", 100.0}]
+      assert allocation.as_of == @fetched
+    end
+
+    test "counts a composition without sectors as „Ohne Angabe“" do
+      assert shares(Allocation.of_composition(composition(%{"US" => 1})).sectors) == [nil: 100.0]
+    end
+  end
+
   describe "Region.of/1" do
     test "puts each developed market into its block by MSCI's classification" do
       assert Region.of("US") == :usa

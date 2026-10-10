@@ -7,8 +7,8 @@ defmodule Zipfelfolio.Securities do
   import Ecto.Changeset
   import Ecto.Query, warn: false
 
-  alias Zipfelfolio.{LocalTime, Repo}
-  alias Zipfelfolio.Securities.{Composition, Price, Security}
+  alias Zipfelfolio.{Allocation, LocalTime, Repo}
+  alias Zipfelfolio.Securities.{AttributeType, Composition, Price, Security}
   alias Zipfelfolio.Users.Scope
 
   def list_securities(%Scope{}),
@@ -295,5 +295,32 @@ defmodule Zipfelfolio.Securities do
     from(c in Composition, where: c.security_id in ^ids)
     |> Repo.all()
     |> Map.new(&{&1.security_id, &1})
+  end
+
+  ## Profile
+
+  @attributes_of_securities "name.abuchen.portfolio.model.Security"
+
+  @doc """
+  The profile of `security`:
+
+  - `ter` and `fund_size`, see `Security.ter/1` and `Security.fund_size/1`
+  - `attributes`: every other attribute set on it with its type, see `Security.attributes/2`
+  - `composition`: its regions and sectors, see `Allocation.of_composition/1`; nil without one
+  """
+  def profile(%Scope{}, %Security{} = security) do
+    types =
+      Repo.all(
+        from t in AttributeType, where: t.target == @attributes_of_securities, order_by: t.id
+      )
+
+    composition = Repo.get_by(Composition, security_id: security.id)
+
+    %{
+      ter: Security.ter(security),
+      fund_size: Security.fund_size(security),
+      attributes: Security.attributes(security, types),
+      composition: composition && Allocation.of_composition(composition)
+    }
   end
 end

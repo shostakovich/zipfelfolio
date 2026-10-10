@@ -147,15 +147,19 @@ defmodule Zipfelfolio.Valuation do
     end
   end
 
-  # Before fees and taxes, in the security's currency.
-  defp gross_value(%Transaction{currency: currency} = t, currency) do
+  @doc """
+  The gross value of a transaction in cents of `currency`, before fees and taxes: a purchase's
+  amount without them, any other's with them added back, or in another currency the forex amount
+  of its gross value unit, as PP keeps it; nil when it is not known in `currency`.
+  """
+  def gross_value(%Transaction{currency: currency} = t, currency) do
     fees_and_taxes =
       t.units |> Enum.filter(&(&1.type in [:fee, :tax])) |> Enum.sum_by(& &1.amount)
 
     if t.type in @purchases, do: t.amount - fees_and_taxes, else: t.amount + fees_and_taxes
   end
 
-  defp gross_value(t, currency) do
+  def gross_value(t, currency) do
     case gross_value_unit(t) do
       %{fx_currency: ^currency, fx_amount: fx_amount} -> fx_amount
       _other -> nil

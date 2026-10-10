@@ -1,6 +1,8 @@
 defmodule ZipfelfolioWeb.HoldingsLive do
   use ZipfelfolioWeb, :live_view
 
+  import ZipfelfolioWeb.AllocationComponents
+
   alias Zipfelfolio.{LocalTime, MarketData, Portfolios}
   alias ZipfelfolioWeb.Format
 
@@ -9,30 +11,6 @@ defmodule ZipfelfolioWeb.HoldingsLive do
   @allocation_tabs [regions: "Regionen", sectors: "Sektoren"]
   @allocation_params Map.new(@allocation_tabs, fn {tab, _label} -> {Atom.to_string(tab), tab} end)
   @default_tab @allocation_tabs |> hd() |> elem(0)
-
-  @regions %{
-    usa: "USA",
-    canada: "Kanada",
-    europe: "Europa",
-    japan: "Japan",
-    pacific_ex_japan: "Pazifik ohne Japan",
-    emerging_markets: "Schwellenländer"
-  }
-
-  # DivvyDiary names the sectors by GICS, in English.
-  @sectors %{
-    "Information Technology" => "Technologie",
-    "Financials" => "Finanzen",
-    "Industrials" => "Industrie",
-    "Health Care" => "Gesundheit",
-    "Consumer Discretionary" => "Konsum zyklisch",
-    "Consumer Staples" => "Basiskonsum",
-    "Communication Services" => "Kommunikation",
-    "Energy" => "Energie",
-    "Materials" => "Grundstoffe",
-    "Utilities" => "Versorger",
-    "Real Estate" => "Immobilien"
-  }
 
   @source "Durchsicht durch die Fonds mit den Länder- und Sektordaten von DivvyDiary"
 
@@ -201,19 +179,7 @@ defmodule ZipfelfolioWeb.HoldingsLive do
     ~H"""
     <section id="allocation" class="card h-100" aria-label="Aufteilung">
       <div class="card-header">
-        <nav aria-label="Aufteilung nach">
-          <ul class="nav nav-underline card-header-tabs">
-            <li :for={tab <- @tabs} class="nav-item">
-              <.link
-                patch={tab.path}
-                class={["nav-link", tab.active && "active"]}
-                aria-current={tab.active && "true"}
-              >
-                {tab.label}
-              </.link>
-            </li>
-          </ul>
-        </nav>
+        <.card_tabs label="Aufteilung nach" tabs={@tabs} />
       </div>
       <.composition :if={is_atom(@tab)} allocation={@allocation} tab={@tab} available={@available} />
       <.classifications
@@ -230,36 +196,12 @@ defmodule ZipfelfolioWeb.HoldingsLive do
 
   # Regions or sectors from the compositions of the funds.
   defp composition(assigns) do
-    rows = Map.fetch!(assigns.allocation, assigns.tab)
-
-    assigns =
-      assign(assigns,
-        rows: rows,
-        largest: rows |> Enum.map(& &1.share) |> Enum.max(Decimal, fn -> nil end)
-      )
+    assigns = assign(assigns, :rows, Map.fetch!(assigns.allocation, assigns.tab))
 
     ~H"""
     <div class="card-body">
-      <p :if={!@available} class="text-body-secondary mb-0">
-        Für Regionen und Sektoren braucht zipfelfolio einen API-Key von DivvyDiary in der
-        Umgebungsvariable <code>DIVVYDIARY_API_KEY</code>. Damit holt der tägliche Abruf um 18:00
-        die Länder und Sektoren der Fonds.
-      </p>
-      <ul :if={@available} id="allocation-rows" class="list-unstyled d-flex flex-column gap-3 mb-0">
-        <li :for={row <- @rows}>
-          <div class="d-flex justify-content-between gap-3 small mb-1">
-            <span class="fw-semibold">{label(row.key)}</span>
-            <span class="tabular-nums text-nowrap">{in_percent(row.share)}</span>
-          </div>
-          <div class="app-allocation-bar bg-body-tertiary rounded-pill" aria-hidden="true">
-            <div
-              class={is_nil(row.key) && "app-allocation-unknown"}
-              style={"width: #{bar_position(row.share, @largest)}%"}
-            >
-            </div>
-          </div>
-        </li>
-      </ul>
+      <.missing_key :if={!@available} />
+      <.composition_bars :if={@available} id="allocation-rows" rows={@rows} />
     </div>
     <div :if={@available} class="card-footer small text-body-secondary">
       {source(@allocation.as_of)} Konten zählen nicht mit.
@@ -275,7 +217,9 @@ defmodule ZipfelfolioWeb.HoldingsLive do
   # The top-level classifications of a taxonomy against their targets.
   defp classifications(assigns) do
     rows = assigns.allocation.classifications
-    assigns = assign(assigns, rows: rows, scale: scale(rows))
+
+    assigns =
+      assign(assigns, rows: rows, scale: bar_scale(Enum.flat_map(rows, &[&1.share, &1.target])))
 
     ~H"""
     <div class="card-body">
@@ -318,7 +262,7 @@ defmodule ZipfelfolioWeb.HoldingsLive do
       <div class="card-header d-flex flex-wrap align-items-baseline justify-content-between gap-2">
         <h2 class="fs-6 fw-semibold mb-0" id="costs-title">Kosten</h2>
         <span :if={@costs.ter} class="small text-body-secondary">
-          gewichtet {ter(@costs.ter)}
+          gewichtet {Format.ter(@costs.ter)}
         </span>
       </div>
       <div class="table-responsive">
@@ -341,7 +285,7 @@ defmodule ZipfelfolioWeb.HoldingsLive do
                   {fund_size(fund)}
                 </div>
               </td>
-              <td class="text-end text-nowrap">{ter(fund.ter)}</td>
+              <td class="text-end text-nowrap">{Format.ter(fund.ter)}</td>
               <td class="text-end text-nowrap d-none d-sm-table-cell">{fund_size(fund)}</td>
               <td class="text-end text-nowrap">{per_year(fund.per_year)}</td>
             </tr>
@@ -349,7 +293,7 @@ defmodule ZipfelfolioWeb.HoldingsLive do
           <tfoot>
             <tr id="costs-total" class="fw-bold">
               <th scope="row">Gesamt</th>
-              <td class="text-end text-nowrap">{ter(@costs.ter)}</td>
+              <td class="text-end text-nowrap">{Format.ter(@costs.ter)}</td>
               <td class="d-none d-sm-table-cell"></td>
               <td class="text-end text-nowrap">{per_year(@costs.per_year)}</td>
             </tr>
@@ -534,37 +478,6 @@ defmodule ZipfelfolioWeb.HoldingsLive do
   defp price(%{price: price, security: security}),
     do: Format.price(price, Format.currency(security.currency))
 
-  defp label(nil), do: "Ohne Angabe"
-  defp label(region) when is_atom(region), do: Map.fetch!(@regions, region)
-  defp label(sector), do: Map.get(@sectors, sector, sector)
-
-  defp in_percent(fraction), do: fraction |> Decimal.mult(100) |> Format.percent()
-
-  # A share or a target in percent of the bar, where `scale` fills it; kept within the bar.
-  defp bar_position(fraction, scale) do
-    if Decimal.gt?(scale, 0) do
-      fraction
-      |> Decimal.div(scale)
-      |> within_bar()
-      |> Decimal.mult(100)
-      |> Decimal.round(1)
-      |> Decimal.normalize()
-      |> Decimal.to_string(:normal)
-    else
-      "0"
-    end
-  end
-
-  # The largest share or target fills the bar, odd targets such as −300 % or 400 % kept within it.
-  defp scale(rows) do
-    rows
-    |> Enum.flat_map(&[&1.share, &1.target])
-    |> Enum.map(&within_bar/1)
-    |> Enum.max(Decimal, fn -> Decimal.new(0) end)
-  end
-
-  defp within_bar(fraction), do: fraction |> Decimal.max(0) |> Decimal.min(1)
-
   defp deviation_tone(:above), do: "text-warning-emphasis"
   defp deviation_tone(:below), do: "text-danger"
   defp deviation_tone(nil), do: "text-success"
@@ -576,13 +489,7 @@ defmodule ZipfelfolioWeb.HoldingsLive do
 
   defp source(nil), do: @source <> "."
 
-  defp source(as_of) do
-    date = as_of |> LocalTime.from_utc() |> NaiveDateTime.to_date()
-    "#{@source}, Stand #{Format.date(date)}."
-  end
-
-  defp ter(nil), do: "–"
-  defp ter(ter), do: ter |> Decimal.mult(100) |> Format.percent(2)
+  defp source(as_of), do: "#{@source}, Stand #{Format.date(as_of)}."
 
   defp fund_size(fund), do: Format.fund_size(fund.fund_size, fund.security.currency)
 

@@ -22,6 +22,18 @@ defmodule Zipfelfolio.ExchangeRatesTest do
     assert ExchangeRates.rate_on("EUR", ~D[1990-01-01]) == Decimal.new(1)
   end
 
+  test "the latest rate of a currency comes with its date" do
+    ExchangeRates.store([
+      rate("USD", ~D[2026-10-08], "1.1652"),
+      rate("USD", ~D[2026-10-09], "1.1701"),
+      rate("JPY", ~D[2026-10-10], "161.2")
+    ])
+
+    assert %{date: ~D[2026-10-09], rate: rate} = ExchangeRates.latest("USD")
+    assert rate == Decimal.new("1.1701")
+    assert ExchangeRates.latest("CHF") == nil
+  end
+
   test "storing a rate again replaces it" do
     ExchangeRates.store([rate("USD", ~D[2026-10-08], "1.1652")])
 

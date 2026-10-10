@@ -2,7 +2,7 @@ defmodule Zipfelfolio.SecuritiesFixtures do
   @moduledoc "Securities, prices and compositions for tests."
 
   alias Zipfelfolio.Repo
-  alias Zipfelfolio.Securities.{Composition, Price, Security}
+  alias Zipfelfolio.Securities.{AttributeType, Composition, Price, Security}
 
   def security_fixture(attrs \\ %{}) do
     Repo.insert!(
@@ -20,6 +20,20 @@ defmodule Zipfelfolio.SecuritiesFixtures do
 
   def price_fixture(%Security{id: id}, date, close, source) do
     Repo.insert!(%Price{security_id: id, date: date, close: close, source: source})
+  end
+
+  @doc """
+  An attribute type as PP defines it, for securities unless `target` names another class;
+  `converter` is the short name of PP's converter, e.g. `StringConverter`.
+  """
+  def attribute_type_fixture(pp_id, name, converter, target \\ "Security") do
+    Repo.insert!(%AttributeType{
+      pp_id: pp_id,
+      name: name,
+      column_label: name,
+      target: "name.abuchen.portfolio.model." <> target,
+      converter: "name.abuchen.portfolio.model.AttributeType$" <> converter
+    })
   end
 
   @doc "A composition of the security as DivvyDiary delivered it at `fetched_at`."

@@ -47,6 +47,19 @@ defmodule Zipfelfolio.Securities.Security do
   def fund_size(%__MODULE__{attributes: %{@fund_size => size}}) when is_integer(size), do: size
   def fund_size(%__MODULE__{}), do: nil
 
+  @doc """
+  The attributes set on the security other than TER and fund size as `{type, value}`, in the
+  order of `types`, PP's attribute types of securities; a value without its type is left out.
+  """
+  def attributes(%__MODULE__{attributes: attributes}, types) do
+    attributes = attributes || %{}
+
+    for %{pp_id: id} = type <- types,
+        id not in [@ter, @fund_size],
+        attributes[id] not in [nil, ""],
+        do: {type, attributes[id]}
+  end
+
   def quote_feed_changeset(security, attrs) do
     security
     |> cast(attrs, [:quote_feed, :symbol])

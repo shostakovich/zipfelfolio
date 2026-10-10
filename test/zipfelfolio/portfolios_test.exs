@@ -493,6 +493,30 @@ defmodule Zipfelfolio.PortfoliosTest do
                Portfolios.security(ctx.scope, security, :one_year, @saturday).chart.trades
     end
 
+    test "gives the distributions from the user's dividends and the costs a year", ctx do
+      security = security_fixture(quote_feed: :manual, attributes: %{"ter" => 0.002})
+      price_fixture(security, @friday, price(100), :pp)
+      trade(ctx.scope, :buy, ctx.portfolio, security, ~D[2026-03-02], 100, 9_000)
+
+      for scope <- [ctx.scope, user_scope_fixture()] do
+        transaction_fixture(scope, ~D[2026-09-30],
+          type: :dividend,
+          account_id: account_fixture(scope).id,
+          security_id: security.id,
+          shares: shares(100),
+          amount: money(50)
+        )
+      end
+
+      result = Portfolios.security(ctx.scope, security, :one_year, @saturday)
+
+      assert [%{date: ~D[2026-09-30], shares: shares, per_share: per_share}] =
+               result.distributions
+
+      assert {shares, per_share} == {shares(100), price(0.5)}
+      assert result.costs_per_year == money(20)
+    end
+
     test "starts Max at the first trade before the first price", ctx do
       security = security_fixture(quote_feed: :manual)
       price_fixture(security, @friday, price(100), :pp)

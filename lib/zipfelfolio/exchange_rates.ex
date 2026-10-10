@@ -56,5 +56,15 @@ defmodule Zipfelfolio.ExchangeRates do
     end)
   end
 
+  @doc "The latest rate of `currency` with its date, nil without any."
+  def latest(currency) do
+    Repo.one(
+      from r in ExchangeRate,
+        where: r.currency == ^currency,
+        order_by: [desc: r.date],
+        limit: 1
+    )
+  end
+
   def last_date, do: Repo.one(from r in ExchangeRate, select: max(r.date))
 end

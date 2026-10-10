@@ -3,7 +3,17 @@ defmodule Zipfelfolio.Portfolios do
 
   import Ecto.Query, warn: false
 
-  alias Zipfelfolio.{Allocation, Costs, ExchangeRates, Performance, Period, PriceChart, Repo}
+  alias Zipfelfolio.{
+    Allocation,
+    Costs,
+    Distributions,
+    ExchangeRates,
+    Performance,
+    Period,
+    PriceChart,
+    Repo
+  }
+
   alias Zipfelfolio.Allocation.Classifications
   alias Zipfelfolio.Portfolios.{Account, Portfolio, SavingsPlan, Transaction}
   alias Zipfelfolio.Securities
@@ -185,7 +195,7 @@ defmodule Zipfelfolio.Portfolios do
       portfolios: portfolios,
       portfolio: portfolio,
       groups: groups,
-      total: totals(groups, groups),
+      total: totals(groups),
       net_worth: Enum.sum_by(rows.holdings ++ rows.accounts, & &1.value),
       costs: Costs.of(shown),
       allocation: allocation(scope, shown, shown_accounts)
@@ -215,6 +225,8 @@ defmodule Zipfelfolio.Portfolios do
   - `holdings`: the holdings of it by portfolio name, each with its `portfolio`, `shares`,
     `value`, `purchase_value` and `gain`
   - `total`: the `shares`, `value`, `purchase_value` and `gain` of all holdings
+  - `costs_per_year` of the holdings, see `Costs.of/1`
+  - `distributions`: from the user's dividends, see `Distributions.of/3`
   """
   def security(%Scope{} = scope, %Security{} = security, period, today) do
     transactions = list_transactions_of(scope, security)
@@ -228,7 +240,9 @@ defmodule Zipfelfolio.Portfolios do
       price_yesterday: Market.price(market, security.id, Date.add(today, -1)),
       chart: PriceChart.of(security, closes, transactions, range),
       holdings: holdings,
-      total: holdings |> totals(holdings) |> Map.put(:shares, Enum.sum_by(holdings, & &1.shares))
+      total: holdings |> totals() |> Map.put(:shares, Enum.sum_by(holdings, & &1.shares)),
+      costs_per_year: Costs.of(holdings).per_year,
+      distributions: Distributions.of(security, transactions, market)
     }
   end
 
@@ -388,12 +402,11 @@ defmodule Zipfelfolio.Portfolios do
     })
   end
 
-  # The value of `rows`, and the purchase value and gain of `holdings`.
-  defp totals(rows, holdings) do
+  defp totals(rows) do
     %{
       value: Enum.sum_by(rows, & &1.value),
-      purchase_value: Enum.sum_by(holdings, & &1.purchase_value),
-      gain: Enum.sum_by(holdings, & &1.gain)
+      purchase_value: Enum.sum_by(rows, & &1.purchase_value),
+      gain: Enum.sum_by(rows, & &1.gain)
     }
   end
 

@@ -4,7 +4,9 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
   import Phoenix.LiveViewTest
   import Zipfelfolio.{PortfoliosFixtures, SecuritiesFixtures, UsersFixtures}
 
-  alias Zipfelfolio.{LocalTime, Repo}
+  alias Zipfelfolio.{ExchangeRates, FakeCompositionSource, LocalTime, Repo}
+  alias Zipfelfolio.Portfolios.TransactionUnit
+  alias ZipfelfolioWeb.Format
 
   setup :register_and_log_in_user
 
@@ -151,6 +153,231 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
     end
   end
 
+  describe "distributions" do
+    setup %{scope: scope} do
+      %{security: security_fixture_with_prices(), account: account_fixture(scope)}
+    end
+
+    test "lists per payment date the gross amount per share of the user's dividends", ctx do
+      pension = account_fixture(ctx.scope, %{name: "Altersvorsorge"})
+      paid = Date.add(today(), -100)
+      tax = %TransactionUnit{type: :tax, amount: money(3), currency: "EUR"}
+      dividend(ctx.scope, ctx.account, ctx.security, paid, 10, 15, units: [tax])
+      dividend(ctx.scope, pension, ctx.security, paid, 2, 3.6)
+
+      dividend(ctx.scope, ctx.account, ctx.security, Date.add(today(), -10), 8, 12,
+        ex_date: NaiveDateTime.new!(Date.add(today(), -20), ~T[00:00:00])
+      )
+
+      other = user_scope_fixture()
+      dividend(other, account_fixture(other), ctx.security, Date.add(today(), -10), 7, 70)
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{ctx.security}")
+
+      assert texts(lv, "#distributions th") ==
+               ["Ex-Tag", "Zahltag", "je Anteil", "Stück", "Brutto"]
+
+      assert cells(lv, "#distributions tbody tr", "td") == [
+               [day(-20), day(-10), "1,50 €", "8", "12,00\u00A0€"],
+               ["–", day(-100), "1,80 €", "12", "21,60\u00A0€"]
+             ]
+
+      assert has_element?(lv, "#distributions .card-header", "33,60\u00A0€")
+    end
+
+    test "gives the amount per share of a security in dollars in dollars", ctx do
+      security = security_fixture(currency: "USD", quote_feed: :manual)
+
+      gross = %TransactionUnit{
+        type: :gross_value,
+        amount: money(4.29),
+        currency: "EUR",
+        fx_amount: money(5),
+        fx_currency: "USD",
+        fx_rate: Decimal.new("0.858")
+      }
+
+      dividend(ctx.scope, ctx.account, security, Date.add(today(), -3), 10, 4.29, units: [gross])
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{security}")
+
+      assert cells(lv, "#distributions tbody tr", "td") ==
+               [[day(-3), "0,50 USD", "10", "4,29\u00A0€"]]
+    end
+
+    test "shows the eight newest until all are asked for", ctx do
+      for month <- 1..10,
+          do:
+            dividend(
+              ctx.scope,
+              ctx.account,
+              ctx.security,
+              Date.shift(today(), month: -month),
+              1,
+              1
+            )
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{ctx.security}")
+
+      assert lv |> query("#distributions tbody tr:not(.d-none)") |> Enum.count() == 8
+      assert lv |> query("#distributions tbody tr.d-none[data-older]") |> Enum.count() == 2
+      assert has_element?(lv, "#distributions-all", "Alle 10 anzeigen")
+    end
+
+    test "says so when no dividend is booked", ctx do
+      {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{ctx.security}")
+
+      assert has_element?(lv, "#distributions", "Keine Ausschüttungen gebucht")
+      refute has_element?(lv, "#distributions table")
+    end
+  end
+
+  describe "profile" do
+    test "shows every attribute set on the security under the name of its type", ctx do
+      attribute_type_fixture("logo", "Logo", "ImageConverter", "Account")
+      attribute_type_fixture("ter", "Total Expense Ratio (TER)", "PercentConverter")
+      attribute_type_fixture("aum", "Assets under Management", "AmountPlainConverter")
+      attribute_type_fixture("vendor", "Anbieter", "StringConverter")
+      attribute_type_fixture("index", "Index", "StringConverter")
+      attribute_type_fixture("launch", "Auflage", "DateConverter")
+      attribute_type_fixture("fee", "Kaufgebühr", "PercentConverter")
+
+      security =
+        security_fixture_with_prices()
+        |> Ecto.Changeset.change(
+          attributes: %{
+            "ter" => 0.0022,
+            "aum" => 1_780_000_000_000,
+            "vendor" => "Vanguard",
+            "index" => "FTSE All-World",
+            "launch" => Date.diff(~D[2012-05-22], ~D[1970-01-01]),
+            "logo" => "data:image/png;base64,AAAA",
+            "unknown" => "ohne Typ"
+          }
+        )
+        |> Repo.update!()
+
+      deliver(ctx.scope, portfolio_fixture(ctx.scope), security, 100)
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{security}")
+
+      assert texts(lv, "#profile dt, #profile dd") == [
+               "TER",
+               "0,22\u00A0% · 22\u00A0€ im Jahr",
+               "Fondsgröße",
+               "17,8\u00A0Mrd.\u00A0€",
+               "Anbieter",
+               "Vanguard",
+               "Index",
+               "FTSE All-World",
+               "Auflage",
+               "22.05.2012"
+             ]
+    end
+
+    test "says so when no attribute is set", %{conn: conn} do
+      security = security_fixture_with_prices()
+
+      {:ok, lv, _html} = live(conn, ~p"/securities/#{security}")
+
+      assert has_element?(lv, "#profile", "Keine Angaben aus Portfolio Performance")
+      refute has_element?(lv, "#profile dl")
+    end
+  end
+
+  describe "composition" do
+    setup do
+      FakeCompositionSource.stub()
+      %{security: security_fixture_with_prices()}
+    end
+
+    test "shows the regions and sectors of the security as the holdings do", ctx do
+      composition_fixture(ctx.security, %{"US" => 0.6, "JP" => 0.25, "BR" => 0.15}, %{
+        "Information Technology" => 0.7,
+        "Energy" => 0.3
+      })
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{ctx.security}")
+
+      assert lines(lv, "#composition-rows li", "span") ==
+               ["USA 60,0\u00A0%", "Japan 25,0\u00A0%", "Schwellenländer 15,0\u00A0%"]
+
+      assert has_element?(lv, "#composition .card-footer", "DivvyDiary, Stand 08.10.2026")
+
+      lv |> element("#composition nav a", "Sektoren") |> render_click()
+      url = assert_patch(lv, ~p"/securities/#{ctx.security}?composition=sectors")
+
+      assert lines(lv, "#composition-rows li", "span") == [
+               "Technologie 70,0\u00A0%",
+               "Energie 30,0\u00A0%"
+             ]
+
+      lv |> element("#period a", "5 J") |> render_click()
+      assert_patch(lv, ~p"/securities/#{ctx.security}?composition=sectors&period=5y")
+
+      {:ok, lv, _html} = live(ctx.conn, url)
+
+      assert has_element?(lv, "#composition nav a.active[aria-current]", "Sektoren")
+      assert has_element?(lv, "#period a[href$='?composition=sectors&period=max']", "Max")
+    end
+
+    test "says so when DivvyDiary has none", ctx do
+      {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{ctx.security}")
+
+      assert has_element?(lv, "#composition", "keine Länder und Sektoren")
+      refute has_element?(lv, "#composition nav")
+    end
+
+    test "shows a hint without an API key", ctx do
+      Application.delete_env(:zipfelfolio, FakeCompositionSource)
+      composition_fixture(ctx.security, %{"US" => 1})
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{ctx.security}")
+
+      assert has_element?(lv, "#composition", "DIVVYDIARY_API_KEY")
+      refute has_element?(lv, "#composition-rows")
+    end
+  end
+
+  describe "data sources" do
+    test "name the quote feed, the composition and the link to the settings", ctx do
+      FakeCompositionSource.stub()
+      fetched = DateTime.add(DateTime.utc_now(), -1, :minute)
+
+      # Checked just now, so that opening the page does not fetch its quote again.
+      security =
+        security_fixture(isin: "IE00B3RBWM25", fetched_at: fetched, checked_at: fetched)
+
+      composition_fixture(security, %{"US" => 1})
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{security}")
+
+      assert lines(lv, "#sources li", ".me-auto, .d-block") == [
+               "Kurse Yahoo · VGWL.DE abgerufen #{Format.datetime(fetched)}",
+               "Länder und Sektoren DivvyDiary Stand 08.10.2026"
+             ]
+
+      assert has_element?(
+               lv,
+               "#sources a[href='/settings/securities#security-#{security.id}']",
+               "Kursquelle ändern"
+             )
+    end
+
+    test "name the ECB rate for a security in another currency", ctx do
+      ExchangeRates.store([{"USD", ~D[2026-10-08], Decimal.new("1.1652")}])
+      security = security_fixture(currency: "USD", quote_feed: :manual)
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{security}")
+
+      assert lines(lv, "#sources li", ".me-auto, .d-block") == [
+               "Kurse Manuell aus Portfolio Performance oder von Hand",
+               "Wechselkurs USD EZB · 1,1652 Stand 08.10.2026",
+               "Länder und Sektoren DivvyDiary ohne API-Key"
+             ]
+    end
+  end
+
   test "says so for a security the user does not hold", %{conn: conn} do
     security = security_fixture_with_prices()
 
@@ -194,14 +421,46 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
     end
   end
 
+  defp dividend(scope, account, security, date, count, gross, attrs \\ []) do
+    transaction_fixture(
+      scope,
+      date,
+      [
+        type: :dividend,
+        account_id: account.id,
+        security_id: security.id,
+        shares: shares(count),
+        amount: money(gross)
+      ] ++ attrs
+    )
+  end
+
+  defp deliver(scope, portfolio, security, count) do
+    transaction_fixture(scope, Date.add(today(), -5),
+      type: :inbound_delivery,
+      portfolio_id: portfolio.id,
+      security_id: security.id,
+      shares: shares(count)
+    )
+  end
+
+  defp day(days), do: today() |> Date.add(days) |> Format.date()
+
   defp portfolio_texts(lv, portfolio),
     do: texts(lv, "#holding-#{portfolio.id} :is(.fw-semibold, .small)")
 
-  defp texts(lv, selector) do
-    lv
-    |> render()
-    |> LazyHTML.from_fragment()
-    |> LazyHTML.query(selector)
-    |> Enum.map(&(&1 |> LazyHTML.text() |> String.split() |> Enum.join(" ")))
+  defp texts(lv, selector), do: lv |> query(selector) |> Enum.map(&text/1)
+
+  # The texts of the cells of each row.
+  defp cells(lv, rows, cell) do
+    for row <- query(lv, rows), do: row |> LazyHTML.query(cell) |> Enum.map(&text/1)
   end
+
+  # The texts of the parts of each row, joined.
+  defp lines(lv, rows, parts), do: lv |> cells(rows, parts) |> Enum.map(&Enum.join(&1, " "))
+
+  defp query(lv, selector),
+    do: lv |> render() |> LazyHTML.from_fragment() |> LazyHTML.query(selector)
+
+  defp text(node), do: node |> LazyHTML.text() |> String.split() |> Enum.join(" ")
 end

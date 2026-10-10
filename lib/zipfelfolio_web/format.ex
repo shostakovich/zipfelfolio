@@ -74,6 +74,16 @@ defmodule ZipfelfolioWeb.Format do
     amount <> "\u00A0" <> currency(currency)
   end
 
+  @doc "A TER, a fraction, in percent with two decimal places, e.g. `0,22 %`."
+  def ter(nil), do: "–"
+  def ter(%Decimal{} = ter), do: ter |> Decimal.mult(100) |> percent(2)
+
+  @doc "An exchange rate with the decimal places it has, e.g. `1,1652`."
+  def rate(%Decimal{} = rate) do
+    rate = Decimal.normalize(rate)
+    number(rate, max(-rate.exp, 0), "")
+  end
+
   @doc """
   A change in percent with its sign and two or `places` decimal places, e.g. `+0,38 %`; the %
   never wraps onto a line of its own.
@@ -115,6 +125,9 @@ defmodule ZipfelfolioWeb.Format do
 
   def date(nil), do: "–"
   def date(%Date{} = date), do: Calendar.strftime(date, "%d.%m.%Y")
+
+  def date(%DateTime{} = utc),
+    do: utc |> LocalTime.from_utc() |> NaiveDateTime.to_date() |> date()
 
   def datetime(nil), do: "–"
 

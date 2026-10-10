@@ -7,6 +7,7 @@ defmodule Zipfelfolio.Allocation do
   """
 
   alias Zipfelfolio.Allocation.Region
+  alias Zipfelfolio.Securities.Composition
 
   @doc """
   The allocation of `holdings`, each a map with a `security` and its `value` in euro cents, from
@@ -17,9 +18,15 @@ defmodule Zipfelfolio.Allocation do
   - `sectors`: the same per sector as DivvyDiary names it
   - `as_of`: when the oldest composition of the holdings was fetched, nil without any
   """
-  def of(holdings, compositions) do
-    funds = Enum.map(holdings, &{&1.value, compositions[&1.security.id]})
-    total = Enum.sum_by(holdings, & &1.value)
+  def of(holdings, compositions),
+    do: holdings |> Enum.map(&{&1.value, compositions[&1.security.id]}) |> allocation()
+
+  @doc "The regions and sectors of one fund's `composition`, as `of/2` gives them for it alone."
+  def of_composition(%Composition{} = composition), do: allocation([{1, composition}])
+
+  # Each fund as `{value, composition}`.
+  defp allocation(funds) do
+    total = Enum.sum_by(funds, &elem(&1, 0))
 
     %{
       regions: shares(funds, total, :countries, &Region.of/1),

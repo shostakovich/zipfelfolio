@@ -291,4 +291,34 @@ defmodule Zipfelfolio.SecuritiesTest do
       assert Securities.list_securities_with_isin() == [with_isin]
     end
   end
+
+  describe "profile/2" do
+    test "gives TER, fund size and every other attribute set with its type for securities" do
+      vendor = attribute_type_fixture("vendor", "Anbieter", "StringConverter")
+      attribute_type_fixture("index", "Index", "StringConverter", "Account")
+      index = attribute_type_fixture("index", "Index", "StringConverter")
+
+      security =
+        security_fixture(
+          attributes: %{"ter" => 0.002, "aum" => 100, "index" => "Welt", "vendor" => "Anbieter A"}
+        )
+
+      profile = Securities.profile(@scope, security)
+
+      assert Decimal.equal?(profile.ter, Decimal.new("0.002"))
+      assert profile.fund_size == 100
+      assert profile.attributes == [{vendor, "Anbieter A"}, {index, "Welt"}]
+      assert profile.composition == nil
+    end
+
+    test "gives the regions and sectors of its composition" do
+      security = security_fixture()
+      composition_fixture(security, %{"US" => 1}, %{"Energy" => 1})
+
+      assert %{regions: [%{key: :usa}], sectors: [%{key: "Energy"}], as_of: as_of} =
+               Securities.profile(@scope, security).composition
+
+      assert as_of == composition_of(security).fetched_at
+    end
+  end
 end
