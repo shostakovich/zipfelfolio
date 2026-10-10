@@ -217,6 +217,42 @@ defmodule Zipfelfolio.Performance do
   defp daily_return(previous, day),
     do: (day.value + day.outbound) / (previous + day.inbound) - 1
 
+  @doc """
+  The TTWROR of the benchmark with `security_id` over the interval of `index`, as PP computes a
+  benchmark: the change of its price in euros, converted at the ECB rate of each day, from the
+  index's first day with a value, or the day before when that is after the reference day, to
+  the interval's last day; without any value from the day before the last day, or the reference
+  day when that is later. Only from its first price on and up to its last, the latest quote
+  included, adding the index's TTWROR up to its first price as PP does. Nil without a price in
+  that span.
+  """
+  def benchmark_ttwror(%__MODULE__{days: days} = index, %Market{} = market, security_id) do
+    with {first_price, last_price} <- Market.price_days(market, security_id),
+         start = Enum.max([benchmark_start(days), first_price], Date),
+         finish = Enum.min([List.last(days).date, last_price], Date),
+         false <- Date.before?(finish, start) do
+      adjustment = Enum.at(accumulated(index), Date.diff(start, hd(days).date))
+
+      adjustment +
+        euro_price(market, security_id, finish) / euro_price(market, security_id, start) - 1
+    else
+      _no_price -> nil
+    end
+  end
+
+  defp benchmark_start([reference_day | _] = days) do
+    case Enum.find(days, &(&1.value != 0)) do
+      nil -> Enum.max([Date.add(List.last(days).date, -1), reference_day.date], Date)
+      %{date: date} when date == reference_day.date -> date
+      %{date: date} -> Date.add(date, -1)
+    end
+  end
+
+  defp euro_price(market, security_id, date) do
+    price = Market.price(market, security_id, date)
+    Market.to_euros(market, price, Market.currency(market, security_id), date)
+  end
+
   @doc "The IRR per year as a fraction, 0.1 for 10 %; nil where PP gets no number."
   def irr(%__MODULE__{days: [reference_day | _] = days, cash_flows: cash_flows}) do
     last_day = List.last(days)

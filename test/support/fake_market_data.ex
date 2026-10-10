@@ -14,6 +14,7 @@ defmodule Zipfelfolio.FakePriceFeed do
   def chart_result(closes, quote_close \\ 16_666_000_000, currency \\ "EUR") do
     %{
       currency: currency,
+      name: "Weltindex-ETF",
       closes: closes,
       quote: %{at: ~U[2026-10-09 15:35:00.000000Z], date: ~D[2026-10-09], close: quote_close}
     }

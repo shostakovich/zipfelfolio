@@ -14,7 +14,7 @@ defmodule Zipfelfolio.PPImport do
   alias Zipfelfolio.Repo
   alias Zipfelfolio.Securities.{AttributeType, PPSecurityLink, Price, Security}
   alias Zipfelfolio.Taxonomies.{Assignment, Classification, Taxonomy}
-  alias Zipfelfolio.Users.Scope
+  alias Zipfelfolio.Users.{Scope, User}
 
   @kinds [
     :securities,
@@ -554,11 +554,12 @@ defmodule Zipfelfolio.PPImport do
     |> count(kind, :deleted, length(delete))
   end
 
-  # A security stays while any user's file, transaction, plan or assignment still needs it.
+  # A security stays while any user's file, transaction, plan or assignment still needs it, or
+  # any user compares with it.
   defp unreferenced?(security_id) do
     not Enum.any?([PPSecurityLink, Transaction, SavingsPlan, Assignment], fn schema ->
       Repo.exists?(from r in schema, where: r.security_id == ^security_id)
-    end)
+    end) and not Repo.exists?(from u in User, where: u.benchmark_id == ^security_id)
   end
 
   ## Helpers

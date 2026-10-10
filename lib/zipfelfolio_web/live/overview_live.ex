@@ -4,7 +4,9 @@ defmodule ZipfelfolioWeb.OverviewLive do
   import ZipfelfolioWeb.DividendComponents
 
   alias Zipfelfolio.{LocalTime, Portfolios}
-  alias ZipfelfolioWeb.{Format, Sidebar}
+  alias ZipfelfolioWeb.{Benchmark, Format, Sidebar}
+
+  on_mount Benchmark
 
   # URL parameter, period and button label; the first is the default.
   @periods [
@@ -31,6 +33,7 @@ defmodule ZipfelfolioWeb.OverviewLive do
       <.header class="flex-wrap">
         Übersicht
         <:actions :if={!@empty}>
+          <Benchmark.toggle_button :if={@overview.benchmark} shown={@benchmark_shown} />
           <nav id="period" class="btn-group btn-group-sm app-periods" aria-label="Zeitraum">
             <.link
               :for={{param, period, label} <- @periods}
@@ -51,7 +54,10 @@ defmodule ZipfelfolioWeb.OverviewLive do
       </.card>
 
       <%!-- The net worth card spans the phone's width, so that seven digits fit. --%>
-      <div :if={!@empty} class="row g-3 mb-4 app-stats">
+      <div
+        :if={!@empty}
+        class={["row g-3 mb-4 app-stats", @overview.benchmark && "app-stats-benchmark"]}
+      >
         <div class="col-12 col-sm-6 col-lg-3">
           <.stat id="net-worth" label="Vermögen" value={Format.euros(@overview.net_worth)}>
             <:note class={tone(change_note(@change, @change_percent))}>
@@ -66,7 +72,13 @@ defmodule ZipfelfolioWeb.OverviewLive do
             value={percent_text(@overview.ttwror, 2)}
             value_class={tone(percent_text(@overview.ttwror, 2))}
           >
-            <:note class="text-body-secondary">zeitgewichtet</:note>
+            <:note class="text-body-secondary">
+              <Benchmark.note
+                :if={@benchmark_shown and @overview.benchmark}
+                benchmark={@overview.benchmark}
+              />
+              <span :if={!(@benchmark_shown and @overview.benchmark)}>zeitgewichtet</span>
+            </:note>
           </.stat>
         </div>
         <div class="col-6 col-lg-3">

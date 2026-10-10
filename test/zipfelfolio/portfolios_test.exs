@@ -24,6 +24,14 @@ defmodule Zipfelfolio.PortfoliosTest do
     )
   end
 
+  # The scope of a user who picked a benchmark with the closes `{date, euros}`.
+  defp benchmark_scope(scope, closes) do
+    benchmark = security_fixture(%{name: "Weltindex-ETF", symbol: "IUSQ.DE"})
+    for {date, close} <- closes, do: price_fixture(benchmark, date, price(close), :yahoo)
+    {:ok, user} = Zipfelfolio.Users.update_benchmark(scope, benchmark.id)
+    user_scope_fixture(user)
+  end
+
   describe "overview/3" do
     # 10 shares delivered on Friday for 1,000 €, closing at 100 € that day and at 102 € today.
     defp shares_fixture(scope, portfolio, count \\ 10) do
@@ -88,6 +96,17 @@ defmodule Zipfelfolio.PortfoliosTest do
                net_worth: money(2_134),
                invested_capital: money(2_000)
              }
+    end
+
+    test "gives the benchmark's TTWROR over the period, nil without one", ctx do
+      shares_fixture(ctx.scope, ctx.portfolio)
+      assert Portfolios.overview(ctx.scope, :max, @saturday).benchmark == nil
+
+      scope = benchmark_scope(ctx.scope, [{~D[2026-10-01], 100}, {@friday, 120}, {@saturday, 90}])
+      benchmark = Portfolios.overview(scope, :max, @saturday).benchmark
+
+      assert benchmark.security.symbol == "IUSQ.DE"
+      assert_in_delta benchmark.ttwror, -0.1, 1.0e-12
     end
 
     test "counts this year's dividends up to today only", ctx do
@@ -221,6 +240,19 @@ defmodule Zipfelfolio.PortfoliosTest do
                transfers: 200_500,
                final_value: 199_000
              } = performance.breakdown
+    end
+
+    test "gives the benchmark's TTWROR over the same interval, nil without one", ctx do
+      assert Portfolios.performance(ctx.scope, :max, nil, @saturday).benchmark == nil
+
+      scope = benchmark_scope(ctx.scope, [{~D[2026-08-31], 100}, {~D[2026-10-01], 104}])
+      benchmark = Portfolios.performance(scope, :max, nil, @saturday).benchmark
+
+      assert benchmark.security.name == "Weltindex-ETF"
+      assert_in_delta benchmark.ttwror, 0.04, 1.0e-12
+
+      one_month = Portfolios.performance(scope, :one_month, ctx.portfolio.id, @saturday)
+      assert_in_delta one_month.benchmark.ttwror, 0.04, 1.0e-12
     end
 
     test "gives one portfolio with its reference account", ctx do

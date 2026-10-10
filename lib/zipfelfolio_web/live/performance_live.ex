@@ -2,7 +2,9 @@ defmodule ZipfelfolioWeb.PerformanceLive do
   use ZipfelfolioWeb, :live_view
 
   alias Zipfelfolio.{LocalTime, Portfolios}
-  alias ZipfelfolioWeb.Format
+  alias ZipfelfolioWeb.{Benchmark, Format}
+
+  on_mount Benchmark
 
   # URL parameter, period, button label and its long form; the default is the year to date.
   @periods [
@@ -60,6 +62,9 @@ defmodule ZipfelfolioWeb.PerformanceLive do
             {label}
           </.link>
         </nav>
+        <div :if={!@empty and @performance.benchmark} class="app-head-benchmark">
+          <Benchmark.toggle_button shown={@benchmark_shown} />
+        </div>
       </header>
 
       <.card :if={@empty}>
@@ -68,7 +73,13 @@ defmodule ZipfelfolioWeb.PerformanceLive do
         </p>
       </.card>
 
-      <div :if={!@empty} class="row row-cols-2 row-cols-lg-4 g-3 mb-3 app-stats">
+      <div
+        :if={!@empty}
+        class={[
+          "row row-cols-2 row-cols-lg-4 g-3 mb-3 app-stats",
+          @performance.benchmark && "app-stats-benchmark"
+        ]}
+      >
         <div class="col">
           <.stat
             id="ttwror"
@@ -77,7 +88,13 @@ defmodule ZipfelfolioWeb.PerformanceLive do
             value_class={tone(percent_text(@performance.ttwror, 2))}
           >
             <:note class="text-body-secondary">
-              {percent_text(@performance.ttwror_per_year, 2)} {@per_year}
+              <Benchmark.note
+                :if={@benchmark_shown and @performance.benchmark}
+                benchmark={@performance.benchmark}
+              />
+              <span :if={!(@benchmark_shown and @performance.benchmark)}>
+                {percent_text(@performance.ttwror_per_year, 2)} {@per_year}
+              </span>
             </:note>
           </.stat>
         </div>

@@ -3,10 +3,15 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
 
   import Ecto.Changeset, only: [change: 1]
 
-  alias Zipfelfolio.{ExchangeRates, MarketData, Securities}
+  alias Zipfelfolio.{ExchangeRates, MarketData, Securities, Users}
   alias ZipfelfolioWeb.Format
 
   @feeds [{"Yahoo", "yahoo"}, {"Manuell", "manual"}]
+
+  # What a new security from Yahoo starts with: the MSCI ACWI, in euros on Xetra.
+  @symbol "IUSQ.DE"
+
+  @unknown_benchmark "Dieses Wertpapier gibt es nicht mehr, die Benchmark bleibt."
 
   @impl true
   def render(assigns) do
@@ -31,6 +36,56 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
         Kurs aus Portfolio Performance vor einem manuellen, ein manueller vor einem von Yahoo.
       </p>
 
+      <.card title="Benchmark" id="benchmark">
+        <p>
+          Übersicht und Performance vergleichen deine Depots mit diesem Wertpapier, wenn du dort „Benchmark“ einschaltest.
+        </p>
+        <.form
+          for={@benchmark_form}
+          id="benchmark-form"
+          class="app-benchmark-form"
+          phx-change="save_benchmark"
+          phx-submit="save_benchmark"
+        >
+          <.input
+            field={@benchmark_form[:benchmark_id]}
+            type="select"
+            label="Wertpapier"
+            options={benchmark_options(@active, @benchmark)}
+            wrapper_class=""
+          />
+        </.form>
+        <.form
+          for={@symbol_form}
+          id="yahoo-security"
+          phx-submit="create_security"
+          class="mt-4 app-benchmark-form"
+        >
+          <label class="form-label" for={@symbol_form[:symbol].id}>
+            Oder neu per Yahoo-Symbol anlegen
+          </label>
+          <div class="input-group">
+            <input
+              type="text"
+              name={@symbol_form[:symbol].name}
+              id={@symbol_form[:symbol].id}
+              value={@symbol_form[:symbol].value}
+              class={["form-control", symbol_errors(@symbol_form) != [] && "is-invalid"]}
+              spellcheck="false"
+              autocapitalize="characters"
+            />
+            <.button variant="outline-primary" phx-disable-with="Wird abgerufen …">
+              Anlegen
+            </.button>
+          </div>
+          <.error :for={message <- symbol_errors(@symbol_form)}>{message}</.error>
+        </.form>
+        <p class="text-body-secondary mt-2 mb-0 app-benchmark-form">
+          Das Wertpapier wird deine Benchmark. Name, Währung und Kurse kommen von Yahoo; ein
+          vorhandenes Symbol wird übernommen statt doppelt angelegt.
+        </p>
+      </.card>
+
       <.card title="Wechselkurse" id="exchange-rates">
         <p class="mb-0">
           <%= if @rates_until do %>
@@ -52,6 +107,7 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
           <.security
             :for={security <- @active}
             security={security}
+            benchmark={@benchmark == security}
             feed_form={@feed_forms[security.id]}
             price_form={@price_forms[security.id]}
             manual_prices={@manual_prices[security.id]}
@@ -70,6 +126,7 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
           <.security
             :for={security <- @retired}
             security={security}
+            benchmark={@benchmark == security}
             feed_form={@feed_forms[security.id]}
             price_form={@price_forms[security.id]}
             manual_prices={@manual_prices[security.id]}
@@ -81,6 +138,7 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
   end
 
   attr :security, :map, required: true
+  attr :benchmark, :boolean, default: false
   attr :feed_form, Phoenix.HTML.Form, required: true
   attr :price_form, Phoenix.HTML.Form, required: true
   attr :manual_prices, :list, required: true
@@ -90,7 +148,10 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
     <li class="list-group-item" id={"security-#{@security.id}"}>
       <div class="d-flex gap-3">
         <div class="me-auto">
-          <span class="d-block fw-semibold">{@security.name}</span>
+          <span class="d-block fw-semibold">
+            {@security.name}
+            <span :if={@benchmark} class="badge text-bg-warning ms-1 app-benchmark-badge">Benchmark</span>
+          </span>
           <span class="small text-body-secondary">
             {[@security.isin, @security.currency] |> Enum.reject(&is_nil/1) |> Enum.join(" · ")}
           </span>
@@ -183,14 +244,29 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
 
   defp feeds, do: @feeds
 
+  # The active securities, and the benchmark even once it is retired.
+  defp benchmark_options(active, benchmark) do
+    securities = if benchmark in [nil | active], do: active, else: active ++ [benchmark]
+    [{"Keine Benchmark", ""} | Enum.map(securities, &{&1.name, &1.id})]
+  end
+
   defp quote_time(%{latest_at: %DateTime{} = at}), do: "Stand " <> Format.datetime(at)
   defp quote_time(%{latest_date: %Date{} = date}), do: "Stand " <> Format.date(date)
   defp quote_time(_security), do: "noch kein Kurs"
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, socket |> assign(:page_title, "Wertpapiere") |> load()}
+    {:ok,
+     socket
+     |> assign(:page_title, "Wertpapiere")
+     |> assign(:symbol_form, symbol_form())
+     |> load()}
   end
+
+  defp symbol_errors(form), do: Enum.map(form[:symbol].errors, &translate_error/1)
+
+  defp symbol_form(changeset \\ Securities.change_yahoo_symbol(%{"symbol" => @symbol})),
+    do: to_form(changeset, as: :yahoo)
 
   # Loads the data and resets every form.
   defp load(socket) do
@@ -205,8 +281,14 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
     {retired, active} = scope |> Securities.list_securities() |> Enum.split_with(& &1.retired)
     securities = active ++ retired
 
+    benchmark = Enum.find(securities, &(&1.id == scope.user.benchmark_id))
+
     socket
     |> assign(active: active, retired: retired, securities: Map.new(securities, &{&1.id, &1}))
+    |> assign(
+      benchmark: benchmark,
+      benchmark_form: to_form(%{"benchmark_id" => benchmark && benchmark.id}, as: :benchmark)
+    )
     |> update(:feed_forms, &add_missing(&1, securities, fn s -> feed_form(s, change(s)) end))
     |> update(
       :price_forms,
@@ -248,6 +330,33 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
     end
   end
 
+  def handle_event("save_benchmark", %{"benchmark" => %{"benchmark_id" => id}}, socket) do
+    with {:ok, security_id} <- benchmark_id(id),
+         {:ok, socket} <- pick_benchmark(socket, security_id) do
+      message = if security_id, do: "Benchmark gespeichert.", else: "Keine Benchmark mehr."
+      {:noreply, socket |> reload() |> put_flash(:info, message)}
+    else
+      :error -> {:noreply, socket |> reload() |> put_flash(:error, @unknown_benchmark)}
+    end
+  end
+
+  def handle_event("create_security", %{"yahoo" => params}, socket) do
+    with {:ok, security} <- MarketData.create_yahoo_security(socket.assigns.current_scope, params),
+         {:ok, socket} <- pick_benchmark(socket, security.id) do
+      socket
+      |> assign(:symbol_form, symbol_form())
+      |> load()
+      |> put_flash(:info, "#{security.name} ist deine Benchmark.")
+      |> then(&{:noreply, &1})
+    else
+      {:error, changeset} ->
+        {:noreply, assign(socket, :symbol_form, symbol_form(changeset))}
+
+      :error ->
+        {:noreply, socket |> load() |> put_flash(:error, @unknown_benchmark)}
+    end
+  end
+
   def handle_event("add_price", %{"security_id" => id, "price" => params}, socket) do
     security = security!(socket, id)
 
@@ -273,6 +382,25 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
     end
 
     {:noreply, socket |> load() |> put_flash(:info, "Kurs gelöscht.")}
+  end
+
+  defp benchmark_id(""), do: {:ok, nil}
+
+  defp benchmark_id(id) do
+    case parse_id(id) do
+      nil -> :error
+      security_id -> {:ok, security_id}
+    end
+  end
+
+  defp pick_benchmark(socket, security_id) do
+    case Users.update_benchmark(socket.assigns.current_scope, security_id) do
+      {:ok, user} ->
+        {:ok, assign(socket, :current_scope, %{socket.assigns.current_scope | user: user})}
+
+      {:error, _changeset} ->
+        :error
+    end
   end
 
   defp security!(socket, id), do: Map.fetch!(socket.assigns.securities, String.to_integer(id))

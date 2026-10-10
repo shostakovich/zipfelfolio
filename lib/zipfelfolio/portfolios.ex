@@ -74,6 +74,8 @@ defmodule Zipfelfolio.Portfolios do
   - `net_worth` today and `net_worth_yesterday`
   - `chart`: net worth and invested capital on the days of the period a chart shows
   - `ttwror` and `irr` of all portfolios and accounts over the period, see `Performance`
+  - `benchmark`: the user's benchmark as `%{security, ttwror}` over the same interval, see
+    `Performance.benchmark_ttwror/3`; nil when they picked none
   - `dividends`: this year's up to `today`, before taxes and fees
   - `portfolios`: the portfolios by name, retired ones only while they hold shares, each with
     `account`, its reference account as in the sidebar (nil when an earlier one settles against
@@ -87,7 +89,11 @@ defmodule Zipfelfolio.Portfolios do
     interval = Period.interval(period, today, first_day)
     year = Period.interval(:year_to_date, today, first_day)
     first = Enum.min([interval.first, year.first], Date)
-    market = load_market(transactions, accounts, first, :since_first_transaction)
+    benchmark = get_benchmark(scope)
+
+    market =
+      load_market(transactions, accounts, first, :since_first_transaction, benchmark: benchmark)
+
     index = Performance.index(transactions, accounts, market, Filter.all(), interval)
     [yesterday, today_point] = Enum.take(index.days, -2)
 
@@ -97,6 +103,7 @@ defmodule Zipfelfolio.Portfolios do
       chart: chart(index, Period.range(period, today, first_day)),
       ttwror: Performance.ttwror(index),
       irr: Performance.irr(index),
+      benchmark: benchmark(benchmark, index, market),
       dividends: Valuation.gross_dividends(transactions, market, year_to_date(today)),
       portfolios: portfolios_overview(scope, transactions, accounts, market, year)
     }
@@ -110,6 +117,7 @@ defmodule Zipfelfolio.Portfolios do
   - `portfolio`: the chosen one of them, nil for all
   - `interval`: the days of the period, the first the reference day, see `Period.interval/3`
   - `ttwror`, `ttwror_per_year`, `irr`, `drawdown` and `volatility`, see `Performance`
+  - `benchmark`: as in `overview/3`, over the interval
   - `breakdown`: where the change in value came from, see `Performance.Breakdown`
   - `monthly_returns`: the TTWROR of every month and year since the first transaction, whatever
     the period, see `Performance.monthly_returns/1`
@@ -122,7 +130,13 @@ defmodule Zipfelfolio.Portfolios do
     first_day = first_transaction_day(transactions)
     interval = Period.interval(period, today, first_day)
     all_time = Period.interval(:max, today, first_day)
-    market = load_market(transactions, accounts, all_time.first, :since_first_transaction)
+    benchmark = get_benchmark(scope)
+
+    market =
+      load_market(transactions, accounts, all_time.first, :since_first_transaction,
+        benchmark: benchmark
+      )
+
     filter = performance_filter(portfolio, transactions)
     index = Performance.index(transactions, accounts, market, filter, interval)
 
@@ -137,6 +151,7 @@ defmodule Zipfelfolio.Portfolios do
       interval: interval,
       ttwror: Performance.ttwror(index),
       ttwror_per_year: Performance.ttwror_per_year(index),
+      benchmark: benchmark(benchmark, index, market),
       irr: Performance.irr(index),
       drawdown: Performance.drawdown(index),
       volatility: Performance.volatility(index),
@@ -144,6 +159,17 @@ defmodule Zipfelfolio.Portfolios do
       monthly_returns: Performance.monthly_returns(all_time_index)
     }
   end
+
+  # The security the user compares with, nil for none.
+  defp get_benchmark(%Scope{user: %{benchmark_id: nil}}), do: nil
+
+  defp get_benchmark(%Scope{user: %{benchmark_id: id}} = scope),
+    do: Securities.get_security(scope, id)
+
+  defp benchmark(nil, _index, _market), do: nil
+
+  defp benchmark(security, index, market),
+    do: %{security: security, ttwror: Performance.benchmark_ttwror(index, market, security.id)}
 
   defp performance_filter(nil, _transactions), do: Filter.all()
 
@@ -234,7 +260,9 @@ defmodule Zipfelfolio.Portfolios do
     accounts = list_accounts(scope)
     stored = stored_dividends(transactions)
     # Purchase values convert each purchase at the rate of its day.
-    market = load_market(transactions, accounts, today, :since_first_transaction, stored)
+    market =
+      load_market(transactions, accounts, today, :since_first_transaction, dividends: stored)
+
     holdings = Valuation.holdings(transactions, today)
     portfolios = shown_portfolios(scope, holdings)
     portfolio = Enum.find(portfolios, &(&1.id == portfolio_id))
@@ -313,7 +341,9 @@ defmodule Zipfelfolio.Portfolios do
     stored = stored_dividends(transactions)
 
     market =
-      load_market(transactions, list_accounts(scope), today, :since_first_transaction, stored)
+      load_market(transactions, list_accounts(scope), today, :since_first_transaction,
+        dividends: stored
+      )
 
     received = Dividends.received(transactions, market)
     upcoming = Dividends.upcoming(transactions, stored, market, today, received)
@@ -348,7 +378,9 @@ defmodule Zipfelfolio.Portfolios do
     stored = stored_dividends(transactions)
 
     market =
-      load_market(transactions, list_accounts(scope), today, :since_first_transaction, stored)
+      load_market(transactions, list_accounts(scope), today, :since_first_transaction,
+        dividends: stored
+      )
 
     upcoming = Dividends.upcoming(transactions, stored, market, today)
     three_months = today |> Date.beginning_of_month() |> Date.shift(month: 3)
@@ -570,12 +602,19 @@ defmodule Zipfelfolio.Portfolios do
     }
   end
 
-  # The securities of the transactions with their closes from `date` on, and the rates of every
-  # currency involved from `date` on, or from the first transaction on, at which invested capital
-  # and purchase values convert.
-  defp load_market(transactions, accounts, date, rates, dividends \\ []) do
+  # The securities of the transactions, and the `:benchmark` if given, with their closes from
+  # `date` on, and the rates of every currency involved, those of the `:dividends` too, from `date`
+  # on, or from the first transaction on, at which invested capital and purchase values convert.
+  defp load_market(transactions, accounts, date, rates, opts \\ []) do
+    benchmark = opts[:benchmark]
+    dividends = Keyword.get(opts, :dividends, [])
+
     security_ids =
-      transactions |> Enum.map(& &1.security_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+      transactions
+      |> Enum.map(& &1.security_id)
+      |> Enum.concat(List.wrap(benchmark && benchmark.id))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
 
     securities = Securities.list_securities_by_id(security_ids)
 

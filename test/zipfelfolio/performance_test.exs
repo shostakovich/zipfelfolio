@@ -287,6 +287,125 @@ defmodule Zipfelfolio.PerformanceTest do
     end
   end
 
+  describe "benchmark_ttwror/3" do
+    defp benchmark(closes, quote \\ nil, currency \\ "EUR", rates \\ []) do
+      {quote_date, quote_close} = quote || {nil, nil}
+
+      security = %Security{
+        id: 30,
+        currency: currency,
+        latest_date: quote_date,
+        latest_close: quote_close
+      }
+
+      Market.new([security], Enum.map(closes, fn {date, close} -> {30, date, close} end), rates)
+    end
+
+    @sunday ~D[2026-10-04]
+
+    test "is the change of the benchmark's price over the interval" do
+      days = [day(@thursday, money(1_000)), day(@friday, money(900)), day(@saturday, money(950))]
+
+      market =
+        benchmark([{@thursday, price(100)}, {@friday, price(104)}, {@saturday, price(110)}])
+
+      assert_in_delta Performance.benchmark_ttwror(index(days), market, 30), 0.1, 1.0e-12
+    end
+
+    test "takes the last price before a day without one" do
+      days = [day(@thursday, money(1_000)), day(@friday, money(1_000)), day(@saturday, money(1))]
+      market = benchmark([{~D[2026-09-30], price(100)}, {@friday, price(120)}])
+
+      assert_in_delta Performance.benchmark_ttwror(index(days), market, 30), 0.2, 1.0e-12
+    end
+
+    test "starts the day before the first day with a value" do
+      days = [
+        day(@thursday, 0),
+        day(@friday, 0),
+        day(@saturday, money(1_000)),
+        day(@sunday, money(1_000))
+      ]
+
+      market =
+        benchmark([
+          {@thursday, price(50)},
+          {@friday, price(100)},
+          {@saturday, price(150)},
+          {@sunday, price(125)}
+        ])
+
+      assert_in_delta Performance.benchmark_ttwror(index(days), market, 30), 0.25, 1.0e-12
+    end
+
+    test "starts the day before the last without any value, as PP does" do
+      days = [day(@thursday, 0), day(@friday, 0), day(@saturday, 0)]
+
+      market =
+        benchmark([{@thursday, price(50)}, {@friday, price(100)}, {@saturday, price(110)}])
+
+      assert_in_delta Performance.benchmark_ttwror(index(days), market, 30), 0.1, 1.0e-12
+
+      assert_in_delta Performance.benchmark_ttwror(index(Enum.take(days, 2)), market, 30),
+                      1.0,
+                      1.0e-12
+    end
+
+    test "starts with its first price, from the TTWROR up to then, as PP does" do
+      days = [
+        day(@thursday, money(1_000)),
+        day(@friday, money(1_100)),
+        day(@saturday, money(1_100)),
+        day(@sunday, money(1_100))
+      ]
+
+      market = benchmark([{@friday, price(100)}, {@sunday, price(120)}])
+
+      assert_in_delta Performance.benchmark_ttwror(index(days), market, 30), 0.1 + 0.2, 1.0e-12
+    end
+
+    test "ends with its last price, the latest quote included" do
+      days = Enum.map(Date.range(@thursday, @sunday), &day(&1, money(1_000)))
+
+      assert_in_delta Performance.benchmark_ttwror(
+                        index(days),
+                        benchmark([{@thursday, price(100)}, {@friday, price(90)}]),
+                        30
+                      ),
+                      -0.1,
+                      1.0e-12
+
+      assert_in_delta Performance.benchmark_ttwror(
+                        index(days),
+                        benchmark([{@thursday, price(100)}], {@saturday, price(130)}),
+                        30
+                      ),
+                      0.3,
+                      1.0e-12
+    end
+
+    test "converts each day's price at the ECB rate of that day" do
+      days = [day(@thursday, money(1_000)), day(@friday, money(1_000))]
+
+      market =
+        benchmark([{@thursday, price(100)}, {@friday, price(100)}], nil, "USD", [
+          {"USD", @thursday, Decimal.new("1.25")},
+          {"USD", @friday, Decimal.new("1.00")}
+        ])
+
+      assert_in_delta Performance.benchmark_ttwror(index(days), market, 30), 0.25, 1.0e-12
+    end
+
+    test "is nil without a price up to the interval's last day" do
+      days = [day(@thursday, money(1_000)), day(@friday, money(1_000))]
+
+      assert Performance.benchmark_ttwror(index(days), benchmark([]), 30) == nil
+
+      assert Performance.benchmark_ttwror(index(days), benchmark([{@saturday, price(1)}]), 30) ==
+               nil
+    end
+  end
+
   describe "irr/1" do
     test "pays in the reference day's value and the money in after it, and gets the last day's" do
       days = [day(~D[2025-01-01], money(1_000)), day(~D[2026-01-01], money(1_650))]

@@ -221,4 +221,87 @@ defmodule ZipfelfolioWeb.SecuritiesLiveTest do
 
     assert html =~ "hat schon einen Kurs aus Portfolio Performance"
   end
+
+  describe "benchmark" do
+    defp benchmark_id(scope), do: Zipfelfolio.Users.get_user!(scope.user.id).benchmark_id
+
+    test "creates a security from a Yahoo symbol, prefilled with IUSQ.DE, as the benchmark",
+         %{conn: conn, scope: scope} do
+      FakePriceFeed.stub(fn _symbol, _from, _now ->
+        {:ok, FakePriceFeed.chart_result([{~D[2026-10-08], 16_000_000_000}])}
+      end)
+
+      {:ok, lv, _html} = live(conn, ~p"/settings/securities")
+      assert has_element?(lv, ~s(#yahoo-security input[name="yahoo[symbol]"][value="IUSQ.DE"]))
+
+      html = lv |> form("#yahoo-security") |> render_submit()
+
+      assert_received {:chart, "IUSQ.DE", nil}
+      assert html =~ "Weltindex-ETF ist deine Benchmark."
+      security = Repo.get_by!(Zipfelfolio.Securities.Security, symbol: "IUSQ.DE")
+      assert benchmark_id(scope) == security.id
+      assert has_element?(lv, "#security-#{security.id}", "Weltindex-ETF")
+      assert has_element?(lv, ~s(#benchmark-form option[selected][value="#{security.id}"]))
+      assert prices_of(security) == [{~D[2026-10-08], 16_000_000_000, :yahoo}]
+    end
+
+    test "shows why Yahoo cannot deliver a symbol", %{conn: conn, scope: scope} do
+      FakePriceFeed.stub(fn _symbol, _from, _now -> {:error, :not_found} end)
+
+      {:ok, lv, _html} = live(conn, ~p"/settings/securities")
+
+      html = lv |> form("#yahoo-security", yahoo: %{symbol: "NOPE.DE"}) |> render_submit()
+
+      assert html =~ "Yahoo kennt das Symbol NOPE.DE nicht."
+      assert benchmark_id(scope) == nil
+    end
+
+    test "picks any active security as the benchmark, or none", %{conn: conn, scope: scope} do
+      security = security_fixture()
+      security_fixture(name: "Altfonds", retired: true)
+
+      {:ok, lv, _html} = live(conn, ~p"/settings/securities")
+
+      refute has_element?(lv, "#benchmark-form option", "Altfonds")
+      assert has_element?(lv, ~s(#benchmark-form option:first-child[value=""]), "Keine Benchmark")
+      refute has_element?(lv, "#benchmark-form option[selected]")
+
+      lv |> form("#benchmark-form", benchmark: %{benchmark_id: security.id}) |> render_change()
+      assert benchmark_id(scope) == security.id
+
+      lv |> form("#benchmark-form", benchmark: %{benchmark_id: ""}) |> render_change()
+      assert benchmark_id(scope) == nil
+    end
+
+    test "keeps a retired benchmark selectable", %{conn: conn, scope: scope} do
+      security_fixture()
+      retired = security_fixture(name: "Altfonds", retired: true)
+      {:ok, _user} = Zipfelfolio.Users.update_benchmark(scope, retired.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/settings/securities")
+
+      assert has_element?(
+               lv,
+               ~s(#benchmark-form option[selected][value="#{retired.id}"]),
+               "Altfonds"
+             )
+
+      lv |> form("#benchmark-form", benchmark: %{benchmark_id: retired.id}) |> render_change()
+      assert benchmark_id(scope) == retired.id
+    end
+
+    test "keeps the benchmark when the security is gone", %{conn: conn, scope: scope} do
+      security = security_fixture()
+      {:ok, lv, _html} = live(conn, ~p"/settings/securities")
+      lv |> form("#benchmark-form", benchmark: %{benchmark_id: security.id}) |> render_change()
+
+      for id <- ["#{security.id + 1000}", "abc", "99999999999999999999"] do
+        html = render_change(lv, "save_benchmark", %{"benchmark" => %{"benchmark_id" => id}})
+
+        assert html =~ "Dieses Wertpapier gibt es nicht mehr, die Benchmark bleibt."
+        assert benchmark_id(scope) == security.id
+        assert has_element?(lv, ~s(#benchmark-form option[selected][value="#{security.id}"]))
+      end
+    end
+  end
 end

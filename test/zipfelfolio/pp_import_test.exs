@@ -1,9 +1,10 @@
 defmodule Zipfelfolio.PPImportTest do
   use Zipfelfolio.DataCase
 
+  import Zipfelfolio.SecuritiesFixtures, only: [security_fixture: 1]
   import Zipfelfolio.UsersFixtures
 
-  alias Zipfelfolio.{Portfolios, PPImport, Securities, Taxonomies}
+  alias Zipfelfolio.{Portfolios, PPImport, Securities, Taxonomies, Users}
   alias Zipfelfolio.Portfolios.Transaction
   alias Zipfelfolio.PPImport.Reader
   alias Zipfelfolio.Securities.{Price, Security}
@@ -190,6 +191,29 @@ defmodule Zipfelfolio.PPImportTest do
     assert length(Portfolios.list_transactions(scope)) == 20
     refute Repo.get_by(Security, name: "Altfonds ohne ISIN")
     assert Enum.any?(Portfolios.list_savings_plans(scope), &(&1.amount == 20_000))
+  end
+
+  test "keeps a security created in zipfelfolio", %{scope: scope} do
+    {:ok, _} = PPImport.run(scope, @sample)
+    created = security_fixture(%{name: "Weltindex-ETF", symbol: "IUSQ.DE"})
+
+    {:ok, summary} = PPImport.run(scope, @sample)
+
+    assert summary.securities.deleted == 0
+    assert Repo.get(Security, created.id)
+  end
+
+  test "keeps a security PP dropped while a user compares with it",
+       %{scope: scope, client: client} do
+    {:ok, _} = PPImport.import_client(scope, client)
+    old_fund = Repo.get_by!(Security, name: "Altfonds ohne ISIN")
+    {:ok, _user} = Users.update_benchmark(scope, old_fund.id)
+
+    dropped = Enum.reject(client.securities, &(&1.isin == nil))
+    {:ok, summary} = PPImport.import_client(scope, %{client | securities: dropped})
+
+    assert summary.securities.deleted == 0
+    assert Repo.get(Security, old_fund.id)
   end
 
   test "keeps a quote feed set in zipfelfolio", %{scope: scope} do

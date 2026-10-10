@@ -49,6 +49,60 @@ defmodule Zipfelfolio.Securities do
     end
   end
 
+  ## Securities from Yahoo
+
+  @doc """
+  A form for creating a security from a Yahoo symbol such as `IUSQ.DE`, in capitals and without
+  spaces around it.
+  """
+  def change_yahoo_symbol(attrs \\ %{}) do
+    {%{}, %{symbol: :string}}
+    |> cast(attrs, [:symbol])
+    |> update_change(:symbol, &(&1 |> String.trim() |> String.upcase()))
+    |> validate_required([:symbol], message: "braucht ein Symbol")
+    |> validate_format(:symbol, ~r/^[A-Z0-9^][A-Z0-9.^=-]*$/, message: "ist kein Yahoo-Symbol")
+    |> validate_length(:symbol, max: 32)
+  end
+
+  @doc "The security that takes its prices from the Yahoo `symbol`, nil for none."
+  def get_yahoo_security(symbol) do
+    Repo.one(
+      from s in Security,
+        where: s.quote_feed == :yahoo and not s.retired,
+        where: fragment("upper(?)", s.symbol) == ^String.upcase(symbol),
+        order_by: s.id,
+        limit: 1
+    )
+  end
+
+  @doc """
+  Creates a security from the Yahoo `symbol` with the name, currency and prices of `chart`, as
+  `PriceFeed` delivers it at `now`. It belongs to no PP file, so an import leaves it alone. The
+  security another request created meanwhile is returned as it is.
+  """
+  def create_yahoo_security(%Scope{}, symbol, chart, now) do
+    Repo.transact(fn ->
+      case get_yahoo_security(symbol) do
+        nil -> {:ok, insert_yahoo_security(symbol, chart, now)}
+        security -> {:ok, security}
+      end
+    end)
+  end
+
+  defp insert_yahoo_security(symbol, chart, now) do
+    security =
+      Repo.insert!(%Security{
+        name: chart.name || symbol,
+        currency: chart.currency,
+        quote_feed: :yahoo,
+        symbol: symbol,
+        quote_feed_set_by_user: true
+      })
+
+    store_yahoo_prices(security, chart.closes)
+    record_quote(security, chart.quote, now)
+  end
+
   @doc """
   Sets where prices come from; a later PP import keeps this choice. A switch to Yahoo or a new
   Yahoo symbol drops the Yahoo prices and the quote of the old one, a switch to manual keeps them.

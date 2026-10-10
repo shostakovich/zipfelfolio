@@ -70,6 +70,25 @@ defmodule Zipfelfolio.UsersTest do
     end
   end
 
+  describe "update_benchmark/2" do
+    test "picks a benchmark per user, or none" do
+      scope = user_scope_fixture()
+      other = user_scope_fixture()
+      security = Zipfelfolio.SecuritiesFixtures.security_fixture()
+
+      assert {:ok, %User{benchmark_id: id}} = Users.update_benchmark(scope, security.id)
+      assert id == security.id
+      assert Users.get_user!(other.user.id).benchmark_id == nil
+
+      assert {:ok, %User{benchmark_id: nil}} = Users.update_benchmark(scope, nil)
+    end
+
+    test "refuses an unknown security" do
+      assert {:error, changeset} = Users.update_benchmark(user_scope_fixture(), -1)
+      assert errors_on(changeset).benchmark_id == ["ist kein Wertpapier"]
+    end
+  end
+
   describe "sudo_mode?/2" do
     test "validates the authenticated_at time" do
       now = DateTime.utc_now()

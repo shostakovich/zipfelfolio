@@ -5,6 +5,8 @@
     "meta": {
      "currency": "EUR",
      "symbol": "VGWL.DE",
+     "longName": "Vanguard FTSE All-World UCITS ETF",
+     "shortName": "VANGUARD FTSE AW",
      "exchangeName": "GER",
      "instrumentType": "ETF",
      "regularMarketTime": 1791534204,

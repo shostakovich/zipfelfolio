@@ -298,8 +298,9 @@
 .app-tree .app-sub > .app-icon:first-child { width: .875rem; height: .875rem; margin-right: -.25rem; }
 .app-tree .list-group-item:has(+ .app-sub) { border-bottom-width: 0; }
 .app-tree .app-chev { width: 1rem; height: 1rem; color: var(--felt-tertiary-color); }
-/* Period buttons: neutral outlines, the chosen one in the primary colour; on a phone across the width. */
-.app-periods .btn {
+/* Period buttons and the benchmark toggle: neutral outlines, the chosen or pressed one in the primary colour;
+ * on a phone the periods across the width. */
+:is(.app-periods .btn, .app-benchmark-toggle) {
   --felt-btn-color: color-mix(in oklab, var(--felt-body-color) 85%, transparent);
   --felt-btn-border-color: var(--felt-border-color);
   --felt-btn-bg: var(--felt-surface-raised); font-variant-numeric: tabular-nums;
@@ -307,11 +308,63 @@
   --felt-btn-active-border-color: light-dark(var(--felt-primary), #3f66b0);
   min-width: 3.5rem;
 }
+/* The benchmark toggle: while it is shown, its key filled and its border in the benchmark's colour; the selected
+ * period alone is filled. */
+/* The benchmark's colour, darker on a light page so that its key stands out. */
+:root { --benchmark: light-dark(#b07d0f, var(--felt-mustard)); }
+.btn.app-benchmark-toggle {
+  --felt-btn-active-bg: var(--felt-btn-bg);
+  --felt-btn-active-color: var(--felt-emphasis-color);
+  --felt-btn-active-border-color: color-mix(in srgb, var(--benchmark) 85%, var(--felt-border-color));
+  display: inline-flex; align-items: center; gap: .5rem; white-space: nowrap;
+}
+@media (prefers-color-scheme: dark) {
+  .btn.app-benchmark-toggle { --felt-btn-active-border-color: color-mix(in srgb, var(--benchmark) 70%, var(--felt-border-color)); }
+}
+.app-benchmark-key {
+  --key: .625rem;
+  display: inline-block; flex: none; width: var(--key); height: var(--key); border-radius: 50%;
+  border: 2px solid var(--benchmark);
+}
+.app-benchmark-toggle.active .app-benchmark-key { background: var(--benchmark); }
+/* The benchmark under the TTWROR, keyed like the toggle: its TTWROR, then its name, which gives way. In a narrow
+ * card the name takes the next line under the figure, and both cards of the row keep room for two lines, so that
+ * nothing moves when the benchmark is shown. */
+.app-stats-benchmark :is(#ttwror, #irr) { container-type: inline-size; }
+.app-benchmark-note { display: flex; align-items: baseline; gap: .3em; min-width: 0; }
+.app-benchmark-name::before { content: "· "; }
+.app-benchmark-note .app-benchmark-key { --key: .5rem; border: 0; margin-right: .375rem; background: var(--benchmark); }
+.app-benchmark-ttwror { flex: none; color: var(--felt-body-color); font-weight: 500; }
+.app-benchmark-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@container (max-width: 300px) {
+  .app-benchmark-note { flex-direction: column; align-items: stretch; gap: 0; line-height: 1.35; }
+  .app-benchmark-name { padding-left: .875rem; }
+  .app-benchmark-name::before { content: none; }
+  .stat > :last-child { min-height: calc(2 * 1.35em); }
+}
+.app-benchmark-form { max-width: 36rem; }
+.badge.app-benchmark-badge { font-size: .75rem; padding: .15em .55em; vertical-align: .1em; }
+@media (min-width: 576px) { header > .app-benchmark-toggle { margin-right: .25rem; } }
+@media (max-width: 575.98px) {
+  /* On the overview the toggle joins the title and the periods take a row of their own. */
+  header:has(> .app-benchmark-toggle) > .app-periods { order: 3; display: flex; width: 100%; margin-top: .25rem; }
+  header:has(> .app-benchmark-toggle) > .app-periods .btn { flex: 1 1 0; min-height: 44px; }
+  header > .app-benchmark-toggle, .app-head-benchmark .btn { min-height: 44px; }
+  header > .app-benchmark-toggle { padding-inline: .875rem; }
+  /* On the performance screen too, with the portfolio switcher under it, both as wide. */
+  .app-head:has(.app-head-benchmark) { grid-template-areas: "title benchmark" "subtitle switcher" "periods periods"; }
+  .app-head:has(.app-head-benchmark) .app-head-switcher { align-self: end; margin-block: .75rem 0; }
+  .app-head:has(.app-head-benchmark) :is(.app-head-switcher, .app-head-benchmark) { justify-self: stretch; }
+  .app-head:has(.app-head-benchmark) :is(.app-head-switcher .dropdown, .app-head-switcher .btn, .app-head-benchmark .btn) {
+    width: 100%; justify-content: center;
+  }
+}
 /* A page header with title and subtitle on the left, the controls on the right. */
 .app-head {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; column-gap: .75rem;
-  grid-template-areas: "title periods switcher" "subtitle subtitle subtitle"; margin-bottom: 1rem;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; column-gap: .75rem;
+  grid-template-areas: "title benchmark periods switcher" "subtitle subtitle subtitle subtitle"; margin-bottom: 1rem;
 }
+.app-head-benchmark { grid-area: benchmark; }
 .app-head-title { grid-area: title; }
 .app-head-subtitle { grid-area: subtitle; }
 .app-head-periods { grid-area: periods; }
@@ -319,7 +372,7 @@
 @media (max-width: 575.98px) {
   .app-head {
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: "title switcher" "subtitle subtitle" "periods periods";
+    grid-template-areas: "title switcher" "subtitle benchmark" "periods periods";
   }
   .app-head-periods { display: flex; margin-top: .75rem; }
   .app-head-periods .btn { flex: 1 1 0; }

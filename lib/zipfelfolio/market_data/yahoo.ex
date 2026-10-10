@@ -1,9 +1,9 @@
 defmodule Zipfelfolio.MarketData.Yahoo do
   @moduledoc """
   Prices from Yahoo's chart API. An explicit range keeps daily data (`range=max` thins it out).
-  Stores the plain close, not the adjusted one, which would count distributions twice. Closes of 0
-  are gaps, not prices. Pence and cents are named as ISO 4217 lists them, `GBX` for Yahoo's
-  `GBp` and `ZAC` for its `ZAc`.
+  Stores the plain close, not the adjusted one, which would count distributions twice. The name
+  is Yahoo's long name, else its short one. Closes of 0 are gaps, not prices. Pence and cents are named as ISO 4217 lists them,
+  `GBX` for Yahoo's `GBp` and `ZAC` for its `ZAc`.
   """
   @behaviour Zipfelfolio.MarketData.PriceFeed
 
@@ -46,6 +46,7 @@ defmodule Zipfelfolio.MarketData.Yahoo do
     {:ok,
      %{
        currency: currency(Map.fetch!(meta, "currency")),
+       name: meta["longName"] || meta["shortName"],
        closes: closes(result, offset, open_since(meta, now)),
        quote: %{
          at: DateTime.from_unix!(meta["regularMarketTime"] * 1_000_000, :microsecond),
