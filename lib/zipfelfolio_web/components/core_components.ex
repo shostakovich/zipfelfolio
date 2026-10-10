@@ -321,6 +321,14 @@ defmodule ZipfelfolioWeb.CoreComponents do
     end
   end
 
+  @doc """
+  The colour of a signed figure as `ZipfelfolioWeb.Format` shows it: green with a plus, red with a
+  minus, muted for one that rounds to zero.
+  """
+  def tone("+" <> _rest), do: "text-success"
+  def tone("−" <> _rest), do: "text-danger"
+  def tone(_unsigned), do: "text-body-secondary"
+
   def show(js \\ %JS{}, selector) do
     JS.show(js, to: selector, time: 200, transition: {"fade", "opacity-0", "opacity-100"})
   end

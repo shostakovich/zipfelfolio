@@ -11,10 +11,31 @@ defmodule Zipfelfolio.Period do
   first transaction; only today without a `first_day` up to today.
   """
   def range(period, today, first_day) do
-    first_day = if first_day, do: Enum.min([first_day, today], Date), else: today
+    first_day = first_day(first_day, today)
 
     Date.range(Enum.max([start(period, today) || first_day, first_day], Date), today)
   end
+
+  @doc """
+  The days of `period` up to `today` over which returns are computed, as PP's reporting periods:
+  the first is the reference day, whose closing value the returns start from. The year to date
+  starts from 31 December, `:max` from the day before the first transaction, `first_day`; no
+  period earlier than that day, as nothing changes before.
+  """
+  def interval(period, today, first_day) do
+    before_first = first_day |> first_day(today) |> Date.add(-1)
+
+    Date.range(
+      Enum.max([reference_day(period, today) || before_first, before_first], Date),
+      today
+    )
+  end
+
+  defp first_day(nil, today), do: today
+  defp first_day(first_day, today), do: Enum.min([first_day, today], Date)
+
+  defp reference_day(:year_to_date, today), do: Date.new!(today.year - 1, 12, 31)
+  defp reference_day(period, today), do: start(period, today)
 
   defp start(:six_months, today), do: Date.shift(today, month: -6)
   defp start(:year_to_date, today), do: Date.new!(today.year, 1, 1)

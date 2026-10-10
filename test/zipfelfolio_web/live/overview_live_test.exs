@@ -5,6 +5,7 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
   import Zipfelfolio.{PortfoliosFixtures, SecuritiesFixtures}
 
   alias Zipfelfolio.{LocalTime, Repo}
+  alias Zipfelfolio.Portfolios.TransactionUnit
   alias Zipfelfolio.Securities.Security
 
   setup :register_and_log_in_user
@@ -52,6 +53,15 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
 
     assert lv |> element("#net-worth .text-danger") |> render() =~
              "−25\u00A0€ heute (−2,50\u00A0%)"
+  end
+
+  test "shows a change that rounds to 0 € without a colour", %{conn: conn, scope: scope} do
+    security = holding_fixture(scope, 100)
+    Repo.update!(Ecto.Changeset.change(security, latest_close: price(99.996)))
+
+    {:ok, lv, _html} = live(conn, ~p"/")
+
+    assert lv |> element("#net-worth .text-body-secondary") |> render() =~ ~r/>\s*0\s€ heute/u
   end
 
   test "shows the change without a percentage when there was nothing yesterday", ctx do
@@ -144,6 +154,122 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
 
       assert_push_event(lv, "net-worth-chart", %{net_worth: net_worth})
       assert List.last(net_worth) == money(1_550)
+    end
+
+    # The shares came in at 100 € yesterday and are quoted at 102 € today: 1,510 € on 1,500 €.
+    test "shows TTWROR and IRR for the period", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/")
+
+      assert lv |> element("#ttwror .stat-label") |> render() =~ "TTWROR · 6 M"
+      assert lv |> element("#ttwror .stat-value.text-success") |> render() =~ "+0,67\u00A0%"
+      assert lv |> element("#irr .stat-label") |> render() =~ "IZF · 6 M"
+      assert lv |> element("#irr .stat-value.text-success") |> render() =~ ~r/\+\d+,\d\x{00A0}%/u
+      assert lv |> element("#irr") |> render() =~ "p. a., geldgewichtet"
+
+      lv |> element("#period a", "Max") |> render_click()
+
+      assert lv |> element("#ttwror .stat-label") |> render() =~ "TTWROR · Max"
+      assert lv |> element("#ttwror .stat-value") |> render() =~ "+0,67\u00A0%"
+      assert lv |> element("#irr .stat-label") |> render() =~ "IZF · Max"
+    end
+
+    test "updates the returns when new prices arrive", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/")
+
+      Repo.update_all(Security, set: [latest_close: price(97)])
+      send(lv.pid, :market_data_updated)
+
+      assert lv |> element("#ttwror .stat-value.text-danger") |> render() =~ "−1,00\u00A0%"
+    end
+  end
+
+  test "shows this year's dividends before taxes and fees", %{conn: conn, scope: scope} do
+    security = holding_fixture(scope, 10)
+    account = account_fixture(scope)
+
+    for {date, net, tax, fee} <- [
+          {today(), 15, 4, 1},
+          {Date.new!(today().year, 1, 1), 30, 0, 0},
+          {Date.new!(today().year - 1, 12, 31), 99, 0, 0}
+        ] do
+      transaction_fixture(scope, date,
+        type: :dividend,
+        account_id: account.id,
+        security_id: security.id,
+        amount: money(net),
+        units: [
+          %TransactionUnit{type: :tax, amount: money(tax), currency: "EUR"},
+          %TransactionUnit{type: :fee, amount: money(fee), currency: "EUR"}
+        ]
+      )
+    end
+
+    {:ok, lv, _html} = live(conn, ~p"/")
+
+    assert lv |> element("#dividends .stat-label") |> render() =~ "Dividenden #{today().year}"
+    assert lv |> element("#dividends .stat-value") |> render() =~ "50\u00A0€"
+    assert lv |> element("#dividends") |> render() =~ "brutto"
+  end
+
+  describe "Depots" do
+    # 240 € on the reference account since last year, 10 shares delivered yesterday at 100 €,
+    # 102 € today: 1,260 € on 1,240 € since 31 December.
+    setup %{scope: scope} do
+      account = account_fixture(scope, %{name: "Konto Langfristig"})
+
+      transaction_fixture(scope, Date.shift(today(), year: -1),
+        type: :deposit,
+        account_id: account.id,
+        amount: money(240)
+      )
+
+      portfolio =
+        portfolio_fixture(scope, %{name: "Langfristig", reference_account_id: account.id})
+
+      deliver(scope, portfolio, 10, money(1_000))
+      %{portfolio: portfolio}
+    end
+
+    defp deliver(scope, portfolio, count, amount) do
+      security =
+        security_fixture(quote_feed: :manual, latest_date: today(), latest_close: price(102))
+
+      price_fixture(security, Date.add(today(), -1), price(100), :pp)
+
+      transaction_fixture(scope, Date.add(today(), -1),
+        type: :inbound_delivery,
+        portfolio_id: portfolio.id,
+        security_id: security.id,
+        shares: shares(count),
+        amount: amount
+      )
+    end
+
+    test "lists each portfolio with its value and TTWROR since 1 January", ctx do
+      {:ok, lv, _html} = live(ctx.conn, ~p"/")
+
+      row = lv |> element("#portfolio-#{ctx.portfolio.id}") |> render()
+
+      assert row =~ "Langfristig"
+      assert row =~ "1\u00A0Wertpapier · Konto\u00A0240,00\u00A0€"
+      assert row =~ "1.260,00\u00A0€"
+
+      assert lv |> element("#portfolio-#{ctx.portfolio.id} .text-success") |> render() =~
+               "+1,6\u00A0% YTD"
+    end
+
+    test "shows a portfolio without shares as cash only and hides retired ones once empty", ctx do
+      cash = portfolio_fixture(ctx.scope, %{name: "Sparplan"})
+      retired = portfolio_fixture(ctx.scope, %{name: "Alt", retired: true})
+      empty = portfolio_fixture(ctx.scope, %{name: "Leer", retired: true})
+      deliver(ctx.scope, retired, 1, money(100))
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/")
+
+      assert lv |> element("#portfolio-#{cash.id}") |> render() =~ "nur Cash"
+      assert lv |> element("#portfolio-#{cash.id}") |> render() =~ "keine\u00A0Wertpapiere"
+      assert has_element?(lv, "#portfolio-#{retired.id}", "102,00\u00A0€")
+      refute has_element?(lv, "#portfolio-#{empty.id}")
     end
   end
 

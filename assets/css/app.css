@@ -1,5 +1,9 @@
 .app-auth { max-width: 26rem; }
 .app-avatar { width: 2.25rem; height: 2.25rem; flex-shrink: 0; }
+.app-icon {
+  width: 1.25rem; height: 1.25rem; flex-shrink: 0;
+  fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
 /* `d-flex` would show the hidden connection alerts of the flash group. */
 .alert[hidden] { display: none !important; }
 .app-chart { position: relative; height: 14rem; }
@@ -7,3 +11,5 @@
 .app-swatch { display: inline-block; width: .75rem; height: .75rem; border-radius: .2rem; vertical-align: -.05rem; }
 .app-swatch-primary { background: var(--felt-primary); }
 .app-swatch-secondary { background: var(--felt-secondary); }
+/* Two stat cards side by side on a phone: values up to „+135,94 %“ still fit. */
+@media (max-width: 575.98px) { .app-stats .stat-value { font-size: 1.5rem; } }

@@ -29,6 +29,32 @@ defmodule Zipfelfolio.PeriodTest do
     end
   end
 
+  describe "interval/3" do
+    for {period, reference_day} <- [
+          six_months: ~D[2026-04-09],
+          year_to_date: ~D[2025-12-31],
+          one_year: ~D[2025-10-09],
+          max: ~D[2019-12-31]
+        ] do
+      test "#{period} starts from the close of #{reference_day}" do
+        assert Period.interval(unquote(period), @today, @long_ago) ==
+                 Date.range(unquote(Macro.escape(reference_day)), @today)
+      end
+    end
+
+    test "starts no earlier than the day before the first transaction" do
+      assert Period.interval(:one_year, @today, ~D[2026-08-01]) ==
+               Date.range(~D[2026-07-31], @today)
+    end
+
+    test "starts yesterday without a transaction up to today" do
+      assert Period.interval(:max, @today, nil) == Date.range(~D[2026-10-08], @today)
+
+      assert Period.interval(:year_to_date, @today, Date.add(@today, 1)) ==
+               Date.range(~D[2026-10-08], @today)
+    end
+  end
+
   describe "chart_days/1" do
     test "are all days of up to a year" do
       range = Date.range(~D[2025-10-09], @today)

@@ -19,6 +19,11 @@ defmodule ZipfelfolioWeb.FormatTest do
     assert Format.euros(0) == "0\u00A0€"
   end
 
+  test "euros can have cents" do
+    assert Format.euros(14_661_758, 2) == "146.617,58\u00A0€"
+    assert Format.euros(-5, 2) == "−0,05\u00A0€"
+  end
+
   test "changes in euros carry their sign" do
     assert Format.signed_euros(56_200) == "+562\u00A0€"
     assert Format.signed_euros(-123_450) == "−1.235\u00A0€"
@@ -30,6 +35,11 @@ defmodule ZipfelfolioWeb.FormatTest do
     assert Format.signed_percent(Decimal.new("-2.505")) == "−2,51\u00A0%"
     assert Format.signed_percent(Decimal.new("1234.5")) == "+1.234,50\u00A0%"
     assert Format.signed_percent(Decimal.new("0")) == "0,00\u00A0%"
+  end
+
+  test "changes in percent can have one decimal place" do
+    assert Format.signed_percent(Decimal.new("12.64"), 1) == "+12,6\u00A0%"
+    assert Format.signed_percent(Decimal.new("-0.04"), 1) == "0,0\u00A0%"
   end
 
   test "dates are German" do

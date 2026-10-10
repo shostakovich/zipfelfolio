@@ -22,14 +22,24 @@ defmodule ZipfelfolioWeb.Format do
     Enum.join([group_thousands(whole) <> "," <> fraction, currency], " ") |> String.trim()
   end
 
-  @doc "Cents as whole euros, e.g. `149.118 €`; the € never wraps onto a line of its own."
-  def euros(cents), do: number(Decimal.div(cents, 100), 0, "") <> "\u00A0€"
+  @doc """
+  Cents as whole euros, e.g. `149.118 €`, or with `places` decimal places; the € never wraps onto
+  a line of its own.
+  """
+  def euros(cents, places \\ 0), do: number(Decimal.div(cents, 100), places, "") <> "\u00A0€"
 
   @doc "A change in cents as whole euros with its sign, e.g. `+562 €`."
   def signed_euros(cents), do: number(Decimal.div(cents, 100), 0, "+") <> "\u00A0€"
 
-  @doc "A change in percent with its sign, e.g. `+0,38 %`; the % never wraps onto a line of its own."
-  def signed_percent(%Decimal{} = percent), do: number(percent, 2, "+") <> "\u00A0%"
+  @doc """
+  A change in percent with its sign and two or `places` decimal places, e.g. `+0,38 %`; the %
+  never wraps onto a line of its own.
+  """
+  def signed_percent(%Decimal{} = percent, places \\ 2),
+    do: number(percent, places, "+") <> "\u00A0%"
+
+  @doc "`part` in percent of `whole`, for `percent/2` and `signed_percent/2`."
+  def percent_of(part, whole), do: part |> Decimal.mult(100) |> Decimal.div(whole)
 
   # German notation with a real minus sign; `plus` goes before a positive number.
   defp number(decimal, places, plus) do

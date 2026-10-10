@@ -1,7 +1,7 @@
 defmodule ZipfelfolioWeb.OverviewLive do
   use ZipfelfolioWeb, :live_view
 
-  alias Zipfelfolio.{LocalTime, MarketData, Period, Portfolios}
+  alias Zipfelfolio.{LocalTime, MarketData, Portfolios}
   alias ZipfelfolioWeb.Format
 
   # URL parameter, period and button label; the first is the default.
@@ -41,10 +41,42 @@ defmodule ZipfelfolioWeb.OverviewLive do
         </p>
       </.card>
 
-      <div :if={!@empty} class="row row-cols-2 row-cols-lg-4 g-3 mb-4">
-        <div class="col">
-          <.stat id="net-worth" label="Vermögen" value={Format.euros(@net_worth)}>
-            <:note class={tone(@change)}>{change_note(@change, @change_percent)}</:note>
+      <%!-- The net worth card spans the phone's width, so that seven digits fit. --%>
+      <div :if={!@empty} class="row g-3 mb-4 app-stats">
+        <div class="col-12 col-sm-6 col-lg-3">
+          <.stat id="net-worth" label="Vermögen" value={Format.euros(@overview.net_worth)}>
+            <:note class={tone(change_note(@change, @change_percent))}>
+              {change_note(@change, @change_percent)}
+            </:note>
+          </.stat>
+        </div>
+        <div class="col-6 col-lg-3">
+          <.stat
+            id="ttwror"
+            label={"TTWROR · #{period_label(@period)}"}
+            value={percent_text(@overview.ttwror, 2)}
+            value_class={tone(percent_text(@overview.ttwror, 2))}
+          >
+            <:note class="text-body-secondary">zeitgewichtet</:note>
+          </.stat>
+        </div>
+        <div class="col-6 col-lg-3">
+          <.stat
+            id="irr"
+            label={"IZF · #{period_label(@period)}"}
+            value={percent_text(@overview.irr, 1)}
+            value_class={tone(percent_text(@overview.irr, 1))}
+          >
+            <:note class="text-body-secondary">p. a., geldgewichtet</:note>
+          </.stat>
+        </div>
+        <div class="col-12 col-sm-6 col-lg-3">
+          <.stat
+            id="dividends"
+            label={"Dividenden #{@today.year}"}
+            value={Format.euros(@overview.dividends)}
+          >
+            <:note class="text-body-secondary">brutto</:note>
           </.stat>
         </div>
       </div>
@@ -67,6 +99,43 @@ defmodule ZipfelfolioWeb.OverviewLive do
           </div>
         </div>
       </section>
+
+      <section
+        :if={!@empty and @overview.portfolios != []}
+        class="card mb-4"
+        aria-labelledby="portfolios-title"
+      >
+        <div class="card-header">
+          <h2 class="fs-6 fw-semibold mb-0" id="portfolios-title">Depots</h2>
+        </div>
+        <ul class="list-group list-group-flush">
+          <li
+            :for={row <- @overview.portfolios}
+            id={"portfolio-#{row.portfolio.id}"}
+            class="list-group-item d-flex align-items-center gap-3"
+          >
+            <span class="app-avatar rounded-circle bg-primary-subtle text-primary-emphasis d-flex align-items-center justify-content-center">
+              <svg class="app-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m12 3 9 5-9 5-9-5zM3 13l9 5 9-5M3 17.5l9 5 9-5" />
+              </svg>
+            </span>
+            <span class="me-auto overflow-hidden">
+              <span class="d-block fw-semibold">{row.portfolio.name}</span>
+              <span class="d-block small text-body-secondary">{portfolio_note(row)}</span>
+            </span>
+            <span class="text-end text-nowrap">
+              <span class="d-block fw-bold tabular-nums">{Format.euros(row.value, 2)}</span>
+              <span
+                :if={row.securities > 0}
+                class={["small tabular-nums", tone(percent_text(row.ttwror, 1))]}
+              >
+                {percent_text(row.ttwror, 1)} YTD
+              </span>
+              <span :if={row.securities == 0} class="small text-body-secondary">nur Cash</span>
+            </span>
+          </li>
+        </ul>
+      </section>
     </Layouts.app>
     """
   end
@@ -74,6 +143,7 @@ defmodule ZipfelfolioWeb.OverviewLive do
   attr :id, :string, required: true
   attr :label, :string, required: true
   attr :value, :string, required: true
+  attr :value_class, :any, default: nil
 
   slot :note do
     attr :class, :any
@@ -85,7 +155,7 @@ defmodule ZipfelfolioWeb.OverviewLive do
       <div class="card-body">
         <div class="stat">
           <span class="stat-label">{@label}</span>
-          <span class="stat-value">{@value}</span>
+          <span class={["stat-value", @value_class]}>{@value}</span>
           <span :for={note <- @note} class={["small", note[:class]]}>{render_slot(note)}</span>
         </div>
       </div>
@@ -98,14 +168,31 @@ defmodule ZipfelfolioWeb.OverviewLive do
   defp change_note(change, percent),
     do: "#{Format.signed_euros(change)} heute (#{Format.signed_percent(percent)})"
 
-  defp tone(change) when change > 0, do: "text-success"
-  defp tone(change) when change < 0, do: "text-danger"
-  defp tone(_change), do: "text-body-secondary"
-
   defp period_text(:six_months), do: "der letzten sechs Monate"
   defp period_text(:year_to_date), do: "seit Jahresbeginn"
   defp period_text(:one_year), do: "des letzten Jahres"
   defp period_text(:max), do: "seit der ersten Buchung"
+
+  defp period_label(period),
+    do: Enum.find_value(@periods, fn {_param, p, label} -> p == period && label end)
+
+  # A rate of return as a fraction, in percent; nil where there is none.
+  defp percent_text(nil, _places), do: "–"
+  defp percent_text(rate, places), do: rate |> in_percent() |> Format.signed_percent(places)
+
+  defp in_percent(rate), do: Decimal.from_float(rate * 100)
+
+  # Each part stays on one line.
+  defp portfolio_note(%{securities: count, account: account, balance: balance}) do
+    Enum.join(
+      [securities(count) | List.wrap(account && "Konto\u00A0#{Format.euros(balance, 2)}")],
+      " · "
+    )
+  end
+
+  defp securities(0), do: "keine\u00A0Wertpapiere"
+  defp securities(1), do: "1\u00A0Wertpapier"
+  defp securities(count), do: "#{count}\u00A0Wertpapiere"
 
   @impl true
   def mount(_params, _session, socket) do
@@ -118,56 +205,49 @@ defmodule ZipfelfolioWeb.OverviewLive do
 
     empty = Portfolios.list_portfolios(scope) == [] and Portfolios.list_accounts(scope) == []
 
-    {:ok, socket |> assign(page_title: "Übersicht", empty: empty) |> load_net_worth()}
+    {:ok, assign(socket, page_title: "Übersicht", empty: empty)}
   end
 
   @impl true
-  def handle_params(params, _uri, socket) do
-    {:noreply, socket |> assign(period: period(params["period"])) |> push_chart()}
-  end
+  def handle_params(params, _uri, socket),
+    do: {:noreply, socket |> assign(period: period(params["period"])) |> load_overview()}
 
   defp period(param), do: Map.get(@period_params, param, :six_months)
 
-  defp load_net_worth(%{assigns: %{empty: true}} = socket), do: socket
+  @impl true
+  def handle_info(:market_data_updated, socket), do: {:noreply, load_overview(socket)}
 
-  defp load_net_worth(socket) do
+  defp load_overview(%{assigns: %{empty: true}} = socket), do: socket
+
+  defp load_overview(socket) do
     today = LocalTime.today()
-    yesterday = Date.add(today, -1)
+    overview = Portfolios.overview(socket.assigns.current_scope, socket.assigns.period, today)
+    change = overview.net_worth - overview.net_worth_yesterday
 
-    %{^today => net_worth, ^yesterday => before} =
-      Portfolios.net_worth(socket.assigns.current_scope, [yesterday, today])
-
-    change = net_worth - before
-    assign(socket, net_worth: net_worth, change: change, change_percent: percent(change, before))
+    socket
+    |> assign(
+      today: today,
+      overview: overview,
+      change: change,
+      change_percent: change_percent(change, overview.net_worth_yesterday)
+    )
+    |> push_chart(overview.chart)
   end
 
   # Relative to yesterday's net worth, when there was any.
-  defp percent(_change, before) when before <= 0, do: nil
-  defp percent(change, before), do: change |> Decimal.mult(100) |> Decimal.div(before)
+  defp change_percent(_change, before) when before <= 0, do: nil
+  defp change_percent(change, before), do: Format.percent_of(change, before)
 
-  # The hook draws the chart once connected.
-  defp push_chart(%{assigns: %{empty: true}} = socket), do: socket
-
-  defp push_chart(socket) do
-    if connected?(socket),
-      do: push_event(socket, "net-worth-chart", chart(socket.assigns)),
-      else: socket
+  # The hook draws the chart once connected; amounts in cents.
+  defp push_chart(socket, chart) do
+    if connected?(socket) do
+      push_event(socket, "net-worth-chart", %{
+        dates: Enum.map(chart, & &1.date),
+        net_worth: Enum.map(chart, & &1.net_worth),
+        invested_capital: Enum.map(chart, & &1.invested_capital)
+      })
+    else
+      socket
+    end
   end
-
-  # Amounts in cents, per day of the period that the chart shows.
-  defp chart(%{current_scope: scope, period: period}) do
-    first_day = Portfolios.first_transaction_date(scope)
-    days = period |> Period.range(LocalTime.today(), first_day) |> Period.chart_days()
-    history = Portfolios.history(scope, days)
-
-    %{
-      dates: Enum.map(history, & &1.date),
-      net_worth: Enum.map(history, & &1.net_worth),
-      invested_capital: Enum.map(history, & &1.invested_capital)
-    }
-  end
-
-  @impl true
-  def handle_info(:market_data_updated, socket),
-    do: {:noreply, socket |> load_net_worth() |> push_chart()}
 end

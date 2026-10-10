@@ -1,18 +1,16 @@
 defmodule Zipfelfolio.Valuation do
   @moduledoc """
-  Holdings, account balances, net worth and invested capital, computed from transactions and a
-  `Market` on every request (ADR 0002). Pure, without the database, and computed as PP does so
-  that the figures match PP's. Amounts in cents, shares and prices × 10⁸.
+  Holdings, account balances, net worth, invested capital and gross dividends, computed from
+  transactions and a `Market` on every request (ADR 0002). Pure, without the database, and
+  computed as PP does so that the figures match PP's. Amounts in cents, shares and prices × 10⁸.
   """
 
   alias Zipfelfolio.Portfolios.Transaction
-  alias Zipfelfolio.Valuation.{Holding, Market}
+  alias Zipfelfolio.Valuation.{Filter, Holding, Market}
 
   @credits [:deposit, :sell, :dividend, :interest, :tax_refund, :fee_refund]
   @debits [:removal, :buy, :interest_charge, :tax, :fee]
   @purchases [:buy, :inbound_delivery]
-  @transferals_in [:deposit, :inbound_delivery]
-  @transferals_out [:removal, :outbound_delivery]
 
   # PP multiplies shares and price to ten significant digits.
   @pp_math %Decimal.Context{precision: 10, rounding: :half_up}
@@ -149,16 +147,17 @@ defmodule Zipfelfolio.Valuation do
   defp gross_value_unit(t), do: Enum.find(t.units, &(&1.type == :gross_value))
 
   # The transactions up to a day, added up: the balance per account, the shares and the last
-  # transaction that moved them per security over all portfolios, and invested capital.
+  # transaction that moved them per security over the portfolios, and invested capital.
   @empty_ledger %{balances: %{}, shares: %{}, last: %{}, invested_capital: 0}
 
   @doc """
   Net worth and invested capital on each of `dates`, in euro cents and in order of date, from one
-  pass over the transactions. `accounts` give the currency of each balance. Invested capital
-  converts each transferal at the ECB rate of its own day, so `market` needs the rates from the
-  first transaction on.
+  pass over the transactions. `accounts` give the currency of each balance. With a `filter`, net
+  worth is the value of its portfolios and accounts, and invested capital the money its edge
+  brought in or took out. Invested capital converts each transferal at the ECB rate of its own
+  day, so `market` needs the rates from the first transaction on.
   """
-  def history(transactions, accounts, %Market{} = market, dates) do
+  def history(transactions, accounts, %Market{} = market, dates, filter \\ Filter.all()) do
     currencies = Map.new(accounts, &{&1.id, &1.currency})
     transactions = Enum.sort_by(transactions, & &1.date_time, NaiveDateTime)
 
@@ -166,7 +165,7 @@ defmodule Zipfelfolio.Valuation do
     |> Enum.sort(Date)
     |> Enum.map_reduce({transactions, @empty_ledger}, fn date, {pending, ledger} ->
       {due, pending} = Enum.split_while(pending, &on_or_before?(&1, date))
-      ledger = Enum.reduce(due, ledger, &book(&2, &1, market))
+      ledger = Enum.reduce(due, ledger, &book(&2, &1, filter, market))
 
       point = %{
         date: date,
@@ -179,14 +178,14 @@ defmodule Zipfelfolio.Valuation do
     |> elem(0)
   end
 
-  defp book(ledger, %Transaction{} = t, market) do
+  defp book(ledger, %Transaction{} = t, filter, market) do
     ledger = %{
       ledger
-      | balances: add(ledger.balances, cash_moved(t)),
-        invested_capital: ledger.invested_capital + transferal(t, market)
+      | balances: add(ledger.balances, inside(cash_moved(t), &Filter.account?(filter, &1))),
+        invested_capital: ledger.invested_capital + transferals(filter, t, market)
     }
 
-    case shares_moved(t) do
+    case inside(shares_moved(t), &Filter.portfolio?(filter, &1)) do
       [] ->
         ledger
 
@@ -200,6 +199,8 @@ defmodule Zipfelfolio.Valuation do
         }
     end
   end
+
+  defp inside(moved, included?), do: Enum.filter(moved, fn {id, _amount} -> included?.(id) end)
 
   # The first of the latest, as `Enum.max_by/3` in `last_price/2` picks it.
   defp latest(last, t),
@@ -229,14 +230,26 @@ defmodule Zipfelfolio.Valuation do
   end
 
   # Money from outside, in euros at the rate of its day, as PP counts invested capital.
-  defp transferal(%Transaction{type: type} = t, market) when type in @transferals_in,
-    do: in_euros(t, market)
+  defp transferals(filter, t, market) do
+    for {kind, amount, currency} <- Filter.flows(filter, t),
+        kind in [:inbound, :outbound],
+        reduce: 0 do
+      sum ->
+        euros = Market.to_euros(market, amount, currency, NaiveDateTime.to_date(t.date_time))
+        if kind == :inbound, do: sum + euros, else: sum - euros
+    end
+  end
 
-  defp transferal(%Transaction{type: type} = t, market) when type in @transferals_out,
-    do: -in_euros(t, market)
-
-  defp transferal(_transaction, _market), do: 0
-
-  defp in_euros(t, market),
-    do: Market.to_euros(market, t.amount, t.currency, NaiveDateTime.to_date(t.date_time))
+  @doc """
+  The dividends booked on the days of `range` before taxes and fees, in euro cents, each at the
+  ECB rate of its day, as PP's gross value of a dividend.
+  """
+  def gross_dividends(transactions, %Market{} = market, %Date.Range{} = range) do
+    for %Transaction{type: :dividend} = t <- transactions,
+        date = NaiveDateTime.to_date(t.date_time),
+        date in range,
+        reduce: 0 do
+      sum -> sum + Market.to_euros(market, gross_value(t, t.currency), t.currency, date)
+    end
+  end
 end

@@ -4,10 +4,10 @@ defmodule Zipfelfolio.ValuationTest do
   import Zipfelfolio.PortfoliosFixtures, only: [money: 1, shares: 1]
   import Zipfelfolio.SecuritiesFixtures, only: [price: 1]
 
-  alias Zipfelfolio.Portfolios.{Account, Transaction, TransactionUnit}
+  alias Zipfelfolio.Portfolios.{Account, Portfolio, Transaction, TransactionUnit}
   alias Zipfelfolio.Securities.Security
   alias Zipfelfolio.Valuation
-  alias Zipfelfolio.Valuation.{Holding, Market}
+  alias Zipfelfolio.Valuation.{Filter, Holding, Market}
 
   @thursday ~D[2026-10-01]
   @friday ~D[2026-10-02]
@@ -400,6 +400,83 @@ defmodule Zipfelfolio.ValuationTest do
         )
 
       assert invested_capital(transactions, market, @saturday) == money(100)
+    end
+
+    test "with a filter values only its portfolios and accounts", ctx do
+      transactions = [
+        transaction(:deposit, @thursday, account_id: 10, amount: money(1_000)),
+        transaction(:deposit, @thursday, account_id: 11, currency: "USD", amount: money(7)),
+        in_portfolio(:buy, @friday, 1, 20, 4, account_id: 10, amount: money(400)),
+        in_portfolio(:buy, @friday, 2, 20, 1, account_id: 11, amount: money(100))
+      ]
+
+      filter = Filter.new([%Portfolio{id: 1}], [10], transactions)
+      market = market([{20, @friday, price(110)}])
+
+      assert [%{net_worth: net_worth}] =
+               Valuation.history(transactions, ctx.accounts, market, [@friday], filter)
+
+      assert net_worth == money(600 + 440)
+    end
+
+    test "with a filter, invested capital is the money its edge brings in or takes out", ctx do
+      transactions = [
+        transaction(:deposit, @thursday, account_id: 11, amount: money(1_000)),
+        in_portfolio(:buy, @friday, 1, 20, 4, account_id: 11, amount: money(400)),
+        in_portfolio(:outbound_delivery, @saturday, 1, 20, 1, amount: money(90))
+      ]
+
+      filter = Filter.new([%Portfolio{id: 1}], [], transactions)
+
+      assert [%{invested_capital: friday}, %{invested_capital: saturday}] =
+               Valuation.history(
+                 transactions,
+                 ctx.accounts,
+                 market([]),
+                 [@friday, @saturday],
+                 filter
+               )
+
+      assert {friday, saturday} == {money(400), money(310)}
+    end
+  end
+
+  describe "gross_dividends/3" do
+    defp dividend(date, amount, attrs \\ []) do
+      transaction(:dividend, date, [account_id: 10, security_id: 20, amount: amount] ++ attrs)
+    end
+
+    test "adds up the dividends of the days before taxes and fees" do
+      units = [
+        %TransactionUnit{type: :tax, amount: money(4), currency: "EUR"},
+        %TransactionUnit{type: :fee, amount: money(1), currency: "EUR"},
+        %TransactionUnit{type: :gross_value, amount: money(20), currency: "EUR"}
+      ]
+
+      transactions = [
+        dividend(@thursday, money(15), units: units),
+        dividend(@friday, money(30)),
+        dividend(@saturday, money(99)),
+        transaction(:interest, @friday, account_id: 10, amount: money(7))
+      ]
+
+      assert Valuation.gross_dividends(transactions, market([]), Date.range(@thursday, @friday)) ==
+               money(50)
+    end
+
+    test "converts each dividend at the ECB rate of its day" do
+      transactions = [
+        dividend(@thursday, money(11), account_id: 11, currency: "USD"),
+        dividend(@friday, money(25), account_id: 11, currency: "USD")
+      ]
+
+      market =
+        market([],
+          rates: [{"USD", @thursday, Decimal.new("1.10")}, {"USD", @friday, Decimal.new("1.25")}]
+        )
+
+      assert Valuation.gross_dividends(transactions, market, Date.range(@thursday, @friday)) ==
+               money(30)
     end
   end
 end
