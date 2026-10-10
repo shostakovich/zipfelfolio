@@ -54,8 +54,9 @@ public class SampleFile
         var client = new Client();
         client.setBaseCurrency("EUR");
 
-        // PP's default attribute types include TER and provider.
+        // PP's default attribute types include TER, fund size and provider.
         var ter = attributeType(client, "ter");
+        var fundSize = attributeType(client, "aum");
         var provider = attributeType(client, "vendor");
 
         var world = new Security("iShares Core MSCI World UCITS ETF", "EUR");
@@ -64,6 +65,7 @@ public class SampleFile
         world.setTickerSymbol("EUNL.DE");
         world.setFeed("YAHOO");
         world.getAttributes().put(ter, 0.002);
+        world.getAttributes().put(fundSize, 1_234_500_000_000L);
         world.getAttributes().put(provider, "iShares");
         world.addPrice(new SecurityPrice(LocalDate.parse("2024-01-02"), e8(85.10)));
         world.addPrice(new SecurityPrice(LocalDate.parse("2024-02-01"), e8(86.25)));

@@ -57,6 +57,14 @@ defmodule ZipfelfolioWeb.FormatTest do
     assert Format.percent(Decimal.new("100"), 0) == "100\u00A0%"
   end
 
+  test "fund sizes are in billions with one decimal place, below 100 million in millions" do
+    assert Format.fund_size(1_784_999_999_999, "\u20AC") == "17,8\u00A0Mrd.\u00A0\u20AC"
+    assert Format.fund_size(40_000_000_000, "\u20AC") == "0,4\u00A0Mrd.\u00A0\u20AC"
+    assert Format.fund_size(10_000_000_000, "USD") == "0,1\u00A0Mrd.\u00A0USD"
+    assert Format.fund_size(9_949_999_999, "\u20AC") == "99\u00A0Mio.\u00A0\u20AC"
+    assert Format.fund_size(nil, "\u20AC") == "\u2013"
+  end
+
   test "changes in percent carry their sign and two decimal places" do
     assert Format.signed_percent(Decimal.new("0.38")) == "+0,38\u00A0%"
     assert Format.signed_percent(Decimal.new("-2.505")) == "−2,51\u00A0%"

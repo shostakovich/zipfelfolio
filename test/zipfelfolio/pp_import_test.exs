@@ -107,7 +107,14 @@ defmodule Zipfelfolio.PPImportTest do
     test "keeps attributes, latest price and price history", %{scope: scope} do
       world = security("IE00B4L5Y983")
 
-      assert world.attributes == %{"ter" => 0.002, "vendor" => "iShares"}
+      assert world.attributes == %{
+               "ter" => 0.002,
+               "aum" => 1_234_500_000_000,
+               "vendor" => "iShares"
+             }
+
+      assert Decimal.equal?(Security.ter(world), Decimal.new("0.002"))
+      assert Security.fund_size(world) == 1_234_500_000_000
       assert world.latest_date == ~D[2024-03-04]
       assert world.latest_close == 9_095_000_000
 

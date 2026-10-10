@@ -163,8 +163,8 @@ defmodule Zipfelfolio.PortfoliosTest do
   end
 
   describe "holdings/3" do
-    defp security_at(close, name) do
-      security = security_fixture(quote_feed: :manual, name: name)
+    defp security_at(close, name, attrs \\ []) do
+      security = security_fixture([quote_feed: :manual, name: name] ++ attrs)
       price_fixture(security, @friday, price(close), :pp)
       security
     end
@@ -288,6 +288,33 @@ defmodule Zipfelfolio.PortfoliosTest do
       assert holdings.portfolio == nil
       assert group_names(holdings) == ["Alt", "Langfristig"]
       assert [[_held], []] = Enum.map(holdings.groups, & &1.holdings)
+    end
+
+    test "gives the costs of the funds shown, a fund in several portfolios once", ctx do
+      account = account_fixture(ctx.scope)
+      deposit_on_friday(ctx.scope, account, 5_000)
+      plan = portfolio_fixture(ctx.scope, %{name: "Sparplan", reference_account_id: account.id})
+      world = security_at(100, "Welt", attributes: %{"ter" => 0.002})
+      em = security_at(10, "Schwellenländer", attributes: %{"ter" => 0.005})
+      buy(ctx.scope, ctx.portfolio, world, 60, 6_000)
+      buy(ctx.scope, plan, world, 20, 2_000)
+      buy(ctx.scope, plan, em, 200, 2_000)
+
+      all = Portfolios.holdings(ctx.scope, nil, @saturday)
+
+      assert [%{security: ^world, value: 800_000}, %{security: ^em, value: 200_000}] =
+               all.costs.funds
+
+      assert Decimal.equal?(all.costs.ter, Decimal.new("0.0026"))
+      assert all.costs.per_year == money(26)
+
+      selected = Portfolios.holdings(ctx.scope, plan.id, @saturday)
+
+      assert [%{security: ^em, value: 200_000}, %{security: ^world, value: 200_000}] =
+               selected.costs.funds
+
+      assert Decimal.equal?(selected.costs.ter, Decimal.new("0.0035"))
+      assert selected.costs.per_year == money(14)
     end
 
     test "shows all portfolios for one of another user", ctx do

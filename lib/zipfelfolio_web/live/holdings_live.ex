@@ -136,7 +136,68 @@ defmodule ZipfelfolioWeb.HoldingsLive do
           </table>
         </div>
       </section>
+
+      <div :if={!@empty and @holdings.costs.funds != []} class="row g-4">
+        <div class="col-xxl-5">
+          <.costs costs={@holdings.costs} />
+        </div>
+      </div>
     </Layouts.app>
+    """
+  end
+
+  attr :costs, :map, required: true
+
+  defp costs(assigns) do
+    ~H"""
+    <%!-- On a phone the fund size goes under the name. --%>
+    <section id="costs" class="card h-100" aria-labelledby="costs-title">
+      <div class="card-header d-flex flex-wrap align-items-baseline justify-content-between gap-2">
+        <h2 class="fs-6 fw-semibold mb-0" id="costs-title">Kosten</h2>
+        <span :if={@costs.ter} class="small text-body-secondary">
+          gewichtet {ter(@costs.ter)}
+        </span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 tabular-nums">
+          <thead>
+            <tr>
+              <th scope="col">Wertpapier</th>
+              <th scope="col" class="text-end">TER</th>
+              <th scope="col" class="text-end d-none d-sm-table-cell">Größe</th>
+              <th scope="col" class="text-end text-nowrap">pro Jahr</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={fund <- @costs.funds} id={"cost-#{fund.security.id}"}>
+              <td>
+                {fund.security.name}
+                <div :if={fund.fund_size} class="small text-body-secondary text-nowrap d-sm-none">
+                  {fund_size(fund)}
+                </div>
+              </td>
+              <td class="text-end text-nowrap">{ter(fund.ter)}</td>
+              <td class="text-end text-nowrap d-none d-sm-table-cell">{fund_size(fund)}</td>
+              <td class="text-end text-nowrap">{per_year(fund.per_year)}</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr id="costs-total" class="fw-bold">
+              <th scope="row">Gesamt</th>
+              <td class="text-end text-nowrap">{ter(@costs.ter)}</td>
+              <td class="d-none d-sm-table-cell"></td>
+              <td class="text-end text-nowrap">{per_year(@costs.per_year)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div class="card-footer small text-body-secondary">
+        Laufende Kosten, die im Kurs stecken. Ordergebühren kommen aus den Buchungen.
+        <span :if={Enum.any?(@costs.funds, &is_nil(&1.ter))}>
+          Wertpapiere ohne TER in Portfolio Performance zählen nicht mit.
+        </span>
+      </div>
+    </section>
     """
   end
 
@@ -257,8 +318,18 @@ defmodule ZipfelfolioWeb.HoldingsLive do
   defp account_note(%{portfolio: nil}, account), do: account.currency
   defp account_note(_portfolio_group, account), do: "Referenzkonto · #{account.currency}"
 
-  defp price(%{price: price, security: %{currency: "EUR"}}), do: Format.price(price, "€")
-  defp price(%{price: price, security: security}), do: Format.price(price, security.currency)
+  defp price(%{price: price, security: security}), do: Format.price(price, currency(security))
+
+  defp currency(%{currency: "EUR"}), do: "€"
+  defp currency(%{currency: currency}), do: currency
+
+  defp ter(nil), do: "–"
+  defp ter(ter), do: ter |> Decimal.mult(100) |> Format.percent(2)
+
+  defp fund_size(fund), do: Format.fund_size(fund.fund_size, currency(fund.security))
+
+  defp per_year(nil), do: "–"
+  defp per_year(cents), do: Format.euros(cents)
 
   defp share(_value, net_worth) when net_worth <= 0, do: nil
   defp share(value, net_worth), do: value |> Format.percent_of(net_worth) |> Format.percent()

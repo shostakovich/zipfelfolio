@@ -3,7 +3,7 @@ defmodule Zipfelfolio.Portfolios do
 
   import Ecto.Query, warn: false
 
-  alias Zipfelfolio.{ExchangeRates, Performance, Period, Repo, Securities, Valuation}
+  alias Zipfelfolio.{Costs, ExchangeRates, Performance, Period, Repo, Securities, Valuation}
   alias Zipfelfolio.Portfolios.{Account, Portfolio, SavingsPlan, Transaction}
   alias Zipfelfolio.Users.Scope
   alias Zipfelfolio.Valuation.{Filter, Market, PurchaseValue}
@@ -152,6 +152,7 @@ defmodule Zipfelfolio.Portfolios do
     Each group has the `value` of its rows and the `purchase_value` and `gain` of its holdings.
   - `total`: `value`, `purchase_value` and `gain` of the groups shown
   - `net_worth`: the value of all holdings and accounts, of which each row shows its share
+  - `costs`: what the securities shown cost a year, see `Costs.of/1`; accounts hold no funds
 
   A holding has its `security`, `shares`, `price`, `value`, `purchase_value` and `gain`, an
   account its `value`. Retired accounts are left out once they are empty.
@@ -177,7 +178,8 @@ defmodule Zipfelfolio.Portfolios do
       portfolio: portfolio,
       groups: groups,
       total: totals(groups, groups),
-      net_worth: Enum.sum_by(rows.holdings ++ rows.accounts, & &1.value)
+      net_worth: Enum.sum_by(rows.holdings ++ rows.accounts, & &1.value),
+      costs: groups |> Enum.flat_map(& &1.holdings) |> Costs.of()
     }
   end
 

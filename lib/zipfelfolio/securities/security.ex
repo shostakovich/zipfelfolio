@@ -31,6 +31,22 @@ defmodule Zipfelfolio.Securities.Security do
     timestamps()
   end
 
+  # The ids of PP's built-in attributes, which PP fixes.
+  @ter "ter"
+  @fund_size "aum"
+
+  @doc "The TER from PP's attribute as a fraction, e.g. 0.002 for 0.20 %; nil without one."
+  def ter(%__MODULE__{attributes: %{@ter => ter}}) when is_float(ter), do: Decimal.from_float(ter)
+  def ter(%__MODULE__{attributes: %{@ter => ter}}) when is_integer(ter), do: Decimal.new(ter)
+  def ter(%__MODULE__{}), do: nil
+
+  @doc """
+  The fund size from PP's attribute in cents, PP's plain amount without a currency; nil without
+  one.
+  """
+  def fund_size(%__MODULE__{attributes: %{@fund_size => size}}) when is_integer(size), do: size
+  def fund_size(%__MODULE__{}), do: nil
+
   def quote_feed_changeset(security, attrs) do
     security
     |> cast(attrs, [:quote_feed, :symbol])

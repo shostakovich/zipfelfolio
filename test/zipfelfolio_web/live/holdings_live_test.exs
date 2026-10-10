@@ -79,6 +79,53 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
     assert row =~ "+7,4\u00A0%"
   end
 
+  test "shows the costs of the held funds, weighted by value", ctx do
+    portfolio = portfolio_fixture(ctx.scope)
+
+    world =
+      security(80, name: "All-World", attributes: %{"ter" => 0.002, "aum" => 1_780_000_000_000})
+
+    em = security(20, name: "Emerging Markets", attributes: %{"ter" => 0.005})
+    unknown = security(10, name: "Ohne TER")
+    deliver(ctx.scope, portfolio, world, 100, 8_000)
+    deliver(ctx.scope, portfolio, em, 100, 2_000)
+    deliver(ctx.scope, portfolio, unknown, 100, 1_000)
+
+    {:ok, lv, _html} = live(ctx.conn, ~p"/holdings")
+
+    assert has_element?(lv, "#costs", "gewichtet 0,26\u00A0%")
+
+    assert cells(lv, "#cost-#{world.id}") ==
+             [
+               "All-World 17,8\u00A0Mrd.\u00A0€",
+               "0,20\u00A0%",
+               "17,8\u00A0Mrd.\u00A0€",
+               "16\u00A0€"
+             ]
+
+    assert cells(lv, "#cost-#{em.id}") == ["Emerging Markets", "0,50\u00A0%", "–", "10\u00A0€"]
+    assert cells(lv, "#cost-#{unknown.id}") == ["Ohne TER", "–", "–", "–"]
+    assert cells(lv, "#costs-total") == ["Gesamt", "0,26\u00A0%", "", "26\u00A0€"]
+    assert has_element?(lv, "#costs", "Wertpapiere ohne TER")
+  end
+
+  test "shows no costs without securities", ctx do
+    deposit(ctx.scope, account_fixture(ctx.scope), 100)
+
+    {:ok, lv, _html} = live(ctx.conn, ~p"/holdings")
+
+    refute has_element?(lv, "#costs")
+  end
+
+  # The text of each cell of the row at `selector`, with its whitespace collapsed.
+  defp cells(lv, selector) do
+    lv
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query("#{selector} > :is(th, td)")
+    |> Enum.map(&(&1 |> LazyHTML.text() |> String.split() |> Enum.join(" ")))
+  end
+
   describe "an account two portfolios settle against" do
     setup %{scope: scope} do
       account = account_fixture(scope, %{name: "K"})

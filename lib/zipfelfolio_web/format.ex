@@ -45,6 +45,18 @@ defmodule ZipfelfolioWeb.Format do
   def percent(%Decimal{} = percent, places \\ 1), do: number(percent, places, "") <> "\u00A0%"
 
   @doc """
+  A fund size in cents in billions with one decimal place, e.g. `17,8 Mrd. €`, below 100 million
+  in whole millions, e.g. `85 Mio. €`; it never wraps.
+  """
+  def fund_size(nil, _currency), do: "–"
+
+  def fund_size(cents, currency) when cents >= 10_000_000_000,
+    do: number(Decimal.div(cents, 100_000_000_000), 1, "") <> "\u00A0Mrd.\u00A0" <> currency
+
+  def fund_size(cents, currency),
+    do: number(Decimal.div(cents, 100_000_000), 0, "") <> "\u00A0Mio.\u00A0" <> currency
+
+  @doc """
   A change in percent with its sign and two or `places` decimal places, e.g. `+0,38 %`; the %
   never wraps onto a line of its own.
   """
