@@ -95,6 +95,15 @@ Self-hosted portfolio tracker for one household. Replaces Portfolio Performance 
 **Unit** · _de:_ Bruttobetrag, Gebühr, Steuer
 - A part of a transaction's amount: gross value, fee or tax, possibly in a foreign currency with its exchange rate.
 
+**Receipt** · _de:_ Beleg
+- A bank's PDF for a **Transaction**, such as a purchase confirmation or a dividend statement, uploaded or taken
+  from Paperless. It stays attached to the transaction booked from it.
+- _Avoid:_ Document, statement
+
+**Inbox** · _de:_ Eingang
+- The **Receipts** waiting for a **User** to confirm, correct or discard what was recognised in them. Nothing is
+  booked without confirmation.
+
 **Savings plan** · _de:_ Sparplan
 - A recurring purchase, deposit, removal or interest payment with a start, an interval and an amount; it knows the
   transactions it produced.
