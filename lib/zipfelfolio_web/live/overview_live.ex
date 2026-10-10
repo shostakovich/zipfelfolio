@@ -144,29 +144,6 @@ defmodule ZipfelfolioWeb.OverviewLive do
     """
   end
 
-  attr :id, :string, required: true
-  attr :label, :string, required: true
-  attr :value, :string, required: true
-  attr :value_class, :any, default: nil
-
-  slot :note do
-    attr :class, :any
-  end
-
-  defp stat(assigns) do
-    ~H"""
-    <div class="card h-100" id={@id}>
-      <div class="card-body">
-        <div class="stat">
-          <span class="stat-label">{@label}</span>
-          <span class={["stat-value", @value_class]}>{@value}</span>
-          <span :for={note <- @note} class={["small", note[:class]]}>{render_slot(note)}</span>
-        </div>
-      </div>
-    </div>
-    """
-  end
-
   defp change_note(change, nil), do: "#{Format.signed_euros(change)} heute"
 
   defp change_note(change, percent),

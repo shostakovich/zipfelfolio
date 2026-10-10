@@ -393,6 +393,41 @@ defmodule Zipfelfolio.PortfoliosTest do
     end
   end
 
+  describe "dividends/2" do
+    defp dividend(scope, security, date, net, tax) do
+      transaction_fixture(scope, date,
+        type: :dividend,
+        account_id: account_fixture(scope).id,
+        security_id: security.id,
+        shares: shares(10),
+        amount: money(net),
+        units: [%TransactionUnit{type: :tax, amount: money(tax), currency: "EUR"}]
+      )
+    end
+
+    test "gives the user's dividends received, per year, this year and last", ctx do
+      security = security_fixture(quote_feed: :manual)
+      dividend(ctx.scope, security, ~D[2026-03-01], 15, 5)
+      dividend(ctx.scope, security, ~D[2025-07-01], 40, 10)
+      dividend(user_scope_fixture(), security, ~D[2026-04-01], 70, 0)
+
+      result = Portfolios.dividends(ctx.scope, @saturday)
+
+      assert Enum.map(result.received, &{&1.date, &1.security.id, &1.gross, &1.net}) == [
+               {~D[2026-03-01], security.id, money(20), money(15)},
+               {~D[2025-07-01], security.id, money(50), money(40)}
+             ]
+
+      assert Enum.map(result.years, &{&1.year, &1.gross, &1.net}) == [
+               {2026, money(20), money(15)},
+               {2025, money(50), money(40)}
+             ]
+
+      assert result.this_year == %{gross: money(20), net: money(15)}
+      assert result.last_year == %{gross: money(50), net: money(40)}
+    end
+  end
+
   describe "security/4" do
     defp trade(scope, type, portfolio, security, date, count, amount) do
       transaction_fixture(scope, date,

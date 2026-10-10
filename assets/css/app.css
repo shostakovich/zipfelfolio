@@ -12,6 +12,36 @@
 .app-swatch { display: inline-block; width: .75rem; height: .75rem; border-radius: .2rem; vertical-align: -.05rem; }
 .app-swatch-primary { background: var(--felt-primary); }
 .app-swatch-secondary { background: var(--felt-secondary); }
+:root {
+  --app-year-taupe: light-dark(var(--felt-taupe), #a89a89); --app-year-mustard: light-dark(var(--felt-mustard), #d3a43a);
+  --app-year-now: light-dark(var(--felt-primary), #5a82c2);
+}
+.app-swatch-taupe { background: var(--app-year-taupe); }
+.app-swatch-mustard { background: var(--app-year-mustard); }
+.app-swatch-now { background: var(--app-year-now); }
+.app-card-table > * > tr > :first-child { padding-left: var(--felt-card-spacer-x); }
+.app-card-table > * > tr > :last-child { padding-right: var(--felt-card-spacer-x); }
+.app-card-table > tbody:last-of-type > tr:last-child > * { border-bottom-width: 0; }
+.app-card-title { font-size: 1rem; font-weight: 600; }
+.app-year-table > tbody > tr > th { font-weight: 400; }
+@media (min-width: 768px) {
+  .app-year-table { table-layout: fixed; }
+  .app-year-table > tbody > tr > th { font-weight: 500; }
+  .app-year-table > thead > tr > :first-child { width: 6rem; }
+  .app-year-table > thead > tr > :last-child { width: 7.5rem; }
+}
+.app-received-year > * { --felt-table-bg: var(--felt-surface-raised); padding-block: .75rem !important; font-weight: 600; }
+.app-received-year > td:not(:last-child) { font-weight: 500; }
+.app-received-year > td:last-child { font-weight: 700; }
+@media (max-width: 575.98px) {
+  .app-card-table { --felt-card-spacer-x: 1rem; }
+  .app-received > tbody > tr > * { padding-block: .625rem; }
+  /* The date column is hidden, so the security's column is the first one shown. */
+  .app-received > * > tr > :nth-child(2) { padding-inline: var(--felt-card-spacer-x); }
+}
+.app-received-phone { display: grid; grid-template-columns: 1fr auto; align-items: start; column-gap: 1rem; row-gap: .125rem; }
+.app-received-phone > .app-received-name { grid-column: 1 / -1; margin-bottom: .125rem; line-height: 1.25; }
+.app-more { min-height: 2.75rem; }
 /* The price chart's dots: a purchase as a ring, a sale filled. */
 .app-dot { display: inline-block; width: .7rem; height: .7rem; border-radius: 50%; border: 2px solid var(--felt-success-text); vertical-align: -.05rem; }
 .app-dot-sale { border: none; background: var(--felt-danger-text); }

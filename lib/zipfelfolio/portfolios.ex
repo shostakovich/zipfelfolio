@@ -1,8 +1,8 @@
 defmodule Zipfelfolio.Portfolios do
   @moduledoc """
   Portfolios, accounts, their transactions and savings plans, each of one user, and what the
-  screens show of them: net worth, the overview, the holdings, the sidebar and the user's holding
-  of a security, computed from the transactions on every request.
+  screens show of them: net worth, the overview, the holdings, the dividends, the sidebar and the
+  user's holding of a security, computed from the transactions on every request.
   """
 
   import Ecto.Query, warn: false
@@ -11,6 +11,7 @@ defmodule Zipfelfolio.Portfolios do
     Allocation,
     Costs,
     Distributions,
+    Dividends,
     ExchangeRates,
     Performance,
     Period,
@@ -217,6 +218,28 @@ defmodule Zipfelfolio.Portfolios do
           do: allocation
 
     holdings |> Allocation.of(compositions) |> Map.put(:taxonomies, taxonomies)
+  end
+
+  @doc """
+  What the dividend screen shows on `today`, amounts in euro cents:
+
+  - `received`: every dividend booked, newest first, see `Dividends.received/2`
+  - `years`: the dividends per month and year since the first, see `Dividends.by_year/2`
+  - `this_year` up to `today` and `last_year` in all, each as `gross` and `net`
+  """
+  def dividends(%Scope{} = scope, %Date{} = today) do
+    transactions = list_transactions(scope)
+    # Each dividend converts at the rate of its pay date.
+    market = load_market(transactions, list_accounts(scope), today, :since_first_transaction)
+    received = Dividends.received(transactions, market)
+    last_year = Date.range(Date.new!(today.year - 1, 1, 1), Date.new!(today.year - 1, 12, 31))
+
+    %{
+      received: received,
+      years: Dividends.by_year(received, today),
+      this_year: Dividends.total(received, year_to_date(today)),
+      last_year: Dividends.total(received, last_year)
+    }
   end
 
   @doc """
