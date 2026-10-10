@@ -5,12 +5,13 @@ defmodule Zipfelfolio.MarketDataTest do
 
   alias Zipfelfolio.{
     ExchangeRates,
-    FakeCompositionSource,
     FakePriceFeed,
     FakeRateSource,
+    FakeSymbolSource,
     MarketData
   }
 
+  alias Zipfelfolio.MarketData.DivvyDiary.Response
   alias Zipfelfolio.Securities.Security
 
   @now ~U[2026-10-09 16:00:00.000000Z]
@@ -171,21 +172,29 @@ defmodule Zipfelfolio.MarketDataTest do
 
   describe "run_daily/1 with DivvyDiary" do
     defp composition(countries, sectors \\ %{}),
-      do: {:ok, %{countries: countries, sectors: sectors}}
+      do: {:ok, %{composition: %{countries: countries, sectors: sectors}, dividends: []}}
+
+    defp dividend(pay_date, per_share, currency \\ "USD"),
+      do: %{
+        ex_date: Date.add(pay_date, -14),
+        pay_date: pay_date,
+        per_share: per_share,
+        currency: currency
+      }
 
     test "stores the composition of each security with an ISIN; the next run replaces it" do
       security = security_fixture(isin: "IE00B3RBWM25")
-      FakeCompositionSource.stub(fn _isin -> composition(%{"US" => 1}, %{"Energy" => 1}) end)
+      FakeSymbolSource.stub(fn _isin -> composition(%{"US" => 1}, %{"Energy" => 1}) end)
 
       MarketData.run_daily(@now)
 
-      assert_received {:composition, "IE00B3RBWM25"}
+      assert_received {:symbol, "IE00B3RBWM25"}
 
       assert %{countries: %{"US" => 1}, sectors: %{"Energy" => 1}, fetched_at: @now} =
                composition_of(security)
 
       later = DateTime.add(@now, 1, :day)
-      FakeCompositionSource.stub(fn _isin -> composition(%{"JP" => 0.4, "BR" => 0.6}) end)
+      FakeSymbolSource.stub(fn _isin -> composition(%{"JP" => 0.4, "BR" => 0.6}) end)
 
       MarketData.run_daily(later)
 
@@ -195,24 +204,58 @@ defmodule Zipfelfolio.MarketDataTest do
       assert {countries, sectors} == {%{"JP" => 0.4, "BR" => 0.6}, %{}}
     end
 
-    test "asks nothing without an API key" do
-      security_fixture(isin: "IE00B3RBWM25")
-      FakeCompositionSource.stub(fn _isin -> composition(%{"US" => 1}) end, api_key: false)
+    test "stores the dividends of each security with an ISIN without forecasts; the next run replaces them" do
+      security = security_fixture(isin: "IE00B3RBWM25")
+      other = security_fixture(isin: "IE00B4L5Y983", name: "Other")
+      json = "test/fixtures/divvydiary/symbol.json" |> File.read!() |> JSON.decode!()
+      FakeSymbolSource.stub(fn _isin -> Response.symbol(json) end)
 
       MarketData.run_daily(@now)
 
-      refute_received {:composition, _isin}
+      assert dividends_of(security) == [
+               {~D[2026-03-12], ~D[2026-03-25], 15_000_000, "USD", @now},
+               {~D[2026-06-11], ~D[2026-06-24], 31_250_000, "USD", @now},
+               {~D[2026-09-10], ~D[2026-09-24], 20_000_000, "USD", @now}
+             ]
+
+      later = DateTime.add(@now, 1, :day)
+      announced = dividend(~D[2026-12-30], 51_000_000)
+
+      FakeSymbolSource.stub(fn
+        "IE00B3RBWM25" ->
+          {:ok, %{composition: %{countries: %{}, sectors: %{}}, dividends: [announced]}}
+
+        _isin ->
+          {:error, :unreachable}
+      end)
+
+      ExUnit.CaptureLog.capture_log(fn -> MarketData.run_daily(later) end)
+
+      assert dividends_of(security) == [
+               {~D[2026-12-16], ~D[2026-12-30], 51_000_000, "USD", later}
+             ]
+
+      assert length(dividends_of(other)) == 3
+    end
+
+    test "asks nothing without an API key" do
+      security_fixture(isin: "IE00B3RBWM25")
+      FakeSymbolSource.stub(fn _isin -> composition(%{"US" => 1}) end, api_key: false)
+
+      MarketData.run_daily(@now)
+
+      refute_received {:symbol, _isin}
     end
 
     test "asks neither for securities without an ISIN nor for retired ones" do
       security_fixture(isin: nil)
       security_fixture(isin: "")
       security_fixture(isin: "IE00B4L5Y983", retired: true)
-      FakeCompositionSource.stub()
+      FakeSymbolSource.stub()
 
       MarketData.run_daily(@now)
 
-      refute_received {:composition, _isin}
+      refute_received {:symbol, _isin}
     end
 
     test "a failed fetch keeps the stored composition and does not stop the others" do
@@ -221,7 +264,7 @@ defmodule Zipfelfolio.MarketDataTest do
       fine = security_fixture(isin: "IE00BKM4GZ66", name: "C")
       composition_fixture(failing, %{"US" => 1})
 
-      FakeCompositionSource.stub(fn
+      FakeSymbolSource.stub(fn
         "IE00B3RBWM25" -> {:error, {:http_status, 503}}
         "IE00B4L5Y983" -> {:error, :not_found}
         _isin -> composition(%{"BR" => 1})
@@ -240,7 +283,7 @@ defmodule Zipfelfolio.MarketDataTest do
       security_fixture(isin: "IE00B3RBWM25", name: "A")
       fine = security_fixture(isin: "IE00BKM4GZ66", name: "B")
 
-      FakeCompositionSource.stub(fn
+      FakeSymbolSource.stub(fn
         "IE00B3RBWM25" -> raise "composition exploded"
         _isin -> composition(%{"BR" => 1})
       end)
@@ -255,7 +298,7 @@ defmodule Zipfelfolio.MarketDataTest do
       security_fixture(isin: "IE00B3RBWM25", name: "A")
       fine = security_fixture(isin: "IE00BKM4GZ66", name: "B")
 
-      FakeCompositionSource.stub(fn
+      FakeSymbolSource.stub(fn
         "IE00B3RBWM25" -> exit({:noproc, [{"x-api-key", "SECRET"}]})
         _isin -> composition(%{"BR" => 1})
       end)
@@ -268,13 +311,18 @@ defmodule Zipfelfolio.MarketDataTest do
     end
   end
 
-  describe "compositions_available?/0" do
+  defp dividends_of(security) do
+    for d <- Zipfelfolio.Securities.list_divvy_diary_dividends([security.id]),
+        do: {d.ex_date, d.pay_date, d.per_share, d.currency, d.fetched_at}
+  end
+
+  describe "divvy_diary_available?/0" do
     test "says whether the source has its API key" do
-      refute MarketData.compositions_available?()
+      refute MarketData.divvy_diary_available?()
 
-      FakeCompositionSource.stub()
+      FakeSymbolSource.stub()
 
-      assert MarketData.compositions_available?()
+      assert MarketData.divvy_diary_available?()
     end
   end
 

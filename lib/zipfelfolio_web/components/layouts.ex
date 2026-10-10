@@ -16,8 +16,8 @@ defmodule ZipfelfolioWeb.Layouts do
   attr :current, :any,
     default: nil,
     doc: """
-    what is open: `:overview`, `:portfolios`, `:settings`, or `{:holdings, portfolio_id,
-    account_id}` with nil for all portfolios or no marked account
+    what is open: `:overview`, `:dividends`, `:portfolios`, `:settings`, or `{:holdings,
+    portfolio_id, account_id}` with nil for all portfolios or no marked account
     """
 
   slot :inner_block, required: true
@@ -57,6 +57,15 @@ defmodule ZipfelfolioWeb.Layouts do
             open={{:holdings, nil, nil}}
           >
             Bestand
+          </.side_link>
+          <.side_link
+            id="side-dividends"
+            navigate={~p"/dividends"}
+            icon="coins"
+            current={@current}
+            open={:dividends}
+          >
+            Dividenden
           </.side_link>
         </nav>
         <.side_money sidebar={@sidebar} current={@current} />
@@ -127,6 +136,14 @@ defmodule ZipfelfolioWeb.Layouts do
           active={@current == :portfolios or match?({:holdings, _, _}, @current)}
         >
           Depots
+        </.tab>
+        <.tab
+          id="tab-dividends"
+          navigate={~p"/dividends"}
+          icon="coins"
+          active={@current == :dividends}
+        >
+          Dividenden
         </.tab>
         <.tab
           id="tab-settings"

@@ -4,7 +4,7 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
   import Phoenix.LiveViewTest
   import Zipfelfolio.{PortfoliosFixtures, SecuritiesFixtures, UsersFixtures}
 
-  alias Zipfelfolio.{ExchangeRates, FakeCompositionSource, LocalTime, Repo}
+  alias Zipfelfolio.{ExchangeRates, FakeSymbolSource, LocalTime, Repo}
   alias Zipfelfolio.Portfolios.TransactionUnit
   alias ZipfelfolioWeb.Format
 
@@ -177,11 +177,11 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
       {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{ctx.security}")
 
       assert texts(lv, "#distributions th") ==
-               ["Ex-Tag", "Zahltag", "je Anteil", "Stück", "Brutto"]
+               ["Zahltag", "Ex-Tag", "je Anteil", "Stück", "Brutto"]
 
       assert cells(lv, "#distributions tbody tr", "td") == [
-               [day(-20), day(-10), "1,50\u00A0€", "8", "12,00\u00A0€"],
-               ["–", day(-100), "1,80\u00A0€", "12", "21,60\u00A0€"]
+               [day(-10), short_day(-20), "1,50\u00A0€", "8", "12,00\u00A0€"],
+               [day(-100), "–", "1,80\u00A0€", "12", "21,60\u00A0€"]
              ]
 
       assert has_element?(lv, "#distributions .card-header", "33,60\u00A0€")
@@ -205,6 +205,18 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
 
       assert cells(lv, "#distributions tbody tr", "td") ==
                [[day(-3), "0,50\u00A0USD", "10", "4,29\u00A0€"]]
+    end
+
+    test "shows a dividend booked without shares without an amount per share", ctx do
+      dividend(ctx.scope, ctx.account, ctx.security, Date.add(today(), -3), 10, 15)
+      dividend(ctx.scope, ctx.account, ctx.security, Date.add(today(), -5), 0, 5, shares: nil)
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{ctx.security}")
+
+      assert cells(lv, "#distributions tbody tr", "td") == [
+               [day(-3), "1,50\u00A0€", "10", "15,00\u00A0€"],
+               [day(-5), "–", "–", "5,00\u00A0€"]
+             ]
     end
 
     test "shows the eight newest until all are asked for", ctx do
@@ -231,6 +243,54 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
 
       assert has_element?(lv, "#distributions", "Keine Ausschüttungen gebucht")
       refute has_element?(lv, "#distributions table")
+    end
+  end
+
+  describe "Nächste Zahlungen" do
+    setup %{scope: scope} do
+      security = security_fixture_with_prices()
+      deliver(scope, portfolio_fixture(scope), security, 100)
+      %{security: security}
+    end
+
+    test "lists its announced and forecast dividends above its distributions", ctx do
+      announced = Date.add(today(), 1)
+      forecast = today() |> Date.beginning_of_month() |> Date.shift(month: 2) |> Date.add(14)
+      divvy_diary_dividend_fixture(ctx.security, announced, announced, 0.5)
+
+      divvy_diary_dividend_fixture(
+        ctx.security,
+        nil,
+        Date.shift(forecast, year: -1),
+        1,
+        "USD"
+      )
+
+      ExchangeRates.store([{"USD", today(), Decimal.new("1.25")}])
+      other = user_scope_fixture()
+      deliver(other, portfolio_fixture(other), ctx.security, 1_000)
+      dividend(other, account_fixture(other), ctx.security, Date.add(today(), -3), 1_000, 500)
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{ctx.security}")
+
+      assert texts(lv, "#upcoming-payments thead th") ==
+               ["Zahltag", "Ex-Tag", "Art", "je Anteil", "Stück", "Brutto"]
+
+      assert cells(lv, "#upcoming-payments tbody tr", "td") == [
+               [day(1), short_day(1), "angekündigt", "0,50\u00A0€", "100", "50,00\u00A0€"],
+               [Format.date(forecast), "–", "Prognose", "~1,00\u00A0USD", "100", "~80,00\u00A0€"]
+             ]
+
+      html = render(lv)
+
+      assert :binary.match(html, "upcoming-payments") <
+               :binary.match(html, "id=\"distributions\"")
+    end
+
+    test "is left out when no dividend is expected", ctx do
+      {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{ctx.security}")
+
+      refute has_element?(lv, "#upcoming-payments")
     end
   end
 
@@ -289,7 +349,7 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
 
   describe "composition" do
     setup do
-      FakeCompositionSource.stub()
+      FakeSymbolSource.stub()
       %{security: security_fixture_with_prices()}
     end
 
@@ -331,7 +391,7 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
     end
 
     test "shows a hint without an API key", ctx do
-      Application.delete_env(:zipfelfolio, FakeCompositionSource)
+      Application.delete_env(:zipfelfolio, FakeSymbolSource)
       composition_fixture(ctx.security, %{"US" => 1})
 
       {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{ctx.security}")
@@ -343,7 +403,7 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
 
   describe "data sources" do
     test "name the quote feed, the composition and the link to the settings", ctx do
-      FakeCompositionSource.stub()
+      FakeSymbolSource.stub()
       fetched = DateTime.add(DateTime.utc_now(), -1, :minute)
 
       # Checked just now, so that opening the page does not fetch its quote again.
@@ -447,6 +507,7 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
   end
 
   defp day(days), do: today() |> Date.add(days) |> Format.date()
+  defp short_day(days), do: today() |> Date.add(days) |> Calendar.strftime("%d.%m.")
 
   defp portfolio_texts(lv, portfolio),
     do: texts(lv, "#holding-#{portfolio.id} :is(.fw-semibold, .small)")

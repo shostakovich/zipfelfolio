@@ -272,10 +272,52 @@ defmodule ZipfelfolioWeb.CoreComponents do
     """
   end
 
+  attr :id, :string, required: true
+  attr :label, :string, required: true
+  attr :value, :string, required: true
+  attr :value_class, :any, default: nil
+  attr :class, :any, default: nil
+
+  slot :prefix, doc: "a quiet remark before the value, such as „brutto“"
+
+  slot :note do
+    attr :class, :any
+  end
+
+  @doc "A key figure in a card: its label, its value and notes below."
+  def stat(assigns) do
+    ~H"""
+    <div class={["card h-100", @class]} id={@id}>
+      <div class="card-body">
+        <div class="stat">
+          <span class="stat-label">{@label}</span>
+          <span class={["stat-value", @value_class]}>
+            <span :if={@prefix != []} class="small fw-normal text-body-secondary">
+              {render_slot(@prefix)}
+            </span>
+            {@value}
+          </span>
+          <span :for={note <- @note} class={["small", note[:class]]}>{render_slot(note)}</span>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  @doc "The class that mutes an amount of zero in a column of amounts."
+  def muted(0), do: "text-body-tertiary"
+  def muted(_amount), do: nil
+
   # The click dummy's line icons on a 24 px grid, each as the paths it draws.
   @icons %{
     "back" => ["m15 6-6 6 6 6"],
     "chevron" => ["m9 6 6 6-6 6"],
+    "coins" => [
+      "M3 7a6 3 0 1 0 12 0 6 3 0 1 0-12 0",
+      "M3 7v4c0 1.7 2.7 3 6 3s6-1.3 6-3V7M3 11v4c0 1.7 2.7 3 6 3 1 0 2-.1 2.8-.4",
+      "M13 15a4 2 0 1 0 8 0 4 2 0 1 0-8 0",
+      "M13 15v3c0 1.1 1.8 2 4 2s4-.9 4-2v-3"
+    ],
     "down" => ["m6 9 6 6 6-6"],
     "gear" => [
       "M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0",

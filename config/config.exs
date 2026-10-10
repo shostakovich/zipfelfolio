@@ -43,7 +43,7 @@ config :phoenix_live_view, root_tag_attribute: "phx-r"
 config :zipfelfolio, Zipfelfolio.MarketData,
   price_feed: Zipfelfolio.MarketData.Yahoo,
   rate_source: Zipfelfolio.MarketData.ECB,
-  composition_source: Zipfelfolio.MarketData.DivvyDiary,
+  symbol_source: Zipfelfolio.MarketData.DivvyDiary,
   daily_job: true
 
 config :zipfelfolio, Zipfelfolio.Mailer, adapter: Swoosh.Adapters.Local

@@ -1,8 +1,8 @@
 defmodule Zipfelfolio.SecuritiesFixtures do
-  @moduledoc "Securities, prices and compositions for tests."
+  @moduledoc "Securities, prices, compositions and DivvyDiary dividends for tests."
 
   alias Zipfelfolio.Repo
-  alias Zipfelfolio.Securities.{AttributeType, Composition, Price, Security}
+  alias Zipfelfolio.Securities.{AttributeType, Composition, DivvyDiaryDividend, Price, Security}
 
   def security_fixture(attrs \\ %{}) do
     Repo.insert!(
@@ -48,6 +48,24 @@ defmodule Zipfelfolio.SecuritiesFixtures do
       countries: countries,
       sectors: sectors,
       fetched_at: fetched_at
+    })
+  end
+
+  @doc "A dividend of the security as DivvyDiary delivered it, `per_share` as a number."
+  def divvy_diary_dividend_fixture(
+        %Security{id: id},
+        ex_date,
+        pay_date,
+        per_share,
+        currency \\ "EUR"
+      ) do
+    Repo.insert!(%DivvyDiaryDividend{
+      security_id: id,
+      ex_date: ex_date,
+      pay_date: pay_date,
+      per_share: price(per_share),
+      currency: currency,
+      fetched_at: ~U[2026-10-08 18:00:00.000000Z]
     })
   end
 

@@ -1,14 +1,15 @@
 defmodule Zipfelfolio.Securities do
   @moduledoc """
-  Securities, their prices, compositions and attribute types. They are shared by all users, so
-  every signed-in user may read and change them; the scope only says who is asking.
+  Securities, their prices, compositions, DivvyDiary dividends and attribute types. They are
+  shared by all users, so every signed-in user may read and change them; the scope only says who
+  is asking.
   """
 
   import Ecto.Changeset
   import Ecto.Query, warn: false
 
   alias Zipfelfolio.{Allocation, LocalTime, Repo}
-  alias Zipfelfolio.Securities.{AttributeType, Composition, Price, Security}
+  alias Zipfelfolio.Securities.{AttributeType, Composition, DivvyDiaryDividend, Price, Security}
   alias Zipfelfolio.Users.Scope
 
   def list_securities(%Scope{}),
@@ -298,6 +299,33 @@ defmodule Zipfelfolio.Securities do
     from(c in Composition, where: c.security_id in ^ids)
     |> Repo.all()
     |> Map.new(&{&1.security_id, &1})
+  end
+
+  ## DivvyDiary dividends
+
+  @doc "Stores the dividends of a security, fetched at `now`, in place of those before."
+  def replace_dividends(%Security{id: id}, dividends, now) do
+    rows =
+      for dividend <- dividends do
+        dividend
+        |> Map.take([:ex_date, :pay_date, :per_share, :currency])
+        |> Map.merge(%{security_id: id, fetched_at: now})
+      end
+
+    Repo.transact(fn ->
+      Repo.delete_all(from d in DivvyDiaryDividend, where: d.security_id == ^id)
+      {count, _rows} = Repo.insert_all(DivvyDiaryDividend, rows)
+      {:ok, count}
+    end)
+  end
+
+  @doc "The DivvyDiary dividends of the securities with `ids`, by pay date."
+  def list_divvy_diary_dividends(ids) do
+    Repo.all(
+      from d in DivvyDiaryDividend,
+        where: d.security_id in ^ids,
+        order_by: [d.pay_date, d.security_id]
+    )
   end
 
   ## Profile

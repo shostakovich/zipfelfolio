@@ -7,6 +7,7 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
   alias Zipfelfolio.{LocalTime, Repo}
   alias Zipfelfolio.Portfolios.TransactionUnit
   alias Zipfelfolio.Securities.Security
+  alias ZipfelfolioWeb.Format
 
   setup :register_and_log_in_user
 
@@ -208,7 +209,102 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
 
     assert lv |> element("#dividends .stat-label") |> render() =~ "Dividenden #{today().year}"
     assert lv |> element("#dividends .stat-value") |> render() =~ "50\u00A0€"
-    assert lv |> element("#dividends") |> render() =~ "brutto"
+  end
+
+  describe "Nächste Dividenden" do
+    setup %{scope: scope} do
+      security = holding_fixture(scope, 100, amount: money(10_000))
+      Repo.update!(Ecto.Changeset.change(security, name: "All-World"))
+      announced = Date.add(today(), 1)
+      forecast = today() |> Date.beginning_of_month() |> Date.shift(month: 2) |> Date.add(14)
+      divvy_diary_dividend_fixture(security, announced, announced, 0.5)
+
+      divvy_diary_dividend_fixture(
+        security,
+        Date.shift(forecast, year: -1) |> Date.add(-7),
+        Date.shift(forecast, year: -1),
+        1
+      )
+
+      %{announced: announced, forecast: forecast}
+    end
+
+    test "expects this year's received plus the rest of the year's dividends", ctx do
+      transaction_fixture(ctx.scope, Date.new!(today().year, 1, 1),
+        type: :dividend,
+        account_id: account_fixture(ctx.scope).id,
+        security_id: Repo.one!(Security).id,
+        amount: money(30)
+      )
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/")
+
+      rest =
+        for {date, gross} <- [{ctx.announced, 50}, {ctx.forecast, 100}],
+            date.year == today().year,
+            reduce: 0,
+            do: (sum -> sum + gross)
+
+      assert lv |> element("#dividends") |> render() =~
+               "erwartet #{Format.euros(money(30 + rest))} im Jahr"
+    end
+
+    test "lists the next dividends, gross, each marked announced or forecast", ctx do
+      {:ok, lv, _html} = live(ctx.conn, ~p"/")
+
+      announced = lv |> element("#upcoming-dividends li[data-kind='announced']") |> render()
+      assert announced =~ "All\u2011World"
+      assert announced =~ "angekündigt"
+      assert announced =~ "50,00\u00A0€"
+      assert announced =~ Date.to_iso8601(ctx.announced)
+
+      forecast = lv |> element("#upcoming-dividends li[data-kind='forecast']") |> render()
+      assert forecast =~ "Prognose"
+      assert forecast =~ "~100,00\u00A0€"
+
+      assert has_element?(lv, "#upcoming-dividends a[href='/dividends?amount=gross']", "Kalender")
+      assert lv |> element("#upcoming-dividends .card-footer") |> render() =~ "~150\u00A0€"
+    end
+
+    test "keep when the period changes and update when new market data arrives", ctx do
+      {:ok, lv, _html} = live(ctx.conn, ~p"/")
+      divvy_diary_dividend_fixture(Repo.one!(Security), nil, Date.add(today(), 2), 0.1)
+
+      lv |> element("#period a", "Max") |> render_click()
+
+      assert upcoming_count(lv) == 2
+
+      send(lv.pid, :market_data_updated)
+
+      assert upcoming_count(lv) == 3
+    end
+
+    test "shows the four next dividends", ctx do
+      security = Repo.one!(Security)
+
+      for days <- 4..8,
+          do: divvy_diary_dividend_fixture(security, nil, Date.add(today(), days), 0.1)
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/")
+
+      assert upcoming_count(lv) == 4
+    end
+
+    defp upcoming_count(lv),
+      do:
+        lv
+        |> element("#upcoming-dividends")
+        |> render()
+        |> then(&Regex.scan(~r/<li/, &1))
+        |> length()
+  end
+
+  test "shows no upcoming dividends when none are expected", %{conn: conn, scope: scope} do
+    holding_fixture(scope, 10)
+
+    {:ok, lv, _html} = live(conn, ~p"/")
+
+    refute has_element?(lv, "#upcoming-dividends")
   end
 
   describe "Depots" do

@@ -37,12 +37,10 @@ defmodule ZipfelfolioWeb.HoldingsLive do
         </p>
       </.card>
 
-      <%!-- Below 992 px shares and price go under the name, below 768 px purchase value and share
-           go, and on a phone the gain goes under the value. --%>
       <section :if={!@empty} id="holdings" class="card mb-4" aria-label="Bestand">
         <div class="table-responsive">
-          <table class="table table-hover align-middle mb-0 tabular-nums">
-            <thead>
+          <table class="table table-hover align-middle mb-0 app-card-table">
+            <thead class="small fw-semibold text-body-secondary">
               <tr>
                 <th scope="col">Wertpapier</th>
                 <th scope="col" class="text-end d-none d-lg-table-cell">Stück</th>
@@ -51,13 +49,20 @@ defmodule ZipfelfolioWeb.HoldingsLive do
                 <th scope="col" class="text-end d-none d-md-table-cell">Einstand</th>
                 <th scope="col" class="text-end d-none d-sm-table-cell">Gewinn</th>
                 <th scope="col" class="text-end d-none d-md-table-cell">Anteil</th>
+                <th
+                  scope="col"
+                  class="text-end text-nowrap tabular-nums d-none d-lg-table-cell"
+                  title="Brutto, nächste 12 Monate auf heutigen Wert"
+                >
+                  Div.-Rendite
+                </th>
               </tr>
             </thead>
             <tbody :for={group <- @holdings.groups} id={group_id(group)}>
               <tr class="table-group-divider">
                 <th
                   scope="colgroup"
-                  colspan="7"
+                  colspan="8"
                   class="small fw-semibold text-body-secondary bg-body-tertiary"
                 >
                   {if group.portfolio, do: group.portfolio.name, else: "Konten"}
@@ -77,31 +82,37 @@ defmodule ZipfelfolioWeb.HoldingsLive do
                   <div :if={row.security.isin} class="small text-body-secondary d-none d-lg-block">
                     {row.security.isin}
                   </div>
-                  <div class="small text-body-secondary d-lg-none">
+                  <div class="small text-body-secondary tabular-nums d-lg-none">
                     <span class="text-nowrap">{Format.shares(row.shares)} Stück</span>
                     · <span class="text-nowrap">{price(row)}</span>
                   </div>
                 </td>
-                <td class="text-end text-nowrap d-none d-lg-table-cell">
+                <td class="text-end text-nowrap tabular-nums d-none d-lg-table-cell">
                   {Format.shares(row.shares)}
                 </td>
-                <td class="text-end text-nowrap d-none d-lg-table-cell">{price(row)}</td>
-                <td class="text-end text-nowrap">
+                <td class="text-end text-nowrap tabular-nums d-none d-lg-table-cell">{price(row)}</td>
+                <td class="text-end text-nowrap tabular-nums">
                   <span class="fw-semibold">{Format.euros(row.value, 2)}</span>
                   <.gain class="small d-sm-none" gain={row.gain} purchase_value={row.purchase_value} />
                 </td>
-                <td class="text-end text-nowrap d-none d-md-table-cell">
+                <td class="text-end text-nowrap tabular-nums d-none d-md-table-cell">
                   {Format.euros(row.purchase_value, 2)}
                 </td>
-                <td class="text-end text-nowrap d-none d-sm-table-cell">
+                <td class="text-end text-nowrap tabular-nums d-none d-sm-table-cell">
                   <.gain gain={row.gain} purchase_value={row.purchase_value} />
                 </td>
-                <td class="text-end text-nowrap d-none d-md-table-cell">
+                <td class="text-end text-nowrap tabular-nums d-none d-md-table-cell">
                   {share(row.value, @holdings.net_worth)}
+                </td>
+                <td class={[
+                  "text-end text-nowrap tabular-nums d-none d-lg-table-cell",
+                  muted(row.dividends)
+                ]}>
+                  {dividend_yield(row.dividends, row.value)}
                 </td>
               </tr>
               <tr :if={group.portfolio && group.holdings == []}>
-                <td colspan="7" class="small text-body-secondary">Keine Wertpapiere</td>
+                <td colspan="8" class="small text-body-secondary">Keine Wertpapiere</td>
               </tr>
               <tr
                 :for={row <- group.accounts}
@@ -118,12 +129,15 @@ defmodule ZipfelfolioWeb.HoldingsLive do
                 </td>
                 <td class="d-none d-lg-table-cell"></td>
                 <td class="d-none d-lg-table-cell"></td>
-                <td class="text-end text-nowrap fw-semibold">{Format.euros(row.value, 2)}</td>
+                <td class="text-end text-nowrap tabular-nums fw-semibold">
+                  {Format.euros(row.value, 2)}
+                </td>
                 <td class="d-none d-md-table-cell"></td>
                 <td class="d-none d-sm-table-cell"></td>
-                <td class="text-end text-nowrap d-none d-md-table-cell">
+                <td class="text-end text-nowrap tabular-nums d-none d-md-table-cell">
                   {share(row.value, @holdings.net_worth)}
                 </td>
+                <td class="d-none d-lg-table-cell"></td>
               </tr>
             </tbody>
             <tfoot>
@@ -133,18 +147,21 @@ defmodule ZipfelfolioWeb.HoldingsLive do
                 </th>
                 <td class="d-none d-lg-table-cell"></td>
                 <td class="d-none d-lg-table-cell"></td>
-                <td class="text-end text-nowrap">
+                <td class="text-end text-nowrap tabular-nums">
                   {Format.euros(@holdings.total.value, 2)}
                   <.gain class="small d-sm-none" gain={@holdings.total.gain} />
                 </td>
-                <td class="text-end text-nowrap d-none d-md-table-cell">
+                <td class="text-end text-nowrap tabular-nums d-none d-md-table-cell">
                   {Format.euros(@holdings.total.purchase_value, 2)}
                 </td>
-                <td class="text-end text-nowrap d-none d-sm-table-cell">
+                <td class="text-end text-nowrap tabular-nums d-none d-sm-table-cell">
                   <.gain gain={@holdings.total.gain} />
                 </td>
-                <td class="text-end text-nowrap d-none d-md-table-cell">
+                <td class="text-end text-nowrap tabular-nums d-none d-md-table-cell">
                   {@holdings.portfolio && share(@holdings.total.value, @holdings.net_worth)}
+                </td>
+                <td class="text-end text-nowrap tabular-nums d-none d-lg-table-cell">
+                  {dividend_yield(@holdings.total.dividends, @holdings.total.securities_value)}
                 </td>
               </tr>
             </tfoot>
@@ -154,7 +171,7 @@ defmodule ZipfelfolioWeb.HoldingsLive do
 
       <%!-- Side by side from 1400 px, where the costs still fit four columns. --%>
       <div :if={!@empty and @holdings.costs.funds != []} class="row g-4">
-        <div class="col-xxl-7">
+        <div class="col-xxl-5">
           <.allocation
             allocation={@holdings.allocation}
             tab={shown_tab(assigns)}
@@ -162,7 +179,7 @@ defmodule ZipfelfolioWeb.HoldingsLive do
             available={@compositions_available}
           />
         </div>
-        <div class="col-xxl-5">
+        <div class="col-xxl-7">
           <.costs costs={@holdings.costs} />
         </div>
       </div>
@@ -260,42 +277,50 @@ defmodule ZipfelfolioWeb.HoldingsLive do
     <%!-- On a phone the fund size goes under the name. --%>
     <section id="costs" class="card h-100" aria-labelledby="costs-title">
       <div class="card-header d-flex flex-wrap align-items-baseline justify-content-between gap-2">
-        <h2 class="fs-6 fw-semibold mb-0" id="costs-title">Kosten</h2>
+        <h2 class="app-card-title mb-0" id="costs-title">Kosten</h2>
         <span :if={@costs.ter} class="small text-body-secondary">
           gewichtet {Format.ter(@costs.ter)}
         </span>
       </div>
       <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0 tabular-nums">
-          <thead>
+        <table class="table table-sm align-middle mb-0 app-card-table">
+          <thead class="small fw-semibold text-body-secondary">
             <tr>
               <th scope="col">Wertpapier</th>
-              <th scope="col" class="text-end">TER</th>
-              <th scope="col" class="text-end d-none d-sm-table-cell">Größe</th>
-              <th scope="col" class="text-end text-nowrap">pro Jahr</th>
+              <th scope="col" class="text-end app-num-col">TER</th>
+              <th scope="col" class="text-end d-none d-sm-table-cell app-num-col">Größe</th>
+              <th scope="col" class="text-end app-num-col">pro Jahr</th>
             </tr>
           </thead>
           <tbody>
             <tr :for={fund <- @costs.funds} id={"cost-#{fund.security.id}"}>
               <td>
-                <.link navigate={~p"/securities/#{fund.security}"} class="text-body">
+                <.link
+                  navigate={~p"/securities/#{fund.security}"}
+                  class="text-body text-decoration-none"
+                >
                   {fund.security.name}
                 </.link>
-                <div :if={fund.fund_size} class="small text-body-secondary text-nowrap d-sm-none">
+                <div
+                  :if={fund.fund_size}
+                  class="small text-body-secondary text-nowrap tabular-nums d-sm-none"
+                >
                   {fund_size(fund)}
                 </div>
               </td>
-              <td class="text-end text-nowrap">{Format.ter(fund.ter)}</td>
-              <td class="text-end text-nowrap d-none d-sm-table-cell">{fund_size(fund)}</td>
-              <td class="text-end text-nowrap">{per_year(fund.per_year)}</td>
+              <td class="text-end tabular-nums app-num-col">{Format.ter(fund.ter)}</td>
+              <td class="text-end tabular-nums app-num-col d-none d-sm-table-cell">
+                {fund_size(fund)}
+              </td>
+              <td class="text-end tabular-nums app-num-col">{per_year(fund.per_year)}</td>
             </tr>
           </tbody>
           <tfoot>
             <tr id="costs-total" class="fw-bold">
               <th scope="row">Gesamt</th>
-              <td class="text-end text-nowrap">{Format.ter(@costs.ter)}</td>
-              <td class="d-none d-sm-table-cell"></td>
-              <td class="text-end text-nowrap">{per_year(@costs.per_year)}</td>
+              <td class="text-end tabular-nums app-num-col">{Format.ter(@costs.ter)}</td>
+              <td class="d-none d-sm-table-cell app-num-col"></td>
+              <td class="text-end tabular-nums app-num-col">{per_year(@costs.per_year)}</td>
             </tr>
           </tfoot>
         </table>
@@ -495,6 +520,9 @@ defmodule ZipfelfolioWeb.HoldingsLive do
   defp per_year(nil), do: "–"
   defp per_year(cents), do: Format.euros(cents)
 
+  defp dividend_yield(cents, value) when cents <= 0 or value <= 0, do: "–"
+  defp dividend_yield(cents, value), do: cents |> Format.percent_of(value) |> Format.percent()
+
   defp share(_value, net_worth) when net_worth <= 0, do: nil
   defp share(value, net_worth), do: value |> Format.percent_of(net_worth) |> Format.percent()
 
@@ -508,7 +536,7 @@ defmodule ZipfelfolioWeb.HoldingsLive do
      assign(socket,
        page_title: "Bestand",
        empty: empty,
-       compositions_available: MarketData.compositions_available?()
+       compositions_available: MarketData.divvy_diary_available?()
      )}
   end
 

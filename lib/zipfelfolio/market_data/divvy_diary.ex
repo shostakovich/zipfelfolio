@@ -1,9 +1,9 @@
 defmodule Zipfelfolio.MarketData.DivvyDiary do
   @moduledoc """
-  Compositions from DivvyDiary's API, one request per ISIN, with the API key from
+  Compositions and dividends from DivvyDiary's API, one request per ISIN, with the API key from
   `DIVVYDIARY_API_KEY`. Without a key it is not available.
   """
-  @behaviour Zipfelfolio.MarketData.CompositionSource
+  @behaviour Zipfelfolio.MarketData.SymbolSource
 
   alias Zipfelfolio.MarketData.DivvyDiary.Response
   alias Zipfelfolio.MarketData.HTTP
@@ -14,7 +14,7 @@ defmodule Zipfelfolio.MarketData.DivvyDiary do
   def available?, do: api_key() not in [nil, ""]
 
   @impl true
-  def composition(isin) do
+  def symbol(isin) do
     url = @url <> URI.encode(isin, &URI.char_unreserved?/1)
 
     case HTTP.get(url, [], [{"x-api-key", api_key()}]) do
@@ -27,7 +27,7 @@ defmodule Zipfelfolio.MarketData.DivvyDiary do
 
   defp parse(body) do
     case JSON.decode(body) do
-      {:ok, json} -> Response.composition(json)
+      {:ok, json} -> Response.symbol(json)
       {:error, _reason} -> {:error, :invalid_response}
     end
   end

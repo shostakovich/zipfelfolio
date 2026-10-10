@@ -1,6 +1,8 @@
 defmodule ZipfelfolioWeb.OverviewLive do
   use ZipfelfolioWeb, :live_view
 
+  import ZipfelfolioWeb.DividendComponents
+
   alias Zipfelfolio.{LocalTime, Portfolios}
   alias ZipfelfolioWeb.{Format, Sidebar}
 
@@ -12,6 +14,8 @@ defmodule ZipfelfolioWeb.OverviewLive do
     {"max", :max, "Max"}
   ]
   @period_params Map.new(@periods, fn {param, period, _label} -> {param, period} end)
+
+  @upcoming_shown 4
 
   @impl true
   def render(assigns) do
@@ -81,29 +85,43 @@ defmodule ZipfelfolioWeb.OverviewLive do
             label={"Dividenden #{@today.year}"}
             value={Format.euros(@overview.dividends)}
           >
-            <:note class="text-body-secondary">brutto</:note>
+            <:note class="text-body-secondary">
+              erwartet {Format.euros(@overview.dividends + @upcoming_dividends.rest_of_year)} im Jahr · brutto
+            </:note>
           </.stat>
         </div>
       </div>
 
-      <section :if={!@empty} class="card mb-4" aria-labelledby="history-title">
-        <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-          <h2 class="fs-6 fw-semibold mb-0" id="history-title">Wertentwicklung</h2>
-          <span class="small text-body-secondary d-flex gap-3">
-            <span class="text-nowrap"><span class="app-swatch app-swatch-primary"></span> Vermögen</span>
-            <span class="text-nowrap">
-              <span class="app-swatch app-swatch-secondary"></span> Investiert
-            </span>
-          </span>
-        </div>
-        <div class="card-body">
-          <div role="img" aria-label={"Vermögen und investiertes Kapital #{period_text(@period)}"}>
-            <div id="net-worth-chart" class="app-chart" phx-hook="NetWorthChart" phx-update="ignore">
-              <canvas></canvas>
+      <div :if={!@empty} class="row g-4 mb-4">
+        <div class={if @upcoming_dividends.upcoming != [], do: "col-lg-8", else: "col-12"}>
+          <section class="card h-100" aria-labelledby="history-title">
+            <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <h2 class="app-card-title mb-0" id="history-title">Wertentwicklung</h2>
+              <span class="small text-body-secondary d-flex gap-3">
+                <span class="text-nowrap"><span class="app-swatch app-swatch-primary"></span> Vermögen</span>
+                <span class="text-nowrap">
+                  <span class="app-swatch app-swatch-secondary"></span> Investiert
+                </span>
+              </span>
             </div>
-          </div>
+            <div class="card-body">
+              <div role="img" aria-label={"Vermögen und investiertes Kapital #{period_text(@period)}"}>
+                <div
+                  id="net-worth-chart"
+                  class="app-chart"
+                  phx-hook="NetWorthChart"
+                  phx-update="ignore"
+                >
+                  <canvas></canvas>
+                </div>
+              </div>
+            </div>
+          </section>
         </div>
-      </section>
+        <div :if={@upcoming_dividends.upcoming != []} class="col-lg-4">
+          <.upcoming_dividends dividends={@upcoming_dividends} />
+        </div>
+      </div>
 
       <section
         :if={!@empty and @overview.portfolios != []}
@@ -111,7 +129,7 @@ defmodule ZipfelfolioWeb.OverviewLive do
         aria-labelledby="portfolios-title"
       >
         <div class="card-header">
-          <h2 class="fs-6 fw-semibold mb-0" id="portfolios-title">Depots</h2>
+          <h2 class="app-card-title mb-0" id="portfolios-title">Depots</h2>
         </div>
         <div class="list-group list-group-flush">
           <.link
@@ -144,26 +162,50 @@ defmodule ZipfelfolioWeb.OverviewLive do
     """
   end
 
-  attr :id, :string, required: true
-  attr :label, :string, required: true
-  attr :value, :string, required: true
-  attr :value_class, :any, default: nil
+  attr :dividends, :map, required: true, doc: "see `Portfolios.upcoming_dividends/2`"
 
-  slot :note do
-    attr :class, :any
-  end
+  defp upcoming_dividends(assigns) do
+    assigns =
+      assign(assigns,
+        shown: Enum.take(assigns.dividends.upcoming, @upcoming_shown),
+        three_months: assigns.dividends.next_three_months
+      )
 
-  defp stat(assigns) do
     ~H"""
-    <div class="card h-100" id={@id}>
-      <div class="card-body">
-        <div class="stat">
-          <span class="stat-label">{@label}</span>
-          <span class={["stat-value", @value_class]}>{@value}</span>
-          <span :for={note <- @note} class={["small", note[:class]]}>{render_slot(note)}</span>
-        </div>
+    <section id="upcoming-dividends" class="card h-100" aria-labelledby="upcoming-dividends-title">
+      <div class="card-header d-flex align-items-center justify-content-between gap-2">
+        <h2 class="app-card-title mb-0" id="upcoming-dividends-title">
+          Nächste Dividenden <span class="fw-normal text-body-secondary">· brutto</span>
+        </h2>
+        <.link
+          navigate={~p"/dividends?amount=gross"}
+          class="small text-nowrap text-decoration-none app-quiet-link"
+        >
+          Kalender<.icon name="chevron" class="app-icon-sm" />
+        </.link>
       </div>
-    </div>
+      <ul class="list-group list-group-flush">
+        <li
+          :for={dividend <- @shown}
+          class="list-group-item app-next-dividend"
+          data-kind={dividend.kind}
+        >
+          <time class="app-next-dividend-date" datetime={Date.to_iso8601(dividend.pay_date)}>
+            <span class="app-next-dividend-day">{dividend.pay_date.day}</span>
+            <span class="small text-body-secondary">{Format.month_abbr(dividend.pay_date)}</span>
+          </time>
+          <.security_link security={dividend.security} class="app-next-dividend-name" />
+          <.kind_tag kind={dividend.kind} class="app-next-dividend-tag" />
+          <span class="app-next-dividend-amount fw-semibold tabular-nums text-nowrap">
+            {expected(dividend, :gross, 2)}
+          </span>
+        </li>
+      </ul>
+      <div class="card-footer small text-body-secondary mt-auto">
+        Nächste 3 Monate:
+        <strong class="tabular-nums text-body">{expected_total(@three_months, :gross, 0)}</strong>
+      </div>
+    </section>
     """
   end
 
@@ -208,19 +250,26 @@ defmodule ZipfelfolioWeb.OverviewLive do
   end
 
   @impl true
-  def handle_params(params, _uri, socket),
-    do: {:noreply, socket |> assign(period: period(params["period"])) |> load_overview()}
+  def handle_params(params, _uri, socket) do
+    socket
+    |> assign(period: period(params["period"]))
+    |> load_overview()
+    |> load_upcoming_once()
+    |> then(&{:noreply, &1})
+  end
 
   defp period(param), do: Map.get(@period_params, param, :six_months)
 
   @impl true
-  def handle_info(:market_data_updated, socket), do: {:noreply, load_overview(socket)}
+  def handle_info(:market_data_updated, socket),
+    do: {:noreply, socket |> load_overview() |> load_upcoming()}
 
   defp load_overview(%{assigns: %{empty: true}} = socket), do: socket
 
   defp load_overview(socket) do
     today = LocalTime.today()
-    overview = Portfolios.overview(socket.assigns.current_scope, socket.assigns.period, today)
+    scope = socket.assigns.current_scope
+    overview = Portfolios.overview(scope, socket.assigns.period, today)
     change = overview.net_worth - overview.net_worth_yesterday
 
     socket
@@ -231,6 +280,16 @@ defmodule ZipfelfolioWeb.OverviewLive do
       change_percent: change_percent(change, overview.net_worth_yesterday)
     )
     |> push_chart(overview.chart)
+  end
+
+  defp load_upcoming_once(%{assigns: %{upcoming_dividends: _}} = socket), do: socket
+  defp load_upcoming_once(socket), do: load_upcoming(socket)
+
+  defp load_upcoming(%{assigns: %{empty: true}} = socket), do: socket
+
+  defp load_upcoming(%{assigns: assigns} = socket) do
+    upcoming = Portfolios.upcoming_dividends(assigns.current_scope, assigns.today)
+    assign(socket, upcoming_dividends: upcoming)
   end
 
   # Relative to yesterday's net worth, when there was any.

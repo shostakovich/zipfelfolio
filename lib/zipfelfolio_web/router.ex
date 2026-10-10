@@ -34,6 +34,7 @@ defmodule ZipfelfolioWeb.Router do
       on_mount: [{ZipfelfolioWeb.UserAuth, :require_authenticated}, ZipfelfolioWeb.Sidebar] do
       live "/", OverviewLive
       live "/holdings", HoldingsLive
+      live "/dividends", DividendsLive
       live "/portfolios", PortfoliosLive
       live "/securities/:id", SecurityLive
       live "/settings/import", ImportLive
