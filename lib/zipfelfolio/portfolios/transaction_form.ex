@@ -15,6 +15,7 @@ defmodule Zipfelfolio.Portfolios.TransactionForm do
   alias Zipfelfolio.DecimalInput
   alias Zipfelfolio.LocalTime
   alias Zipfelfolio.Portfolios.Transaction
+  alias Zipfelfolio.Receipts.Fields
 
   @kinds [:purchase, :sale, :dividend, :deposit, :removal]
 
@@ -194,13 +195,17 @@ defmodule Zipfelfolio.Portfolios.TransactionForm do
 
   defp tolerance(changeset) do
     case get_field(changeset, :kind) do
-      kind when kind in [:purchase, :sale] ->
-        Decimal.add(@cent_rounding, Decimal.mult(get_field(changeset, :shares), @price_rounding))
-
-      _dividend ->
-        @cent_rounding
+      kind when kind in [:purchase, :sale] -> price_tolerance(get_field(changeset, :shares))
+      _dividend -> @cent_rounding
     end
   end
+
+  @doc """
+  How far an amount may lie from `shares` × a price with four decimal places, fees and taxes:
+  half a cent plus the price's rounding for every share.
+  """
+  def price_tolerance(shares),
+    do: Decimal.add(@cent_rounding, Decimal.mult(shares, @price_rounding))
 
   defp round_cents(nil), do: nil
   defp round_cents(decimal), do: Decimal.round(decimal, 2, :half_up)
@@ -259,6 +264,49 @@ defmodule Zipfelfolio.Portfolios.TransactionForm do
       "amount_set" => "false"
     }
     |> Map.merge(entered_values(kind, shares, amount, fees, taxes))
+  end
+
+  @doc """
+  The params that show what the model recognised on a receipt, see `Zipfelfolio.Receipts.Fields`,
+  without portfolio, account and security. The receipt's amount counts as overwritten, so that
+  the form shows where the other fields give another one; a dividend's gross value is what the
+  account is credited with fees and taxes.
+  """
+  def params_of_receipt(%Fields{} = fields) do
+    fees = fields.fees || Decimal.new(0)
+    taxes = fields.taxes || Decimal.new(0)
+
+    %{
+      "kind" => to_string(fields.kind),
+      "date" => fields.date && Date.to_iso8601(fields.date),
+      "shares" => typed(fields.shares),
+      "fees" => typed(fees, 2),
+      "taxes" => typed(taxes, 2),
+      "amount" => fields.amount && fields.amount |> typed(2) |> group_thousands(),
+      "amount_set" => to_string(fields.amount != nil)
+    }
+    |> Map.merge(recognised_values(fields, fees, taxes))
+  end
+
+  defp recognised_values(%Fields{kind: :dividend, amount: nil} = fields, _fees, _taxes),
+    do: %{
+      "gross" =>
+        fields.shares && fields.price && typed(Decimal.mult(fields.shares, fields.price), 2)
+    }
+
+  defp recognised_values(%Fields{kind: :dividend} = fields, fees, taxes),
+    do: %{"gross" => fields.amount |> Decimal.add(fees) |> Decimal.add(taxes) |> typed(2)}
+
+  defp recognised_values(fields, _fees, _taxes), do: %{"price" => typed(fields.price, 2)}
+
+  # As the form shows a computed amount, e.g. `1.231,15`.
+  defp group_thousands(typed) do
+    [whole, fraction] = String.split(typed, ",")
+
+    grouped =
+      whole |> String.reverse() |> String.replace(~r/(\d{3})(?=\d)/, "\\1.") |> String.reverse()
+
+    grouped <> "," <> fraction
   end
 
   defp kind_of(type) when type in [:buy, :inbound_delivery], do: :purchase

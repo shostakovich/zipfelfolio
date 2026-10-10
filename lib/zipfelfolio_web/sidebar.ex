@@ -6,17 +6,21 @@ defmodule ZipfelfolioWeb.Sidebar do
 
   The hook subscribes the page to the market data and refreshes stale quotes, so a LiveView that
   shows prices itself only handles `:market_data_updated`, which reaches it after the sidebar.
+  It counts the recognised receipts in the inbox for the badge on „Buchungen“, as
+  `@sidebar.inbox`; a page that shows the inbox itself, i.e. assigns `:inbox`, also gets
+  `:receipts_updated`.
   """
   use ZipfelfolioWeb, :verified_routes
 
   import Phoenix.Component, only: [assign: 3]
   import Phoenix.LiveView, only: [attach_hook: 4, connected?: 1]
 
-  alias Zipfelfolio.{LocalTime, MarketData, Portfolios}
+  alias Zipfelfolio.{LocalTime, MarketData, Portfolios, Receipts}
 
   def on_mount(:default, _params, _session, socket) do
     if connected?(socket) do
       MarketData.subscribe()
+      Receipts.subscribe(socket.assigns.current_scope)
       MarketData.refresh_stale_quotes()
     end
 
@@ -24,12 +28,20 @@ defmodule ZipfelfolioWeb.Sidebar do
   end
 
   defp reload(:market_data_updated, socket), do: {:cont, load(socket)}
+
+  defp reload(:receipts_updated, socket) do
+    socket = assign(socket, :sidebar, %{socket.assigns.sidebar | inbox: inbox_count(socket)})
+    if Map.has_key?(socket.assigns, :inbox), do: {:cont, socket}, else: {:halt, socket}
+  end
+
   defp reload(_message, socket), do: {:cont, socket}
 
   defp load(socket) do
     sidebar = Portfolios.sidebar(socket.assigns.current_scope, LocalTime.today())
-    assign(socket, :sidebar, sidebar)
+    assign(socket, :sidebar, Map.put(sidebar, :inbox, inbox_count(socket)))
   end
+
+  defp inbox_count(socket), do: Receipts.inbox_count(socket.assigns.current_scope)
 
   @doc "A portfolio opens its holdings."
   def portfolio_path(portfolio), do: ~p"/holdings?#{[portfolio: portfolio.id]}"

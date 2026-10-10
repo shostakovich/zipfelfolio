@@ -9,6 +9,7 @@ exclude =
   ]
   |> Enum.reject(fn {_tag, variables} -> Enum.all?(variables, &System.get_env/1) end)
   |> Keyword.keys()
+  |> Enum.concat(if System.find_executable("pdftotext"), do: [], else: [:pdftotext])
 
 ExUnit.start(assert_receive_timeout: 1_000, exclude: exclude)
 Ecto.Adapters.SQL.Sandbox.mode(Zipfelfolio.Repo, :manual)

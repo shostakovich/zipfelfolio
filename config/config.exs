@@ -47,6 +47,13 @@ config :zipfelfolio, Zipfelfolio.MarketData,
   symbol_source: Zipfelfolio.MarketData.DivvyDiary,
   daily_job: true
 
+config :zipfelfolio, Zipfelfolio.Receipts,
+  paperless: Zipfelfolio.Receipts.PaperlessAPI,
+  paperless_job: true,
+  model: Zipfelfolio.Receipts.ChatAPI,
+  text_extractor: Zipfelfolio.Receipts.Pdftotext,
+  resume_on_start: true
+
 config :zipfelfolio, Zipfelfolio.Mailer, adapter: Swoosh.Adapters.Local
 config :zipfelfolio, :mail_from, {"zipfelfolio", "zipfelfolio@localhost"}
 config :swoosh, :api_client, false
@@ -69,6 +76,7 @@ config :logger, :default_formatter,
   metadata: [:request_id]
 
 config :phoenix, :json_library, JSON
+config :phoenix, :filter_parameters, ["password", "token"]
 config :ecto_sqlite3, json_library: JSON
 
 import_config "#{config_env()}.exs"

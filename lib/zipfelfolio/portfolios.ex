@@ -43,6 +43,42 @@ defmodule Zipfelfolio.Portfolios do
   def list_portfolios(%Scope{} = scope),
     do: Repo.all(from p in Portfolio, where: p.user_id == ^scope.user.id, order_by: p.name)
 
+  @doc "The user's active portfolios by name with their reference accounts, for their depot numbers."
+  def list_active_portfolios(%Scope{} = scope) do
+    Repo.all(
+      from p in Portfolio,
+        where: p.user_id == ^scope.user.id and not p.retired,
+        order_by: p.name,
+        preload: :reference_account
+    )
+  end
+
+  @doc "The form of a portfolio's depot number."
+  def change_depot_number(%Scope{} = scope, %Portfolio{} = portfolio, attrs \\ %{}),
+    do:
+      Portfolio.depot_number_changeset(
+        portfolio,
+        attrs,
+        &depot_number_taken_by(scope, portfolio, &1)
+      )
+
+  @doc "Sets the depot number of a portfolio of the user; no two of them may share its digits."
+  def update_depot_number(%Scope{} = scope, %Portfolio{user_id: user_id} = portfolio, attrs)
+      when user_id == scope.user.id do
+    scope
+    |> change_depot_number(portfolio, attrs)
+    |> Repo.update()
+  end
+
+  defp depot_number_taken_by(scope, portfolio, digits) do
+    Repo.all(
+      from p in Portfolio,
+        where:
+          p.user_id == ^scope.user.id and p.id != ^portfolio.id and not is_nil(p.depot_number)
+    )
+    |> Enum.find_value(&(Portfolio.digits(&1.depot_number) == digits && &1.name))
+  end
+
   def list_accounts(%Scope{} = scope),
     do: Repo.all(from a in Account, where: a.user_id == ^scope.user.id, order_by: a.name)
 
@@ -814,25 +850,54 @@ defmodule Zipfelfolio.Portfolios do
   defp keeps_holding?(_scope, _transaction, _replacement), do: true
 
   @doc """
-  Books the transaction form with `attrs`, marked as booked manually, and returns the booked
-  transactions: one, or a dividend and its removal. `receipt` is an optional PDF as
-  `{path, filename}`, attached to the first of them.
+  Books the transaction form with `attrs` and returns the booked transactions: one, or a dividend
+  and its removal. `receipt` is an optional PDF as `{path, filename}`, attached to the first of
+  them, which counts as booked manually; or a ready receipt of the inbox, which the first is
+  booked from and which is booked with it, `{:error, :gone}` if it no longer waits.
   """
-  def book_transaction(%Scope{} = scope, choices, attrs, receipt \\ nil) do
+  def book_transaction(scope, choices, attrs, receipt \\ nil)
+
+  def book_transaction(%Scope{} = scope, choices, attrs, %Receipt{} = receipt) do
+    changeset = change_transaction_form(scope, choices, attrs)
+
+    Repo.transact(fn ->
+      with {:ok, form} <- Ecto.Changeset.apply_action(changeset, :insert),
+           :ok <- claim_ready_receipt(scope, receipt) do
+        {:ok, insert_transactions(scope, form, %{receipt_id: receipt.id, source: :receipt})}
+      end
+    end)
+  end
+
+  def book_transaction(%Scope{} = scope, choices, attrs, receipt) do
     changeset = change_transaction_form(scope, choices, attrs)
 
     transact_with_receipt(receipt, fn ->
       with {:ok, form} <- Ecto.Changeset.apply_action(changeset, :insert),
            {:ok, receipt_id} <- store_receipt(scope, receipt, changeset) do
-        [first | rest] = TransactionForm.to_transactions(form)
-
-        {:ok,
-         [
-           insert_transaction(scope, Map.put(first, :receipt_id, receipt_id))
-           | Enum.map(rest, &insert_transaction(scope, &1))
-         ]}
+        {:ok, insert_transactions(scope, form, %{receipt_id: receipt_id})}
       end
     end)
+  end
+
+  # The first transaction carries `first_attrs`, a dividend's removal is booked manually.
+  defp insert_transactions(scope, form, first_attrs) do
+    [first | rest] = TransactionForm.to_transactions(form)
+
+    [
+      insert_transaction(scope, Map.merge(first, first_attrs))
+      | Enum.map(rest, &insert_transaction(scope, &1))
+    ]
+  end
+
+  defp claim_ready_receipt(scope, receipt) do
+    query =
+      from r in Receipt,
+        where: r.id == ^receipt.id and r.user_id == ^scope.user.id and r.status == :ready
+
+    case Repo.update_all(query, set: [status: :booked, updated_at: DateTime.utc_now()]) do
+      {1, _receipts} -> :ok
+      {0, _receipts} -> {:error, :gone}
+    end
   end
 
   defp insert_transaction(scope, attrs) do
@@ -975,15 +1040,29 @@ defmodule Zipfelfolio.Portfolios do
   defp store_receipt(scope, {path, filename}, changeset) do
     content = File.read!(path)
 
+    case store_receipt_file(content) do
+      {:ok, sha256} ->
+        {:ok, receipt_record(scope, sha256, filename, byte_size(content)).id}
+
+      {:error, :not_pdf} ->
+        {:error,
+         Ecto.Changeset.add_error(%{changeset | action: :insert}, :receipt, "ist keine PDF-Datei")}
+    end
+  end
+
+  @doc """
+  Stores the PDF `content` in the receipts directory, once for all users, and returns its
+  SHA-256; `{:error, :not_pdf}` for content that is no PDF.
+  """
+  def store_receipt_file(content) do
     if pdf?(content) do
       sha256 = sha256(content)
       file = receipt_file(sha256)
       File.mkdir_p!(Path.dirname(file))
       unless File.exists?(file), do: write_atomically(file, content)
-      {:ok, receipt_record(scope, sha256, filename, byte_size(content)).id}
+      {:ok, sha256}
     else
-      {:error,
-       Ecto.Changeset.add_error(%{changeset | action: :insert}, :receipt, "ist keine PDF-Datei")}
+      {:error, :not_pdf}
     end
   end
 
@@ -1002,14 +1081,23 @@ defmodule Zipfelfolio.Portfolios do
     end
   end
 
+  # The same file waiting in the inbox, or discarded from it, is booked with the transaction.
   defp receipt_record(scope, sha256, filename, byte_size) do
-    Repo.get_by(Receipt, user_id: scope.user.id, sha256: sha256) ||
-      Repo.insert!(%Receipt{
-        user_id: scope.user.id,
-        sha256: sha256,
-        filename: filename,
-        byte_size: byte_size
-      })
+    case Repo.get_by(Receipt, user_id: scope.user.id, sha256: sha256) do
+      nil ->
+        Repo.insert!(%Receipt{
+          user_id: scope.user.id,
+          sha256: sha256,
+          filename: filename,
+          byte_size: byte_size
+        })
+
+      %Receipt{status: :booked} = receipt ->
+        receipt
+
+      receipt ->
+        Repo.update!(Ecto.Changeset.change(receipt, status: :booked))
+    end
   end
 
   @doc "Where the file of a receipt lies: in `receipts/` next to the database, named by its hash."

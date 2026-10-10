@@ -27,6 +27,59 @@ defmodule Zipfelfolio.Users do
     |> Repo.update()
   end
 
+  @doc "The form of the user's Paperless."
+  def change_paperless(%User{} = user, attrs \\ %{}), do: User.paperless_changeset(user, attrs)
+
+  @doc """
+  Sets the user's Paperless URL, API token and tag, see `User.paperless_changeset/2`; another
+  URL or tag has not been polled yet.
+  """
+  def update_paperless(%Scope{} = scope, attrs) do
+    changeset = scope |> current_user() |> User.paperless_changeset(attrs)
+
+    if Ecto.Changeset.changed?(changeset, :paperless_url) or
+         Ecto.Changeset.changed?(changeset, :paperless_tag),
+       do: changeset |> Ecto.Changeset.put_change(:paperless_polled_at, nil) |> Repo.update(),
+       else: Repo.update(changeset)
+  end
+
+  @doc "Forgets the user's Paperless."
+  def disconnect_paperless(%Scope{} = scope) do
+    scope
+    |> current_user()
+    |> Ecto.Changeset.change(
+      paperless_url: nil,
+      paperless_token: nil,
+      paperless_tag: nil,
+      paperless_polled_at: nil
+    )
+    |> Repo.update()
+  end
+
+  # The scope's user is as of the sign-in, without what the user has changed since.
+  defp current_user(%Scope{user: user}), do: Repo.get!(User, user.id)
+
+  @doc "The users who have entered a Paperless, for polling it."
+  def list_paperless_users do
+    Repo.all(
+      from u in User,
+        where:
+          not is_nil(u.paperless_url) and not is_nil(u.paperless_token) and
+            not is_nil(u.paperless_tag),
+        order_by: u.id
+    )
+  end
+
+  @doc "Notes that the user's Paperless was polled just now."
+  def paperless_polled(%User{id: id}) do
+    {1, _users} =
+      Repo.update_all(from(u in User, where: u.id == ^id),
+        set: [paperless_polled_at: DateTime.utc_now()]
+      )
+
+    :ok
+  end
+
   def create_user(attrs) do
     %User{}
     |> User.create_changeset(attrs)

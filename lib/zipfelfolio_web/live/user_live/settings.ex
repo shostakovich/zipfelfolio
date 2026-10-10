@@ -3,7 +3,10 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
 
   on_mount {ZipfelfolioWeb.UserAuth, :require_sudo_mode}
 
-  alias Zipfelfolio.Users
+  alias Zipfelfolio.{Receipts, Users}
+  alias Zipfelfolio.Receipts.PaperlessJob
+  alias Zipfelfolio.Users.User
+  alias ZipfelfolioWeb.Format
 
   @impl true
   def render(assigns) do
@@ -23,7 +26,7 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
         </:actions>
       </.header>
 
-      <div class="row g-4">
+      <div class="row gx-4">
         <div class="col-lg-7">
           <.card title="Passkeys" id="passkeys">
             <p class="text-body-secondary">
@@ -73,23 +76,12 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
               </div>
             </form>
           </.card>
-        </div>
-
-        <div class="col-lg-5">
-          <.card title="Wertpapiere" id="securities">
+          <.card title="Depots" id="depots">
             <p class="text-body-secondary">
-              Woher die Kurse kommen, letzte Kurse und Wechselkurse, manuelle Kurse.
+              Depotnummern und Referenzkonten deiner Depots.
             </p>
-            <.link navigate={~p"/settings/securities"} class="btn btn-outline-primary">
-              Kursquellen und Kurse
-            </.link>
-          </.card>
-          <.card title="Import" id="import">
-            <p class="text-body-secondary">
-              Wertpapiere, Depots, Konten und Buchungen aus Portfolio Performance übernehmen.
-            </p>
-            <.link navigate={~p"/settings/import"} class="btn btn-outline-primary">
-              PP-Datei importieren
+            <.link navigate={~p"/portfolios"} class="btn btn-outline-primary">
+              Depotnummern bearbeiten
             </.link>
           </.card>
           <.card title="E-Mail-Adresse">
@@ -111,10 +103,137 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
             </.form>
           </.card>
         </div>
+
+        <div class="col-lg-5">
+          <.card title="Wertpapiere" id="securities">
+            <p class="text-body-secondary">
+              Woher die Kurse kommen, letzte Kurse und Wechselkurse, manuelle Kurse.
+            </p>
+            <.link navigate={~p"/settings/securities"} class="btn btn-outline-primary">
+              Kursquellen und Kurse
+            </.link>
+          </.card>
+          <.card title="Import" id="import">
+            <p class="text-body-secondary">
+              Wertpapiere, Depots, Konten und Buchungen aus Portfolio Performance übernehmen.
+            </p>
+            <.link navigate={~p"/settings/import"} class="btn btn-outline-primary">
+              PP-Datei importieren
+            </.link>
+          </.card>
+          <.card title="Belegeingang" id="receipt-intake">
+            <p class="text-body-secondary">
+              Holt alle 15 Minuten die Dokumente mit deinem Tag aus Paperless-ngx in den Eingang.
+            </p>
+            <ul class="list-unstyled vstack gap-3 mb-3">
+              <.intake_row
+                id="paperless-status"
+                on={User.paperless?(@paperless)}
+                title="Paperless-ngx"
+                detail={paperless_status(@paperless)}
+              />
+              <.intake_row
+                id="recognition-status"
+                on={@model_name != nil}
+                title="Belegerkennung"
+                detail={recognition_status(@model_name)}
+              />
+            </ul>
+            <.form for={@paperless_form} id="paperless-form" phx-submit="save_paperless">
+              <.input
+                field={@paperless_form[:paperless_url]}
+                type="url"
+                label="URL"
+                placeholder="https://paperless.example.org"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <.input
+                field={@paperless_form[:paperless_token]}
+                type="password"
+                label="API-Token"
+                value=""
+                autocomplete="off"
+                placeholder={if @paperless.paperless_token, do: "gespeichert"}
+                wrapper_class="mb-1"
+              />
+              <div class="form-text mb-3">
+                {if @paperless.paperless_token,
+                  do:
+                    "Leer lassen, um den gespeicherten Token zu behalten; eine neue URL braucht einen neuen.",
+                  else: "In Paperless unter „Mein Profil“."}
+              </div>
+              <.input
+                field={@paperless_form[:paperless_tag]}
+                label="Tag"
+                placeholder="zipfelfolio"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <div class="d-flex flex-wrap gap-2">
+                <.button phx-disable-with="Speichert …">Speichern</.button>
+                <.button
+                  :if={User.paperless?(@paperless)}
+                  type="button"
+                  variant="outline-danger"
+                  phx-click="disconnect_paperless"
+                  data-confirm="Paperless trennen? URL, Token und Tag werden gelöscht."
+                >
+                  Trennen
+                </.button>
+              </div>
+            </.form>
+          </.card>
+        </div>
       </div>
     </Layouts.app>
     """
   end
+
+  attr :id, :string, required: true
+  attr :on, :boolean, required: true
+  attr :title, :string, required: true
+  attr :detail, :list, required: true, doc: "its parts, each with its punctuation; none wraps"
+
+  defp intake_row(assigns) do
+    ~H"""
+    <li id={@id} class="d-flex align-items-start gap-2">
+      <.icon
+        name={if @on, do: "check", else: "alert"}
+        class={["flex-shrink-0 mt-1", if(@on, do: "text-success", else: "text-body-tertiary")]}
+      />
+      <span class="me-auto">
+        <span class="d-block fw-semibold">{@title}</span>
+        <span class="d-block small text-body-secondary">
+          <%= for part <- @detail do %>
+            <span class="text-nowrap">{part}</span>
+          <% end %>
+        </span>
+      </span>
+    </li>
+    """
+  end
+
+  defp paperless_status(user) do
+    if User.paperless?(user) do
+      tag = user.paperless_tag
+
+      polled =
+        if user.paperless_polled_at,
+          do: "zuletzt abgefragt #{Format.recent(user.paperless_polled_at)}",
+          else: "noch nicht abgefragt"
+
+      ["Tag „#{tag}“,", "danach „#{Receipts.done_tag(tag)}“ ·", polled]
+    else
+      ["Nicht verbunden"]
+    end
+  end
+
+  defp recognition_status(nil),
+    do: ["Kein Modell eingerichtet:", "Belege öffnen ein leeres Formular."]
+
+  defp recognition_status(name),
+    do: ["#{name} ·", "Text aus Paperless,", "sonst aus dem PDF"]
 
   @impl true
   def mount(%{"token" => token}, _session, socket) do
@@ -137,7 +256,13 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
        :email_form,
        to_form(Users.change_user_email(user, %{}, validate_unique: false))
      )
+     |> assign(:model_name, Receipts.model_name())
+     |> assign_paperless(Users.get_user!(user.id))
      |> assign_passkeys()}
+  end
+
+  defp assign_paperless(socket, user) do
+    assign(socket, paperless: user, paperless_form: to_form(Users.change_paperless(user)))
   end
 
   @impl true
@@ -172,6 +297,28 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
       changeset ->
         {:noreply, assign(socket, :email_form, to_form(changeset, action: :insert))}
     end
+  end
+
+  def handle_event("save_paperless", %{"user" => params}, socket) do
+    true = Users.sudo_mode?(socket.assigns.current_scope.user)
+
+    case Users.update_paperless(socket.assigns.current_scope, params) do
+      {:ok, user} ->
+        PaperlessJob.poll_soon(user)
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "Paperless gespeichert; zipfelfolio fragt es gleich ab.")
+         |> assign_paperless(user)}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, :paperless_form, to_form(changeset, action: :update))}
+    end
+  end
+
+  def handle_event("disconnect_paperless", _params, socket) do
+    {:ok, user} = Users.disconnect_paperless(socket.assigns.current_scope)
+    {:noreply, socket |> put_flash(:info, "Paperless getrennt.") |> assign_paperless(user)}
   end
 
   def handle_event("passkey_registered", _params, socket) do

@@ -67,7 +67,7 @@ RUN mix release
 FROM ${RUNNER_IMAGE} AS final
 
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y libstdc++6 openssl libncurses6 ca-certificates tzdata curl sqlite3 && \
+    apt-get install --no-install-recommends -y libstdc++6 openssl libncurses6 ca-certificates tzdata curl sqlite3 poppler-utils && \
     rm -rf /var/lib/apt/lists/*
 
 ENV LANG=C.UTF-8 \

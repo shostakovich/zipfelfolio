@@ -2,6 +2,7 @@ defmodule ZipfelfolioWeb.Format do
   @moduledoc "German formats for amounts, dates and times; times in the host's local time."
 
   alias Zipfelfolio.LocalTime
+  alias Zipfelfolio.Portfolios.Portfolio
 
   @doc """
   A price × 10⁸ with two to four decimal places and its currency as `currency/1` names it, e.g.
@@ -76,6 +77,9 @@ defmodule ZipfelfolioWeb.Format do
     shares = shares |> Decimal.div(100_000_000) |> Decimal.normalize()
     number(shares, max(-shares.exp, 0), "")
   end
+
+  @doc "A decimal in German notation with `places` decimal places, e.g. `1.125,00`."
+  def decimal(%Decimal{} = decimal, places), do: number(decimal, places, "")
 
   @doc "A share of a total in percent, e.g. `58,1 %`; the % never wraps onto a line of its own."
   def percent(%Decimal{} = percent, places \\ 1), do: number(percent, places, "") <> "\u00A0%"
@@ -155,6 +159,10 @@ defmodule ZipfelfolioWeb.Format do
     |> Enum.map_join(".", &Enum.join/1)
   end
 
+  @doc "A depot or account number by its last four digits, e.g. „…4471“."
+  def masked(number),
+    do: "…" <> (number |> Portfolio.digits() |> String.slice(-4, 4))
+
   def date(nil), do: "–"
   def date(%Date{} = date), do: Calendar.strftime(date, "%d.%m.%Y")
 
@@ -193,6 +201,15 @@ defmodule ZipfelfolioWeb.Format do
   defp short_date(date, false), do: Calendar.strftime(date, "%d.%m.")
 
   defp long_date(date), do: "#{date.day}. #{month_name(date)} #{date.year}"
+
+  @doc "A recent time in local time, e.g. `17:30` today and `09.10. 17:30` before."
+  def recent(%DateTime{} = utc) do
+    local = LocalTime.from_utc(utc)
+
+    if NaiveDateTime.to_date(local) == LocalTime.today(),
+      do: Calendar.strftime(local, "%H:%M"),
+      else: Calendar.strftime(local, "%d.%m. %H:%M")
+  end
 
   def datetime(nil), do: "–"
 
