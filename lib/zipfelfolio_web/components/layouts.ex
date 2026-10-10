@@ -11,7 +11,7 @@ defmodule ZipfelfolioWeb.Layouts do
 
   attr :sidebar, :map,
     required: true,
-    doc: "the portfolios and accounts, see `ZipfelfolioWeb.Sidebar`"
+    doc: "the portfolios and accounts and the inbox's count, see `ZipfelfolioWeb.Sidebar`"
 
   attr :current, :any,
     default: nil,
@@ -84,6 +84,7 @@ defmodule ZipfelfolioWeb.Layouts do
             icon="list"
             current={@current}
             open={:transactions}
+            badge={@sidebar.inbox}
           >
             Buchungen
           </.side_link>
@@ -196,6 +197,7 @@ defmodule ZipfelfolioWeb.Layouts do
           navigate={~p"/transactions"}
           icon="list"
           active={@current == :transactions}
+          badge={@sidebar.inbox}
         >
           Buchungen
         </.tab>
@@ -320,6 +322,7 @@ defmodule ZipfelfolioWeb.Layouts do
   attr :icon, :string, required: true
   attr :current, :any, required: true
   attr :open, :any, required: true, doc: "what the link opens, as `current` names it"
+  attr :badge, :integer, default: 0, doc: "the recognised receipts in the inbox, shown unless 0"
   slot :inner_block, required: true
 
   # In the rail only the icon shows; the name stays for screen readers and shows in a flyout.
@@ -335,8 +338,21 @@ defmodule ZipfelfolioWeb.Layouts do
     >
       <.icon name={@icon} />
       <span class="app-side-text">{render_slot(@inner_block)}</span>
-      <span class="app-fly" aria-hidden="true">{render_slot(@inner_block)}</span>
+      <.inbox_badge count={@badge} />
+      <span class="app-fly" aria-hidden="true">
+        {render_slot(@inner_block)}<span :if={@badge > 0}>{@badge} im Eingang</span>
+      </span>
     </.link>
+    """
+  end
+
+  attr :count, :integer, required: true
+
+  defp inbox_badge(assigns) do
+    ~H"""
+    <span :if={@count > 0} class="badge rounded-pill text-bg-warning app-inbox-badge">
+      <span class="visually-hidden">im Eingang: </span>{@count}
+    </span>
     """
   end
 
@@ -479,6 +495,7 @@ defmodule ZipfelfolioWeb.Layouts do
   attr :navigate, :string, required: true
   attr :icon, :string, required: true
   attr :active, :boolean, required: true
+  attr :badge, :integer, default: 0
   slot :inner_block, required: true
 
   defp tab(assigns) do
@@ -487,11 +504,15 @@ defmodule ZipfelfolioWeb.Layouts do
       <.link
         id={@id}
         navigate={@navigate}
-        class={["nav-link d-flex flex-column align-items-center", @active && "active"]}
+        class={[
+          "nav-link d-flex flex-column align-items-center position-relative",
+          @active && "active"
+        ]}
         aria-current={@active && "page"}
       >
         <.icon name={@icon} />
         <small>{render_slot(@inner_block)}</small>
+        <.inbox_badge count={@badge} />
       </.link>
     </li>
     """

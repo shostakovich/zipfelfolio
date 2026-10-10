@@ -21,6 +21,13 @@ config :zipfelfolio, Zipfelfolio.MarketData,
   symbol_source: Zipfelfolio.FakeSymbolSource,
   daily_job: false
 
+config :zipfelfolio, Zipfelfolio.Receipts,
+  paperless: Zipfelfolio.FakePaperless,
+  paperless_job: false,
+  model: Zipfelfolio.FakeModel,
+  text_extractor: Zipfelfolio.FakeTextExtractor,
+  resume_on_start: false
+
 config :logger, level: :warning
 
 config :phoenix, :plug_init_mode, :runtime

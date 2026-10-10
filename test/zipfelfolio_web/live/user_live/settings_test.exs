@@ -2,6 +2,7 @@ defmodule ZipfelfolioWeb.UserLive.SettingsTest do
   use ZipfelfolioWeb.ConnCase
 
   alias Zipfelfolio.Users
+  alias Zipfelfolio.Users.Scope
   import Phoenix.LiveViewTest
   import Zipfelfolio.UsersFixtures
 
@@ -166,6 +167,112 @@ defmodule ZipfelfolioWeb.UserLive.SettingsTest do
                "Den Passkey gibt es nicht mehr."
 
       assert Zipfelfolio.Repo.get(Zipfelfolio.Users.Passkey, passkey.id)
+    end
+  end
+
+  describe "Belegeingang" do
+    setup :register_and_log_in_user
+
+    # The parts of a status line, each kept on one line.
+    defp status(lv, id) do
+      lv
+      |> element("#{id} .small")
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query(".text-nowrap")
+      |> Enum.map(&LazyHTML.text/1)
+    end
+
+    defp save_paperless(lv, params),
+      do: lv |> form("#paperless-form", %{"user" => params}) |> render_submit()
+
+    test "connects the user's Paperless and never shows the token again", %{conn: conn} = ctx do
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+      assert has_element?(lv, "#paperless-status", "Nicht verbunden")
+      refute has_element?(lv, "#paperless-form button", "Trennen")
+
+      result =
+        save_paperless(lv, %{
+          "paperless_url" => " https://paperless.example.org/ ",
+          "paperless_token" => "geheim123",
+          "paperless_tag" => "zipfelfolio"
+        })
+
+      assert result =~ "Paperless gespeichert"
+      refute result =~ "geheim123"
+
+      assert status(lv, "#paperless-status") ==
+               ["Tag „zipfelfolio“,", "danach „zipfelfolio-erledigt“ ·", "noch nicht abgefragt"]
+
+      user = Users.get_user!(ctx.user.id)
+      assert user.paperless_url == "https://paperless.example.org"
+      assert user.paperless_token == "geheim123"
+      refute inspect(user) =~ "geheim123"
+
+      save_paperless(lv, %{"paperless_token" => "", "paperless_tag" => "belege"})
+      assert Users.get_user!(ctx.user.id).paperless_token == "geheim123"
+      assert has_element?(lv, "#paperless-status", "Tag „belege“")
+
+      lv |> element("#paperless-form button", "Trennen") |> render_click()
+      assert has_element?(lv, "#paperless-status", "Nicht verbunden")
+      assert Users.get_user!(ctx.user.id).paperless_token == nil
+    end
+
+    @tag :capture_log
+    test "saves nothing once sudo mode has run out on the open page", %{conn: conn} = ctx do
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+
+      :sys.replace_state(lv.pid, fn state ->
+        update_in(
+          state.socket.assigns.current_scope.user.authenticated_at,
+          &DateTime.add(&1, -21, :minute)
+        )
+      end)
+
+      Process.flag(:trap_exit, true)
+
+      catch_exit(
+        save_paperless(lv, %{
+          "paperless_url" => "https://paperless.example.org",
+          "paperless_token" => "geheim123",
+          "paperless_tag" => "zipfelfolio"
+        })
+      )
+
+      assert Users.get_user!(ctx.user.id).paperless_url == nil
+    end
+
+    test "shows when Paperless was polled last", %{conn: conn, user: user} do
+      {:ok, user} =
+        Users.update_paperless(Scope.for_user(user), %{
+          "paperless_url" => "http://paperless:8000",
+          "paperless_token" => "t",
+          "paperless_tag" => "zipfelfolio"
+        })
+
+      :ok = Users.paperless_polled(user)
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+
+      assert has_element?(lv, "#paperless-status", "zuletzt abgefragt")
+    end
+
+    test "refuses a URL without scheme and a missing token or tag", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+
+      result = save_paperless(lv, %{"paperless_url" => "paperless.local"})
+
+      assert result =~ "braucht http:// oder https:// und einen Host"
+      assert has_element?(lv, "#paperless-form .invalid-feedback", "muss ausgefüllt werden")
+      assert has_element?(lv, "#paperless-status", "Nicht verbunden")
+    end
+
+    test "names the recognition model, or that there is none", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+      assert has_element?(lv, "#recognition-status", "Kein Modell eingerichtet")
+
+      Zipfelfolio.FakeModel.stub(fn _text -> {:ok, "{}"} end)
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+      assert ["Testmodell ·", "Text aus Paperless," | _rest] = status(lv, "#recognition-status")
     end
   end
 end

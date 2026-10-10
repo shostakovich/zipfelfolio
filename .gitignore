@@ -16,3 +16,8 @@ erl_crash.dump
 # Built by esbuild and phx.digest.
 /priv/static/assets/
 /priv/static/cache_manifest.json
+
+# Real bank receipts for trying recognition models, and Portfolio Performance's EPL-licensed test
+# texts fetched by `mix zipfelfolio.measure_receipts --fetch-pp`; never committed.
+/test/fixtures/receipts/private/
+/test/fixtures/receipts/pp/

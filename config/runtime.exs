@@ -11,6 +11,14 @@ config :zipfelfolio, ZipfelfolioWeb.Endpoint, http: [port: port]
 config :zipfelfolio, Zipfelfolio.MarketData.DivvyDiary,
   api_key: System.get_env("DIVVYDIARY_API_KEY")
 
+# Receipt recognition by any OpenAI-compatible chat API, e.g. http://ollama:11434/v1; without URL
+# and model receipts still land in the inbox and open an empty form.
+config :zipfelfolio, Zipfelfolio.Receipts.ChatAPI,
+  url: System.get_env("RECEIPT_MODEL_URL"),
+  model: System.get_env("RECEIPT_MODEL"),
+  api_key: System.get_env("RECEIPT_MODEL_KEY"),
+  thinking: System.get_env("RECEIPT_MODEL_THINKING") in ~w(on true 1)
+
 # Passkeys check the origin, which carries the port in development.
 if config_env() == :dev do
   config :zipfelfolio, ZipfelfolioWeb.Endpoint, url: [port: port]

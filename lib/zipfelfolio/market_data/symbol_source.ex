@@ -13,7 +13,8 @@ defmodule Zipfelfolio.MarketData.SymbolSource do
           currency: String.t()
         }
   @type symbol :: %{composition: composition, dividends: [dividend]}
-  @type reason :: :not_found | :unreachable | :invalid_response | {:http_status, pos_integer}
+  @type reason ::
+          :not_found | :unreachable | :timeout | :invalid_response | {:http_status, pos_integer}
 
   @callback available?() :: boolean
   @callback symbol(isin :: String.t()) :: {:ok, symbol} | {:error, reason}

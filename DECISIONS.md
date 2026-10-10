@@ -42,4 +42,6 @@ Accepted, 2026-10-10
 - **Decision:** Each user enters Paperless URL, token and tag in the settings; not one global connection in the
   environment.
 - **Consequences:** Ownership is clear without guessing from depot numbers and nothing needs a redeploy. The
-  token lives in the database, so a database backup grants access to Paperless.
+  token lives in the database, so a database backup grants access to Paperless. Any signed-in user can make the
+  server call the URL they enter, which is acceptable for a self-hosted app with trusted users and no
+  self-registration.

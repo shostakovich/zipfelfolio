@@ -6,15 +6,18 @@ defmodule ZipfelfolioWeb.TransactionDialog do
   is created by its ISIN, with name and Yahoo symbol from Yahoo's search.
 
   `edit/1` opens it as „Buchung bearbeiten“ for a transaction the user booked, which it saves or
-  deletes. Once booked, every page loads its figures again, and the page shows what was booked:
+  deletes. `open_receipt/1` opens it as „Beleg prüfen“ for a receipt of the inbox, prefilled with
+  what the model recognised, beside the receipt's checks and text; booking attaches the receipt,
+  which may also be discarded or left for later. Once booked, every page loads its figures again, and the page shows what was booked:
   components cannot show a flash themselves, so `on_mount/4` lets the page do it.
   """
   use ZipfelfolioWeb, :live_component
 
-  alias Zipfelfolio.{LocalTime, MarketData, Portfolios, Securities}
-  alias Zipfelfolio.Portfolios.Transaction
+  alias Zipfelfolio.{LocalTime, MarketData, Portfolios, Receipts, Securities}
+  alias Zipfelfolio.Portfolios.{Transaction, TransactionForm}
+  alias Zipfelfolio.Receipts.{Checks, Fields}
   alias Zipfelfolio.Securities.ISIN
-  alias ZipfelfolioWeb.Format
+  alias ZipfelfolioWeb.{Format, ReceiptComponents}
 
   @id "transaction-dialog"
   @kinds [
@@ -24,6 +27,8 @@ defmodule ZipfelfolioWeb.TransactionDialog do
     deposit: "Einlage",
     removal: "Entnahme"
   ]
+
+  @receipt_gone "Dieser Beleg liegt nicht mehr im Eingang."
 
   @holding_error "Ohne diese Buchung fiele der Bestand später unter null. " <>
                    "Bitte zuerst die späteren Verkäufe ändern."
@@ -36,6 +41,9 @@ defmodule ZipfelfolioWeb.TransactionDialog do
 
   @doc "Opens the dialog for the transaction with `id`, one the user booked."
   def edit(id), do: JS.push("edit", value: %{id: id}, target: "##{@id}")
+
+  @doc "Opens the dialog for the receipt with `id`, one ready in the user's inbox."
+  def open_receipt(id), do: JS.push("open_receipt", value: %{id: id}, target: "##{@id}")
 
   @doc "Shows the dialog's message on the page that renders it."
   def on_mount(:default, _params, _session, socket),
@@ -50,7 +58,7 @@ defmodule ZipfelfolioWeb.TransactionDialog do
   def mount(socket) do
     {:ok,
      socket
-     |> assign(open: false, editing: nil, new_security: nil, delete_error: nil)
+     |> assign(open: false, editing: nil, receipt: nil, new_security: nil, delete_error: nil)
      |> allow_upload(:receipt, accept: ~w(.pdf), max_entries: 1, max_file_size: 20_000_000)}
   end
 
@@ -69,7 +77,13 @@ defmodule ZipfelfolioWeb.TransactionDialog do
           phx-key="Escape"
           phx-target={@myself}
         >
-          <div class="modal-dialog modal-lg modal-fullscreen-sm-down modal-dialog-scrollable">
+          <div class={[
+            "modal-dialog modal-dialog-scrollable",
+            if(@receipt,
+              do: "modal-xl modal-fullscreen-lg-down app-receipt-dialog",
+              else: "modal-lg modal-fullscreen-sm-down"
+            )
+          ]}>
             <.form
               for={@form}
               id="transaction-form"
@@ -80,8 +94,15 @@ defmodule ZipfelfolioWeb.TransactionDialog do
               phx-click-away="close"
               phx-mounted={JS.focus_first(to: "#transaction-form .modal-body")}
             >
+              <input :if={@receipt} type="hidden" name="receipt_id" value={@receipt.id} />
               <div class="modal-header">
-                <h2 class="modal-title h4" id="transaction-title">
+                <div :if={@receipt}>
+                  <h2 class="modal-title h4" id="transaction-title">Beleg prüfen</h2>
+                  <div class="small text-body-secondary">
+                    {ReceiptComponents.receipt_subtitle(@receipt)}
+                  </div>
+                </div>
+                <h2 :if={!@receipt} class="modal-title h4" id="transaction-title">
                   {if @editing, do: "Buchung bearbeiten", else: "Buchung erfassen"}
                 </h2>
                 <button
@@ -93,108 +114,142 @@ defmodule ZipfelfolioWeb.TransactionDialog do
                 ></button>
               </div>
               <div class="modal-body">
-                <.kinds field={@form[:kind]} />
-                <div class="row g-3">
-                  <div :if={@kind != :deposit and @kind != :removal} class="col-sm-6">
-                    <.input
-                      field={@form[:portfolio_id]}
-                      type="select"
-                      label="Depot"
-                      options={Enum.map(@choices.portfolios, &{&1.name, &1.id})}
-                      prompt={if @kind == :dividend, do: "Ohne Depot"}
-                      wrapper_class={nil}
-                    />
+                <div class={@receipt && "row g-4"}>
+                  <div :if={@receipt} class="col-lg-6 app-receipt-pane">
+                    <ReceiptComponents.sheet receipt={@receipt} />
                   </div>
-                  <div class="col-sm-6">
-                    <.input
-                      field={@form[:date]}
-                      type="date"
-                      label="Datum"
-                      max={Date.to_iso8601(@today)}
-                      wrapper_class={nil}
-                    />
-                  </div>
-                  <div :if={@kind != :deposit and @kind != :removal} class="col-12">
-                    <.input
-                      field={@form[:security_id]}
-                      type="select"
-                      label="Wertpapier"
-                      options={Enum.map(@choices.securities, &{security_label(&1), &1.id})}
-                      prompt="Wertpapier wählen"
-                      wrapper_class={nil}
-                    />
-                    <button
-                      :if={!@new_security}
-                      id="new-security"
-                      type="button"
-                      class="btn btn-link btn-sm px-0"
-                      phx-click="new_security"
-                      phx-target={@myself}
-                    >
-                      Neues Wertpapier per ISIN
-                    </button>
-                    <.new_security
-                      :if={@new_security}
-                      form={@new_security.form}
-                      lookup={@new_security.lookup}
-                      myself={@myself}
-                    />
-                  </div>
-                  <div :if={@kind != :deposit and @kind != :removal} class="col-6 col-sm-4">
-                    <.number field={@form[:shares]} label="Stück" />
-                  </div>
-                  <div :if={@kind in [:purchase, :sale]} class="col-6 col-sm-4">
-                    <.number field={@form[:price]} label="Kurs" euros />
-                  </div>
-                  <div :if={@kind == :dividend} class="col-6 col-sm-4">
-                    <.number field={@form[:gross]} label="Brutto" euros />
-                  </div>
-                  <div :if={@kind != :deposit and @kind != :removal} class="col-6 col-sm-4">
-                    <.number field={@form[:fees]} label="Gebühren" euros />
-                  </div>
-                  <div :if={@kind != :deposit and @kind != :removal} class="col-6 col-sm-4">
-                    <.number field={@form[:taxes]} label="Steuern" euros />
-                  </div>
-                  <div class="col-sm-8">
-                    <.input
-                      field={@form[:account_id]}
-                      type="select"
-                      label="Konto"
-                      options={Enum.map(@choices.accounts, &{&1.name, &1.id})}
-                      prompt={account_prompt(@kind)}
-                      wrapper_class={nil}
-                    />
-                  </div>
-                  <div class="col-12">
-                    <.amount form={@form} kind={@kind} />
-                  </div>
-                  <div :if={@kind == :dividend and !@editing} class="col-12">
-                    <.input
-                      field={@form[:remove_at_once]}
-                      type="checkbox"
-                      label="Gleich entnehmen"
-                      aria-describedby="transaction-remove-hint"
-                      wrapper_class="mb-0"
-                    />
-                    <div id="transaction-remove-hint" class="form-text">
-                      Bucht den Nettobetrag am selben Tag vom Konto ab.
-                    </div>
-                  </div>
-                  <div class="col-12">
-                    <label class="form-label" for={@uploads.receipt.ref}>
-                      {if @editing && @editing.receipt, do: "Beleg ersetzen", else: "Beleg"}
-                      <span class="text-body-secondary">(optional)</span>
-                    </label>
-                    <.live_file_input
-                      upload={@uploads.receipt}
-                      class={["form-control", receipt_errors(@uploads, @form) != [] && "is-invalid"]}
-                    />
-                    <.error :for={message <- receipt_errors(@uploads, @form)}>{message}</.error>
-                    <div :if={@editing && @editing.receipt} class="form-text">
-                      Angehängt:
-                      <a href={~p"/receipts/#{@editing.receipt_id}"} target="_blank" rel="noopener">
-                        {@editing.receipt.filename}
-                      </a>
+                  <div class={@receipt && "col-lg-6"}>
+                    <ReceiptComponents.checklist :if={@receipt} receipt={@receipt} />
+                    <.kinds field={@form[:kind]} receipt={@receipt} />
+                    <div class="row g-3">
+                      <div :if={@kind != :deposit and @kind != :removal} class="col-sm-6">
+                        <.input
+                          field={@form[:portfolio_id]}
+                          type="select"
+                          label="Depot"
+                          options={Enum.map(@choices.portfolios, &{&1.name, &1.id})}
+                          prompt={portfolio_prompt(@kind, @receipt)}
+                          wrapper_class={nil}
+                          class={@depot_number_warning && "border-warning"}
+                          aria-describedby={
+                            @depot_number_warning && "transaction_portfolio_id-warning"
+                          }
+                        />
+                        <div
+                          :if={@depot_number_warning}
+                          id="transaction_portfolio_id-warning"
+                          class="form-text text-warning-emphasis"
+                        >
+                          {@depot_number_warning}
+                        </div>
+                      </div>
+                      <div class="col-sm-6">
+                        <.input
+                          field={@form[:date]}
+                          type="date"
+                          label="Datum"
+                          max={Date.to_iso8601(@today)}
+                          wrapper_class={nil}
+                        />
+                      </div>
+                      <div :if={@kind != :deposit and @kind != :removal} class="col-12">
+                        <.input
+                          field={@form[:security_id]}
+                          type="select"
+                          label="Wertpapier"
+                          options={Enum.map(@choices.securities, &{security_label(&1), &1.id})}
+                          prompt="Wertpapier wählen"
+                          wrapper_class={nil}
+                        />
+                        <button
+                          :if={
+                            !@new_security and
+                              !(@receipt && @form[:security_id].value not in [nil, ""])
+                          }
+                          id="new-security"
+                          type="button"
+                          class="btn btn-link btn-sm px-0"
+                          phx-click="new_security"
+                          phx-target={@myself}
+                        >
+                          Neues Wertpapier per ISIN
+                        </button>
+                        <.new_security
+                          :if={@new_security}
+                          form={@new_security.form}
+                          lookup={@new_security.lookup}
+                          myself={@myself}
+                        />
+                      </div>
+                      <div :if={@kind != :deposit and @kind != :removal} class="col-6 col-sm-4">
+                        <.number field={@form[:shares]} label="Stück" />
+                      </div>
+                      <div :if={@kind in [:purchase, :sale]} class="col-6 col-sm-4">
+                        <.number
+                          field={@form[:price]}
+                          label="Kurs"
+                          euros
+                          warning={ReceiptComponents.price_warning(@receipt)}
+                        />
+                      </div>
+                      <div :if={@kind == :dividend} class="col-6 col-sm-4">
+                        <.number field={@form[:gross]} label="Brutto" euros />
+                      </div>
+                      <div :if={@kind != :deposit and @kind != :removal} class="col-6 col-sm-4">
+                        <.number field={@form[:fees]} label="Gebühren" euros />
+                      </div>
+                      <div :if={@kind != :deposit and @kind != :removal} class="col-6 col-sm-4">
+                        <.number field={@form[:taxes]} label="Steuern" euros />
+                      </div>
+                      <div class="col-sm-8">
+                        <.input
+                          field={@form[:account_id]}
+                          type="select"
+                          label="Konto"
+                          options={Enum.map(@choices.accounts, &{&1.name, &1.id})}
+                          prompt={account_prompt(@kind)}
+                          wrapper_class={nil}
+                        />
+                      </div>
+                      <div class="col-12">
+                        <.amount form={@form} kind={@kind} />
+                      </div>
+                      <div :if={@kind == :dividend and !@editing} class="col-12">
+                        <.input
+                          field={@form[:remove_at_once]}
+                          type="checkbox"
+                          label="Gleich entnehmen"
+                          aria-describedby="transaction-remove-hint"
+                          wrapper_class="mb-0"
+                        />
+                        <div id="transaction-remove-hint" class="form-text">
+                          Bucht den Nettobetrag am selben Tag vom Konto ab.
+                        </div>
+                      </div>
+                      <div :if={!@receipt} class="col-12">
+                        <label class="form-label" for={@uploads.receipt.ref}>
+                          {if @editing && @editing.receipt, do: "Beleg ersetzen", else: "Beleg"}
+                          <span class="text-body-secondary">(optional)</span>
+                        </label>
+                        <.live_file_input
+                          upload={@uploads.receipt}
+                          class={[
+                            "form-control",
+                            receipt_errors(@uploads, @form) != [] && "is-invalid"
+                          ]}
+                        />
+                        <.error :for={message <- receipt_errors(@uploads, @form)}>{message}</.error>
+                        <div :if={@editing && @editing.receipt} class="form-text">
+                          Angehängt:
+                          <a
+                            href={~p"/receipts/#{@editing.receipt_id}"}
+                            target="_blank"
+                            rel="noopener"
+                          >
+                            {@editing.receipt.filename}
+                          </a>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -207,7 +262,38 @@ defmodule ZipfelfolioWeb.TransactionDialog do
                   {@delete_error}
                 </div>
               </div>
-              <div class="modal-footer">
+              <div :if={@receipt} class="modal-footer">
+                <button
+                  id="receipt-discard"
+                  type="button"
+                  class="btn me-auto"
+                  phx-click="discard_receipt"
+                  phx-target={@myself}
+                >
+                  Verwerfen
+                </button>
+                <button
+                  id="receipt-later"
+                  type="button"
+                  class="btn"
+                  phx-click="close"
+                  phx-target={@myself}
+                >
+                  Später
+                </button>
+                <.button
+                  name="intent"
+                  value="book"
+                  class={[
+                    "btn",
+                    if(ReceiptComponents.passed?(@receipt), do: "btn-success", else: "btn-primary")
+                  ]}
+                  phx-disable-with="Wird gebucht …"
+                >
+                  Buchen
+                </.button>
+              </div>
+              <div :if={!@receipt} class="modal-footer">
                 <button
                   :if={@editing}
                   id="transaction-delete"
@@ -318,9 +404,14 @@ defmodule ZipfelfolioWeb.TransactionDialog do
   defp lookup_tone(_lookup), do: nil
 
   attr :field, Phoenix.HTML.FormField, required: true
+  attr :receipt, :any, required: true
 
+  # A receipt is a purchase, sale or dividend.
   defp kinds(assigns) do
-    assigns = assign(assigns, :kinds, @kinds)
+    kinds =
+      if assigns.receipt, do: Keyword.take(@kinds, [:purchase, :sale, :dividend]), else: @kinds
+
+    assigns = assign(assigns, :kinds, kinds)
 
     ~H"""
     <div class="btn-group btn-group-sm w-100 mb-3 flex-wrap" role="group" aria-label="Art">
@@ -344,6 +435,7 @@ defmodule ZipfelfolioWeb.TransactionDialog do
   attr :field, Phoenix.HTML.FormField, required: true
   attr :label, :string, required: true
   attr :euros, :boolean, default: false
+  attr :warning, :string, default: nil, doc: "what a receipt's failed check says about it"
 
   # A number as typed, in German notation, with its error once the field was used.
   defp number(assigns) do
@@ -359,10 +451,18 @@ defmodule ZipfelfolioWeb.TransactionDialog do
         id={@field.id}
         name={@field.name}
         value={typed(@field)}
-        class={["form-control tabular-nums", @errors != [] && "is-invalid"]}
+        class={[
+          "form-control tabular-nums",
+          @errors != [] && "is-invalid",
+          @warning && "border-warning"
+        ]}
+        aria-describedby={@warning && "#{@field.id}-warning"}
       />
       <span :if={@euros} class="input-group-text">€</span>
       <.error :for={message <- @errors}>{message}</.error>
+    </div>
+    <div :if={@warning} id={"#{@field.id}-warning"} class="form-text text-warning-emphasis">
+      {@warning}
     </div>
     """
   end
@@ -434,6 +534,10 @@ defmodule ZipfelfolioWeb.TransactionDialog do
   defp security_label(%{isin: isin} = security) when isin in [nil, ""], do: security.name
   defp security_label(security), do: "#{security.name} (#{security.isin})"
 
+  defp portfolio_prompt(:dividend, _receipt), do: "Ohne Depot"
+  defp portfolio_prompt(_kind, nil), do: nil
+  defp portfolio_prompt(_kind, _receipt), do: "Depot wählen"
+
   defp account_prompt(:purchase), do: "Ohne Konto (Einlieferung)"
   defp account_prompt(:sale), do: "Ohne Konto (Auslieferung)"
   defp account_prompt(_kind), do: "Konto wählen"
@@ -488,10 +592,27 @@ defmodule ZipfelfolioWeb.TransactionDialog do
 
     {:noreply,
      socket
-     |> assign(open: true, editing: nil, new_security: nil, delete_error: nil)
+     |> assign(open: true, editing: nil, receipt: nil, new_security: nil, delete_error: nil)
      |> assign(choices: choices, today: LocalTime.today())
      |> put_form(Portfolios.change_transaction_form(scope, choices, params))}
   end
+
+  def handle_event("open_receipt", %{"id" => id}, socket) do
+    case Receipts.get_ready_receipt(socket.assigns.current_scope, id) do
+      nil -> done(socket, @receipt_gone)
+      receipt -> {:noreply, open_receipt_for(socket, receipt)}
+    end
+  end
+
+  def handle_event("discard_receipt", _params, %{assigns: %{receipt: %{} = receipt}} = socket) do
+    case Receipts.discard(socket.assigns.current_scope, receipt.id) do
+      :ok -> socket |> close() |> done("Beleg verworfen.")
+      {:error, :gone} -> socket |> close() |> done(@receipt_gone)
+    end
+  end
+
+  # A click that comes after the receipt has left the dialog.
+  def handle_event("discard_receipt", _params, socket), do: {:noreply, close(socket)}
 
   def handle_event("edit", %{"id" => id}, socket) do
     scope = socket.assigns.current_scope
@@ -525,6 +646,25 @@ defmodule ZipfelfolioWeb.TransactionDialog do
       else: {:noreply, socket}
   end
 
+  def handle_event(
+        "book",
+        %{"transaction" => params},
+        %{assigns: %{receipt: %{} = receipt}} = socket
+      ) do
+    %{current_scope: scope, choices: choices} = socket.assigns
+
+    case Receipts.book(scope, choices, params, receipt) do
+      {:error, :gone} -> socket |> close() |> done(@receipt_gone)
+      result -> saved(result, socket)
+    end
+  end
+
+  # A submit that comes after the dialog closed or its receipt left it books nothing.
+  def handle_event("book", _params, %{assigns: %{open: false}} = socket),
+    do: {:noreply, socket}
+
+  def handle_event("book", %{"receipt_id" => _id}, socket), do: {:noreply, close(socket)}
+
   def handle_event("book", %{"transaction" => params}, socket) do
     changeset = change_form(socket, params)
 
@@ -536,15 +676,23 @@ defmodule ZipfelfolioWeb.TransactionDialog do
         {:noreply, socket}
 
       true ->
-        socket |> save(params) |> saved(socket)
+        socket |> save(params) |> recheck_inbox(socket) |> saved(socket)
     end
   end
 
   def handle_event("delete", _params, %{assigns: %{editing: %{} = transaction}} = socket) do
-    case Portfolios.delete_transaction(socket.assigns.current_scope, transaction) do
-      {:ok, _deleted} -> socket |> close() |> done("Buchung gelöscht.")
-      {:error, :read_only} -> {:noreply, close(socket)}
-      {:error, :holding} -> {:noreply, assign(socket, :delete_error, @holding_error)}
+    scope = socket.assigns.current_scope
+
+    case Portfolios.delete_transaction(scope, transaction) do
+      {:ok, _deleted} ->
+        Receipts.recheck(scope)
+        socket |> close() |> done("Buchung gelöscht.")
+
+      {:error, :read_only} ->
+        {:noreply, close(socket)}
+
+      {:error, :holding} ->
+        {:noreply, assign(socket, :delete_error, @holding_error)}
     end
   end
 
@@ -569,10 +717,81 @@ defmodule ZipfelfolioWeb.TransactionDialog do
     params = Portfolios.transaction_form_params(transaction)
 
     socket
-    |> assign(open: true, editing: transaction, new_security: nil, delete_error: nil)
+    |> assign(
+      open: true,
+      editing: transaction,
+      receipt: nil,
+      new_security: nil,
+      delete_error: nil
+    )
     |> assign(choices: choices, today: LocalTime.today())
     |> put_form(Portfolios.change_transaction_form(scope, choices, params, transaction))
   end
+
+  # The portfolio is the one of the receipt's depot number, with its reference account; the user
+  # picks it for an unknown depot number. An unknown ISIN opens „Neues Wertpapier“ with it.
+  defp open_receipt_for(socket, receipt) do
+    scope = socket.assigns.current_scope
+    choices = Portfolios.transaction_choices(scope)
+    portfolio_id = receipt_portfolio_id(choices, receipt)
+
+    params =
+      %{
+        "kind" => "purchase",
+        "date" => Date.to_iso8601(LocalTime.today()),
+        "fees" => "0,00",
+        "taxes" => "0,00"
+      }
+      |> Map.merge(receipt_params(receipt.fields), fn _key, default, value -> value || default end)
+      |> Map.merge(%{
+        "portfolio_id" => portfolio_id && to_string(portfolio_id),
+        "account_id" => reference_account(choices, portfolio_id),
+        "security_id" => security_id(choices, receipt.fields)
+      })
+
+    socket
+    |> assign(open: true, editing: nil, receipt: receipt, new_security: nil, delete_error: nil)
+    |> assign(choices: choices, today: LocalTime.today())
+    |> put_form(Portfolios.change_transaction_form(scope, choices, params))
+    |> open_new_security(receipt.fields, params["security_id"])
+  end
+
+  # Without a depot number on the receipt, a user with one portfolio needs no choice.
+  defp receipt_portfolio_id(choices, receipt) do
+    case {Checks.portfolio(receipt.checks), choices.portfolios} do
+      {{id, _name}, portfolios} -> if Enum.any?(portfolios, &(&1.id == id)), do: id
+      {nil, [only]} -> if depot_number_check(receipt) in [nil, :missing], do: only.id
+      {nil, _none_or_many} -> nil
+    end
+  end
+
+  defp depot_number_check(receipt) do
+    Enum.find_value(receipt.checks, &(&1.name == :depot && &1.result))
+  end
+
+  defp receipt_params(nil), do: %{}
+  defp receipt_params(fields), do: TransactionForm.params_of_receipt(fields)
+
+  defp security_id(_choices, nil), do: ""
+
+  defp security_id(choices, %Fields{isin: isin}) do
+    case Enum.find(choices.securities, &(&1.isin == isin and isin != nil)) do
+      nil -> ""
+      security -> to_string(security.id)
+    end
+  end
+
+  defp open_new_security(socket, %Fields{kind: kind, isin: isin} = fields, "")
+       when kind in [:purchase, :sale, :dividend] and is_binary(isin) do
+    params = %{"isin" => isin, "name" => fields.security_name || ""}
+    new_security = %{form: security_form(params, nil), lookup: nil, isin: nil}
+
+    socket
+    |> assign(:new_security, new_security)
+    |> change_new_security(params, ["security", "isin"])
+  end
+
+  defp open_new_security(socket, _fields, _security_id), do: socket
 
   defp change_form(socket, params) do
     %{current_scope: scope, choices: choices, editing: editing} = socket.assigns
@@ -632,8 +851,9 @@ defmodule ZipfelfolioWeb.TransactionDialog do
     case Securities.create_security(scope, new_security.form.params) do
       {:ok, security} ->
         if security.quote_feed == :yahoo, do: MarketData.fetch_in_background(security)
+        Receipts.recheck(scope)
         choices = Portfolios.transaction_choices(scope, editing)
-        socket = assign(socket, choices: choices, new_security: nil)
+        socket = assign(socket, choices: choices, new_security: nil) |> recheck_receipt()
         params = Map.put(socket.assigns.form.params, "security_id", to_string(security.id))
         {:noreply, put_form(socket, Map.put(change_form(socket, params), :action, :validate))}
 
@@ -682,6 +902,14 @@ defmodule ZipfelfolioWeb.TransactionDialog do
     Portfolios.update_transaction(scope, choices, transaction, params, receipt)
   end
 
+  # A booking or a change, with or without a receipt, may change the checks of the inbox.
+  defp recheck_inbox({:ok, _transaction_or_transactions} = result, socket) do
+    Receipts.recheck(socket.assigns.current_scope)
+    result
+  end
+
+  defp recheck_inbox(result, _socket), do: result
+
   defp saved({:ok, [_dividend, _removal]}, socket),
     do: done(socket, "Dividende und Entnahme gebucht.")
 
@@ -695,8 +923,18 @@ defmodule ZipfelfolioWeb.TransactionDialog do
   defp done(socket, message) do
     MarketData.broadcast()
     send(self(), {__MODULE__, :done, message})
-    {:noreply, assign(socket, open: false, editing: nil, new_security: nil)}
+    {:noreply, assign(socket, open: false, editing: nil, receipt: nil, new_security: nil)}
   end
+
+  # A security created from the receipt passes its check.
+  defp recheck_receipt(%{assigns: %{receipt: %{} = receipt}} = socket) do
+    case Receipts.get_ready_receipt(socket.assigns.current_scope, receipt.id) do
+      nil -> socket
+      fresh -> assign(socket, :receipt, fresh)
+    end
+  end
+
+  defp recheck_receipt(socket), do: socket
 
   defp close(socket) do
     socket =
@@ -704,12 +942,18 @@ defmodule ZipfelfolioWeb.TransactionDialog do
         cancel_upload(socket, :receipt, entry.ref)
       end)
 
-    assign(socket, open: false, editing: nil, new_security: nil)
+    assign(socket, open: false, editing: nil, receipt: nil, new_security: nil)
   end
 
+  # A receipt whose depot number names no portfolio marks the select until one is picked.
   defp put_form(socket, changeset) do
+    depot_number_warning =
+      socket.assigns.receipt && Ecto.Changeset.get_field(changeset, :portfolio_id) == nil &&
+        ReceiptComponents.depot_number_warning(socket.assigns.receipt)
+
     socket
     |> assign(:kind, Ecto.Changeset.get_field(changeset, :kind))
     |> assign(:form, to_form(changeset, as: :transaction))
+    |> assign(:depot_number_warning, depot_number_warning || nil)
   end
 end

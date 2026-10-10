@@ -89,6 +89,73 @@ defmodule Zipfelfolio.UsersTest do
     end
   end
 
+  describe "update_paperless/2" do
+    setup do
+      scope = user_scope_fixture()
+
+      {:ok, _user} =
+        Users.update_paperless(scope, %{
+          "paperless_url" => "https://paperless.example.org",
+          "paperless_token" => "geheim",
+          "paperless_tag" => "zipfelfolio"
+        })
+
+      %{scope: scope}
+    end
+
+    test "keeps the stored token for a blank one while the URL stays", %{scope: scope} do
+      assert {:ok, %User{paperless_token: "geheim", paperless_tag: "belege"}} =
+               Users.update_paperless(scope, %{
+                 "paperless_url" => "https://paperless.example.org/",
+                 "paperless_token" => " ",
+                 "paperless_tag" => "belege"
+               })
+    end
+
+    test "forgets the last poll when URL or tag change", %{scope: scope} do
+      polled = fn -> :ok = Users.paperless_polled(scope.user) end
+      polled.()
+
+      assert {:ok, %User{paperless_polled_at: %DateTime{}}} =
+               Users.update_paperless(scope, %{"paperless_token" => "neu"})
+
+      assert {:ok, %User{paperless_polled_at: nil}} =
+               Users.update_paperless(scope, %{"paperless_tag" => "belege"})
+
+      polled.()
+
+      assert {:ok, %User{paperless_polled_at: nil}} =
+               Users.update_paperless(scope, %{
+                 "paperless_url" => "https://other.example.org",
+                 "paperless_token" => "neu"
+               })
+    end
+
+    test "refuses a URL without a host", %{scope: scope} do
+      for url <- ["http:foo", "https://"] do
+        assert {:error, changeset} =
+                 Users.update_paperless(scope, %{"paperless_url" => url, "paperless_token" => "t"})
+
+        assert errors_on(changeset).paperless_url == [
+                 "braucht http:// oder https:// und einen Host"
+               ]
+      end
+    end
+
+    test "needs the token entered again for a new URL", %{scope: scope} do
+      attrs = %{"paperless_url" => "https://evil.example.org", "paperless_token" => ""}
+
+      assert {:error, changeset} = Users.update_paperless(scope, attrs)
+
+      assert errors_on(changeset).paperless_token == [
+               "bitte für die neue URL eingeben"
+             ]
+
+      assert {:ok, %User{paperless_url: "https://evil.example.org"}} =
+               Users.update_paperless(scope, %{attrs | "paperless_token" => "geheim"})
+    end
+  end
+
   describe "sudo_mode?/2" do
     test "validates the authenticated_at time" do
       now = DateTime.utc_now()
