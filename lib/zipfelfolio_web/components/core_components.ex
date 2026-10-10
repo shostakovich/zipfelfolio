@@ -276,6 +276,9 @@ defmodule ZipfelfolioWeb.CoreComponents do
   attr :label, :string, required: true
   attr :value, :string, required: true
   attr :value_class, :any, default: nil
+  attr :class, :any, default: nil
+
+  slot :prefix, doc: "a quiet remark before the value, such as „brutto“"
 
   slot :note do
     attr :class, :any
@@ -284,11 +287,16 @@ defmodule ZipfelfolioWeb.CoreComponents do
   @doc "A key figure in a card: its label, its value and notes below."
   def stat(assigns) do
     ~H"""
-    <div class="card h-100" id={@id}>
+    <div class={["card h-100", @class]} id={@id}>
       <div class="card-body">
         <div class="stat">
           <span class="stat-label">{@label}</span>
-          <span class={["stat-value", @value_class]}>{@value}</span>
+          <span class={["stat-value", @value_class]}>
+            <span :if={@prefix != []} class="small fw-normal text-body-secondary">
+              {render_slot(@prefix)}
+            </span>
+            {@value}
+          </span>
           <span :for={note <- @note} class={["small", note[:class]]}>{render_slot(note)}</span>
         </div>
       </div>

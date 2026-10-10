@@ -54,12 +54,12 @@ defmodule Zipfelfolio.FakeRateSource do
   end
 end
 
-defmodule Zipfelfolio.FakeCompositionSource do
+defmodule Zipfelfolio.FakeSymbolSource do
   @moduledoc """
-  The composition source in tests, like `Zipfelfolio.FakePriceFeed`; reports `{:composition, isin}`.
+  The symbol source in tests, like `Zipfelfolio.FakePriceFeed`; reports `{:symbol, isin}`.
   Without a stub, or stubbed with `api_key: false`, it has no API key and is not available.
   """
-  @behaviour Zipfelfolio.MarketData.CompositionSource
+  @behaviour Zipfelfolio.MarketData.SymbolSource
 
   @doc "Answers with `fun`, by default as if DivvyDiary knew no ISIN."
   def stub(fun \\ fn _isin -> {:error, :not_found} end, opts \\ []) do
@@ -76,10 +76,10 @@ defmodule Zipfelfolio.FakeCompositionSource do
   def available?, do: match?({_test, _fun, true}, Application.get_env(:zipfelfolio, __MODULE__))
 
   @impl true
-  def composition(isin) do
+  def symbol(isin) do
     case Application.get_env(:zipfelfolio, __MODULE__) do
       {test, fun, _api_key} ->
-        send(test, {:composition, isin})
+        send(test, {:symbol, isin})
         fun.(isin)
 
       nil ->

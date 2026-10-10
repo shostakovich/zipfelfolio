@@ -4,7 +4,7 @@
 import Chart from "../vendor/chart.umd.min.js"
 
 const DAY = 86_400_000
-const MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
+export const MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
 const euroFormat = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 })
 const numberFormat = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 })
 

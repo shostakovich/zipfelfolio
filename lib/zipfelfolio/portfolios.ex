@@ -226,19 +226,37 @@ defmodule Zipfelfolio.Portfolios do
   - `received`: every dividend booked, newest first, see `Dividends.received/2`
   - `years`: the dividends per month and year since the first, see `Dividends.by_year/2`
   - `this_year` up to `today` and `last_year` in all, each as `gross` and `net`
+  - `upcoming`: the dividends announced or forecast for the coming months, see
+    `Dividends.upcoming/4`, with their `total` and per month in `months`, see
+    `Dividends.by_coming_month/2`
+  - `value` and `purchase_value` of all holdings today, for the yields
   """
   def dividends(%Scope{} = scope, %Date{} = today) do
     transactions = list_transactions(scope)
-    # Each dividend converts at the rate of its pay date.
-    market = load_market(transactions, list_accounts(scope), today, :since_first_transaction)
+    security_ids = transactions |> Enum.map(& &1.security_id) |> Enum.reject(&is_nil/1)
+    stored = Securities.list_divvy_diary_dividends(Enum.uniq(security_ids))
+
+    market =
+      load_market(transactions, list_accounts(scope), today, :since_first_transaction, stored)
+
     received = Dividends.received(transactions, market)
+    upcoming = Dividends.upcoming(transactions, stored, market, today, received)
+
+    holdings =
+      transactions |> Valuation.holdings(today) |> holding_rows(transactions, market, today)
+
     last_year = Date.range(Date.new!(today.year - 1, 1, 1), Date.new!(today.year - 1, 12, 31))
 
     %{
       received: received,
       years: Dividends.by_year(received, today),
       this_year: Dividends.total(received, year_to_date(today)),
-      last_year: Dividends.total(received, last_year)
+      last_year: Dividends.total(received, last_year),
+      upcoming: upcoming,
+      total: Dividends.total(upcoming),
+      months: Dividends.by_coming_month(upcoming, today),
+      value: Enum.sum_by(holdings, & &1.value),
+      purchase_value: Enum.sum_by(holdings, & &1.purchase_value)
     }
   end
 
@@ -440,14 +458,14 @@ defmodule Zipfelfolio.Portfolios do
   # The securities of the transactions with their closes from `date` on, and the rates of every
   # currency involved from `date` on, or from the first transaction on, at which invested capital
   # and purchase values convert.
-  defp load_market(transactions, accounts, date, rates) do
+  defp load_market(transactions, accounts, date, rates, dividends \\ []) do
     security_ids =
       transactions |> Enum.map(& &1.security_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
 
     securities = Securities.list_securities_by_id(security_ids)
 
     currencies =
-      (accounts ++ securities ++ transactions)
+      (accounts ++ securities ++ transactions ++ dividends)
       |> Enum.map(& &1.currency)
       |> Market.rate_currencies()
 

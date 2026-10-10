@@ -2,7 +2,7 @@ defmodule ZipfelfolioWeb.DividendsLiveTest do
   use ZipfelfolioWeb.ConnCase
 
   import Phoenix.LiveViewTest
-  import Zipfelfolio.{PortfoliosFixtures, SecuritiesFixtures}
+  import Zipfelfolio.{PortfoliosFixtures, SecuritiesFixtures, UsersFixtures}
 
   alias Zipfelfolio.LocalTime
   alias Zipfelfolio.Portfolios.TransactionUnit
@@ -112,7 +112,7 @@ defmodule ZipfelfolioWeb.DividendsLiveTest do
     security = seed(ctx.scope)
     dividend_fixture(ctx.scope, security, Date.new!(this_year() - 3, 3, 31), 12.34)
 
-    {:ok, lv, _html} = live(ctx.conn, ~p"/dividends")
+    {:ok, lv, _html} = live(ctx.conn, ~p"/dividends?tab=months")
 
     assert has_element?(lv, "#per-month")
 
@@ -184,8 +184,123 @@ defmodule ZipfelfolioWeb.DividendsLiveTest do
 
     {:ok, lv, _html} = live(conn, ~p"/dividends")
 
-    assert render(lv) =~ "Noch keine Dividenden gebucht."
+    assert render(lv) =~ "Noch keine Dividenden gebucht und keine erwartet."
     refute has_element?(lv, "#this-year")
+  end
+
+  describe "calendar" do
+    defp holding(scope, security, count \\ 100) do
+      portfolio = portfolio_fixture(scope)
+
+      transaction_fixture(scope, Date.add(today(), -365),
+        type: :buy,
+        portfolio_id: portfolio.id,
+        security_id: security.id,
+        shares: shares(count),
+        amount: money(count * 40)
+      )
+
+      price_fixture(security, today(), price(50), :yahoo)
+      portfolio
+    end
+
+    test "is the default tab and shows an announced dividend with its shares and amount", ctx do
+      security = security_fixture(name: "All-World")
+      holding(ctx.scope, security)
+      pay_date = Date.add(today(), 10)
+
+      divvy_diary_dividend_fixture(security, Date.add(today(), -1), pay_date, 0.5)
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/dividends")
+
+      assert has_element?(lv, "#dividend-tabs a.active", "Kalender")
+      refute has_element?(lv, "#per-month")
+
+      entry = lv |> element("#calendar li[data-pay-date='#{pay_date}']") |> render()
+
+      assert entry =~ "All\u2011World"
+      assert entry =~ "angekündigt"
+      assert entry =~ "100\u00A0Stück × 0,50\u00A0€"
+      assert entry =~ "50,00\u00A0€"
+      assert entry =~ "brutto"
+
+      assert lv |> element("#calendar-#{Calendar.strftime(pay_date, "%Y-%m")} h2") |> render() =~
+               "50,00\u00A0€"
+    end
+
+    test "forecasts from the last 12 months and estimates net from them", ctx do
+      security = security_fixture(name: "All-World")
+      holding(ctx.scope, security)
+      paid = Date.add(today(), -360)
+
+      dividend_fixture(ctx.scope, security, paid, 163, tax: 37, shares: 100)
+      divvy_diary_dividend_fixture(security, Date.add(paid, -10), paid, 2)
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/dividends")
+
+      entry = lv |> element("#calendar li[data-kind='forecast']") |> render()
+      assert entry =~ "Prognose"
+      assert entry =~ "~163,00\u00A0€"
+      refute entry =~ "brutto"
+      refute lv |> element(".app-kpis") |> render() =~ "brutto"
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/dividends?amount=gross")
+
+      assert lv |> element("#calendar li[data-kind='forecast']") |> render() =~ "~200,00\u00A0€"
+    end
+
+    test "shows the next 12 months, the yields and the next dividend", ctx do
+      security = security_fixture(name: "All-World")
+      holding(ctx.scope, security)
+      pay_date = Date.add(today(), 10)
+      divvy_diary_dividend_fixture(security, Date.add(today(), -1), pay_date, 1.25)
+      other = user_scope_fixture()
+
+      transaction_fixture(other, Date.add(today(), -365),
+        type: :buy,
+        portfolio_id: portfolio_fixture(other).id,
+        security_id: security.id,
+        shares: shares(1_000),
+        amount: money(10_000)
+      )
+
+      dividend_fixture(other, security, Date.add(today(), -100), 500, shares: 1_000)
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/dividends?amount=gross")
+
+      assert lv |> element("#next-12-months .stat-value") |> render() =~ "125\u00A0€"
+      assert lv |> element("#yield .stat-value") |> render() =~ "2,5\u00A0%"
+      assert lv |> element("#yield") |> render() =~ "auf Einstand 3,1\u00A0%"
+      assert lv |> element("#next-dividend .stat-value") |> render() =~ "125\u00A0€"
+      assert lv |> element("#next-dividend") |> render() =~ "All\u2011World"
+    end
+
+    test "marks net amounts counted gross for want of a booked dividend", ctx do
+      security = security_fixture(name: "All-World")
+      holding(ctx.scope, security)
+      divvy_diary_dividend_fixture(security, Date.add(today(), -1), Date.add(today(), 10), 1.25)
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/dividends")
+
+      assert lv |> element("#next-dividend .stat-value") |> render() =~ "brutto"
+      assert lv |> element("#next-12-months .stat-value") |> render() =~ "teils brutto"
+      assert lv |> element("#yield .stat-value") |> render() =~ "teils brutto"
+      assert lv |> element("#coming-months-title") |> render() =~ "teils brutto"
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/dividends?amount=gross")
+
+      refute lv |> element(".app-kpis") |> render() =~ "brutto"
+      refute lv |> element("#coming-months-title") |> render() =~ "teils brutto"
+    end
+
+    test "says when nothing is expected", ctx do
+      seed(ctx.scope)
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/dividends")
+
+      assert render(lv) =~ "keine Dividende angekündigt oder zu erwarten"
+      assert lv |> element("#next-dividend") |> render() =~ "keine erwartet"
+    end
   end
 
   test "points to the import without portfolios", %{conn: conn} do

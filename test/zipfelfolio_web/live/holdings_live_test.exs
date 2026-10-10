@@ -4,7 +4,7 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
   import Phoenix.LiveViewTest
   import Zipfelfolio.{PortfoliosFixtures, SecuritiesFixtures, TaxonomiesFixtures}
 
-  alias Zipfelfolio.{FakeCompositionSource, LocalTime, Repo}
+  alias Zipfelfolio.{FakeSymbolSource, LocalTime, Repo}
   alias Zipfelfolio.Portfolios.TransactionUnit
 
   setup :register_and_log_in_user
@@ -150,7 +150,7 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
 
   describe "allocation" do
     setup do
-      FakeCompositionSource.stub()
+      FakeSymbolSource.stub()
     end
 
     test "gives the regions from the composition of the funds; accounts do not count", ctx do
@@ -222,7 +222,7 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
     end
 
     test "shows a hint instead of regions and sectors without an API key", ctx do
-      Application.delete_env(:zipfelfolio, FakeCompositionSource)
+      Application.delete_env(:zipfelfolio, FakeSymbolSource)
       portfolio = portfolio_fixture(ctx.scope)
       fund = security(100)
       composition_fixture(fund, %{"US" => 1})

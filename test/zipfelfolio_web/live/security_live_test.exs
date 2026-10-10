@@ -4,7 +4,7 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
   import Phoenix.LiveViewTest
   import Zipfelfolio.{PortfoliosFixtures, SecuritiesFixtures, UsersFixtures}
 
-  alias Zipfelfolio.{ExchangeRates, FakeCompositionSource, LocalTime, Repo}
+  alias Zipfelfolio.{ExchangeRates, FakeSymbolSource, LocalTime, Repo}
   alias Zipfelfolio.Portfolios.TransactionUnit
   alias ZipfelfolioWeb.Format
 
@@ -289,7 +289,7 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
 
   describe "composition" do
     setup do
-      FakeCompositionSource.stub()
+      FakeSymbolSource.stub()
       %{security: security_fixture_with_prices()}
     end
 
@@ -331,7 +331,7 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
     end
 
     test "shows a hint without an API key", ctx do
-      Application.delete_env(:zipfelfolio, FakeCompositionSource)
+      Application.delete_env(:zipfelfolio, FakeSymbolSource)
       composition_fixture(ctx.security, %{"US" => 1})
 
       {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{ctx.security}")
@@ -343,7 +343,7 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
 
   describe "data sources" do
     test "name the quote feed, the composition and the link to the settings", ctx do
-      FakeCompositionSource.stub()
+      FakeSymbolSource.stub()
       fetched = DateTime.add(DateTime.utc_now(), -1, :minute)
 
       # Checked just now, so that opening the page does not fetch its quote again.

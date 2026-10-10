@@ -426,6 +426,35 @@ defmodule Zipfelfolio.PortfoliosTest do
       assert result.this_year == %{gross: money(20), net: money(15)}
       assert result.last_year == %{gross: money(50), net: money(40)}
     end
+
+    test "gives the user's dividends expected and the value of their holdings", ctx do
+      security = security_fixture(quote_feed: :manual)
+      price_fixture(security, @friday, price(100), :pp)
+
+      transaction_fixture(ctx.scope, @friday,
+        type: :buy,
+        portfolio_id: ctx.portfolio.id,
+        security_id: security.id,
+        shares: shares(10),
+        amount: money(900)
+      )
+
+      dividend(ctx.scope, security, ~D[2026-03-01], 8, 2)
+      divvy_diary_dividend_fixture(security, nil, ~D[2026-10-20], 1)
+      other = user_scope_fixture()
+      deliver(other, portfolio_fixture(other), security, ~D[2025-01-02], 1_000)
+      dividend(other, security, ~D[2026-04-01], 100, 0)
+
+      result = Portfolios.dividends(ctx.scope, @saturday)
+
+      assert [%{pay_date: ~D[2026-10-20], shares: shares, gross: gross, net: net}] =
+               result.upcoming
+
+      assert {shares, gross, net} == {shares(10), money(10), money(8)}
+      assert result.total == %{gross: money(10), net: money(8)}
+      assert hd(result.months).announced == %{gross: money(10), net: money(8)}
+      assert {result.value, result.purchase_value} == {money(1_000), money(900)}
+    end
   end
 
   describe "security/4" do

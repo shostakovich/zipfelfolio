@@ -42,6 +42,53 @@
 .app-received-phone { display: grid; grid-template-columns: 1fr auto; align-items: start; column-gap: 1rem; row-gap: .125rem; }
 .app-received-phone > .app-received-name { grid-column: 1 / -1; margin-bottom: .125rem; line-height: 1.25; }
 .app-more { min-height: 2.75rem; }
+:root { --app-forecast: light-dark(color-mix(in srgb, var(--felt-primary) 30%, transparent), color-mix(in srgb, #5a82c2 55%, transparent)); }
+.app-swatch-forecast { box-sizing: border-box; border: 1px solid var(--app-year-now); background: var(--app-forecast); }
+.app-chart-sm { height: 14rem; }
+@media (min-width: 992px) { .app-chart-sm { height: 16rem; } }
+@media (min-width: 992px) { .app-sticky-lg { position: sticky; top: 1.5rem; margin-top: 1.4375rem; } }
+.app-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+@media (min-width: 992px) { .app-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 576px) { .app-kpis.card { --felt-card-bg: transparent; --felt-card-border-width: 0; --felt-card-box-shadow: none; background: none; border: 0; box-shadow: none; } }
+.app-kpi .stat-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-kpi-name { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.3; }
+@media (max-width: 575.98px) {
+  .app-kpis { gap: 0; }
+  .app-kpis > .app-kpi { --felt-card-bg: transparent; --felt-card-border-width: 0; --felt-card-box-shadow: none; border: 0; border-radius: 0; box-shadow: none; background: none; }
+  .app-kpis > .app-kpi:nth-child(odd) { border-right: 1px solid var(--felt-border-color); }
+  .app-kpis > .app-kpi:nth-child(-n + 2) { border-bottom: 1px solid var(--felt-border-color); }
+  .app-kpi .card-body { padding: .75rem .875rem; }
+  .app-kpi .stat-label { font-size: .6875rem; }
+  .app-kpi .stat-value { font-size: 1.375rem; }
+  .app-kpi .small { font-size: .8125rem; }
+}
+.app-calendar-month {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: .375rem;
+  padding-inline: var(--felt-list-group-item-padding-x, 1rem);
+  color: var(--felt-secondary-color); font-size: .8125rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+}
+.app-calendar-total { font-size: .875rem; font-weight: 600; letter-spacing: 0; text-transform: none; white-space: nowrap; }
+.app-upcoming {
+  display: grid; grid-template-columns: 1fr auto; grid-template-areas: "name name" "dates amount" "shares .";
+  column-gap: 1rem; row-gap: .125rem; align-items: baseline; --felt-list-group-item-padding-y: .625rem;
+}
+.app-upcoming-name { grid-area: name; line-height: 1.25; }
+.app-upcoming-tag { grid-row: 3; grid-column: 1 / -1; }
+.app-upcoming-amount { grid-area: amount; font-weight: 600; text-align: right; }
+.app-upcoming-meta { display: contents; }
+.app-upcoming-dates { grid-area: dates; display: flex; flex-wrap: wrap; }
+.app-upcoming-dates > * + *::before { content: "·"; margin-inline: .45em; }
+.app-upcoming-shares { grid-area: shares; }
+.app-upcoming-tag { justify-self: end; font-weight: 600; }
+.app-upcoming-announced { background: var(--felt-primary-subtle); color: var(--felt-primary-emphasis); }
+.app-upcoming-forecast { background: transparent; color: var(--felt-secondary-color); box-shadow: inset 0 0 0 1px var(--felt-border-color); }
+@media (min-width: 576px) {
+  .app-upcoming { grid-template-areas: "name amount" "meta tag"; --felt-list-group-item-padding-y: .75rem; }
+  .app-upcoming-tag { grid-area: tag; }
+  .app-upcoming-meta { display: flex; flex-wrap: wrap; grid-area: meta; }
+  .app-upcoming-dates { display: contents; }
+  .app-upcoming-shares::before { content: "·"; margin-inline: .45em; }
+}
 /* The price chart's dots: a purchase as a ring, a sale filled. */
 .app-dot { display: inline-block; width: .7rem; height: .7rem; border-radius: 50%; border: 2px solid var(--felt-success-text); vertical-align: -.05rem; }
 .app-dot-sale { border: none; background: var(--felt-danger-text); }

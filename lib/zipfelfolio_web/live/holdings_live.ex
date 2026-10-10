@@ -508,7 +508,7 @@ defmodule ZipfelfolioWeb.HoldingsLive do
      assign(socket,
        page_title: "Bestand",
        empty: empty,
-       compositions_available: MarketData.compositions_available?()
+       compositions_available: MarketData.divvy_diary_available?()
      )}
   end
 

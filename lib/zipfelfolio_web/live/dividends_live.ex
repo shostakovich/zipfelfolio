@@ -5,9 +5,14 @@ defmodule ZipfelfolioWeb.DividendsLive do
   alias ZipfelfolioWeb.Format
 
   # The first is the default and stays out of the URL.
-  @tabs [{"months", :months, "Monate"}, {"received", :received, "Erhalten"}]
+  @tabs [
+    {"calendar", :calendar, "Kalender"},
+    {"months", :months, "Monate"},
+    {"received", :received, "Erhalten"}
+  ]
   @amounts [{"net", :net, "Netto"}, {"gross", :gross, "Brutto"}]
   @months ~w(Jan Feb Mär Apr Mai Jun Jul Aug Sep Okt Nov Dez)
+  @month_names ~w(Januar Februar März April Mai Juni Juli August September Oktober November Dezember)
 
   @year_colours ~w(taupe mustard now)
   @recent_years 2
@@ -25,10 +30,10 @@ defmodule ZipfelfolioWeb.DividendsLive do
     >
       <.header class="flex-wrap">
         Dividenden
-        <:subtitle :if={received?(assigns)}>
-          Gebucht, zum EZB-Kurs des Zahltags
+        <:subtitle :if={any?(assigns)}>
+          {subtitle(@tab)}
         </:subtitle>
-        <:actions :if={received?(assigns)}>
+        <:actions :if={any?(assigns)}>
           <nav id="amount" class="btn-group btn-group-sm align-self-start mt-1" aria-label="Betrag">
             <.link
               :for={{_param, amount, label} <- @amounts}
@@ -48,24 +53,12 @@ defmodule ZipfelfolioWeb.DividendsLive do
         </p>
       </.card>
 
-      <.card :if={!@empty and !received?(assigns)}>
-        <p class="mb-0">Noch keine Dividenden gebucht.</p>
+      <.card :if={!@empty and !any?(assigns)}>
+        <p class="mb-0">Noch keine Dividenden gebucht und keine erwartet.</p>
       </.card>
 
-      <%= if received?(assigns) do %>
-        <div class="row g-3 mb-4 app-stats">
-          <div class="col-12 col-sm-6 col-lg-3">
-            <.stat
-              id="this-year"
-              label={"#{@today.year} bisher · #{amount_label(@amount)}"}
-              value={Format.euros(@dividends.this_year[@amount])}
-            >
-              <:note class="text-body-secondary">
-                {@today.year - 1} gesamt {Format.euros(@dividends.last_year[@amount])}
-              </:note>
-            </.stat>
-          </div>
-        </div>
+      <%= if any?(assigns) do %>
+        <.key_figures dividends={@dividends} amount={@amount} today={@today} />
 
         <nav id="dividend-tabs" aria-label="Ansicht">
           <ul class="nav nav-tabs mb-3">
@@ -81,12 +74,217 @@ defmodule ZipfelfolioWeb.DividendsLive do
           </ul>
         </nav>
 
-        <.per_month :if={@tab == :months} years={@dividends.years} amount={@amount} today={@today} />
-        <.received :if={@tab == :received} received={@dividends.received} />
+        <.calendar
+          :if={@tab == :calendar}
+          upcoming={@dividends.upcoming}
+          months={@dividends.months}
+          amount={@amount}
+        />
+        <%= if @tab != :calendar and @dividends.received == [] do %>
+          <.card>
+            <p class="mb-0">Noch keine Dividenden gebucht.</p>
+          </.card>
+        <% else %>
+          <.per_month
+            :if={@tab == :months}
+            years={@dividends.years}
+            amount={@amount}
+            today={@today}
+          />
+          <.received :if={@tab == :received} received={@dividends.received} />
+        <% end %>
       <% end %>
     </Layouts.app>
     """
   end
+
+  attr :dividends, :map, required: true, doc: "see `Portfolios.dividends/2`"
+  attr :amount, :atom, required: true
+  attr :today, Date, required: true
+
+  defp key_figures(assigns) do
+    assigns =
+      assign(assigns,
+        next: List.first(assigns.dividends.upcoming),
+        partly_gross: partly_gross?(assigns.dividends.upcoming, assigns.amount)
+      )
+
+    ~H"""
+    <div class="card app-kpis mb-4">
+      <.stat
+        id="next-12-months"
+        class="app-kpi"
+        label="Nächste 12 Monate"
+        value={Format.euros(@dividends.total[@amount])}
+      >
+        <:prefix :if={@partly_gross}><.partly_gross /></:prefix>
+        <:note class="text-body-secondary text-nowrap">
+          Ø {Format.euros(div(@dividends.total[@amount], 12))}<span class="d-none d-sm-inline"> pro Monat</span><span class="d-sm-none">/Monat</span>
+        </:note>
+      </.stat>
+      <.stat
+        id="this-year"
+        class="app-kpi"
+        label={"#{@today.year} bisher"}
+        value={Format.euros(@dividends.this_year[@amount])}
+      >
+        <:note class="text-body-secondary text-nowrap">
+          {@today.year - 1} gesamt {Format.euros(@dividends.last_year[@amount])}
+        </:note>
+      </.stat>
+      <.stat
+        id="yield"
+        class="app-kpi"
+        label="Rendite auf Wert"
+        value={yield(@dividends.total[@amount], @dividends.value)}
+      >
+        <:prefix :if={@partly_gross}><.partly_gross /></:prefix>
+        <:note class="text-body-secondary text-nowrap">
+          auf Einstand {yield(@dividends.total[@amount], @dividends.purchase_value)}
+        </:note>
+      </.stat>
+      <.stat
+        id="next-dividend"
+        class="app-kpi"
+        label="Nächste Dividende"
+        value={if @next, do: expected(@next, @amount, 0), else: "–"}
+      >
+        <:prefix :if={@next && @amount == :net && @next.net_is_gross}>
+          <span title="Noch keine Dividende gebucht, aus der sich Steuern schätzen ließen">
+            brutto
+          </span>
+        </:prefix>
+        <:note :if={@next} class="text-body-secondary app-kpi-name">
+          <.pay_date date={@next.pay_date} /> · {security_name(@next.security)}
+        </:note>
+        <:note :if={!@next} class="text-body-secondary">keine erwartet</:note>
+      </.stat>
+    </div>
+    """
+  end
+
+  attr :upcoming, :list, required: true, doc: "see `Dividends.upcoming/4`"
+  attr :months, :list, required: true, doc: "see `Dividends.by_coming_month/2`"
+  attr :amount, :atom, required: true
+
+  defp calendar(assigns) do
+    groups = Enum.chunk_by(assigns.upcoming, &{&1.pay_date.year, &1.pay_date.month})
+    assigns = assign(assigns, groups: groups)
+
+    ~H"""
+    <div class="row g-4 mb-4">
+      <div class="col-lg-7">
+        <section id="calendar" aria-label="Kalender">
+          <.card :if={@groups == []}>
+            <p class="mb-0">
+              In den nächsten 12 Monaten ist keine Dividende angekündigt oder zu erwarten.
+            </p>
+          </.card>
+          <div
+            :for={[%{pay_date: first} | _] = dividends <- @groups}
+            id={"calendar-#{Calendar.strftime(first, "%Y-%m")}"}
+            class="mb-4"
+          >
+            <h2 class="app-calendar-month">
+              <span>{month_name(first)} {first.year}</span>
+              <span class="app-calendar-total">
+                <.partly_gross :if={partly_gross?(dividends, @amount)} class="fw-normal" />
+                <span class="tabular-nums">{month_total(dividends, @amount)}</span>
+              </span>
+            </h2>
+            <ul class="list-group">
+              <li
+                :for={dividend <- dividends}
+                class="list-group-item app-upcoming"
+                data-pay-date={Date.to_iso8601(dividend.pay_date)}
+                data-kind={dividend.kind}
+              >
+                <.security_link security={dividend.security} class="app-upcoming-name" />
+                <span class="app-upcoming-amount text-nowrap">
+                  <span
+                    :if={@amount == :net and dividend.net_is_gross}
+                    class="small fw-normal text-body-secondary"
+                    title="Noch keine Dividende gebucht, aus der sich Steuern schätzen ließen"
+                  >
+                    brutto
+                  </span>
+                  <span class="tabular-nums">{expected(dividend, @amount, 2)}</span>
+                </span>
+                <span class="app-upcoming-meta small text-body-secondary">
+                  <span class="app-upcoming-dates">
+                    <span class="text-nowrap">Zahltag <.pay_date date={dividend.pay_date} /></span>
+                    <span :if={dividend.ex_date} class="text-nowrap">
+                      Ex‑Tag <.pay_date date={dividend.ex_date} />
+                    </span>
+                  </span>
+                  <span class="app-upcoming-shares text-nowrap">
+                    {Format.shares(dividend.shares)}&nbsp;Stück × {per_share(dividend)}
+                  </span>
+                </span>
+                <span class={["badge app-upcoming-tag", "app-upcoming-#{dividend.kind}"]}>
+                  {kind_label(dividend.kind)}
+                </span>
+              </li>
+            </ul>
+          </div>
+        </section>
+      </div>
+      <div class="col-lg-5">
+        <section
+          id="coming-months"
+          class="card app-sticky-lg"
+          aria-labelledby="coming-months-title"
+        >
+          <div class="card-header d-flex flex-wrap align-items-center justify-content-between row-gap-1 column-gap-3">
+            <h2 class="app-card-title mb-0" id="coming-months-title">
+              Nächste 12 Monate · {amount_label(@amount)}<span class="d-sm-none"> in €</span>
+              <.partly_gross
+                :if={partly_gross?(@upcoming, @amount)}
+                class="small fw-normal text-body-secondary"
+              />
+            </h2>
+            <span class="small text-body-secondary d-flex gap-3">
+              <span class="text-nowrap"><span class="app-swatch app-swatch-now"></span> angekündigt</span>
+              <span class="text-nowrap"><span class="app-swatch app-swatch-forecast"></span> Prognose</span>
+            </span>
+          </div>
+          <div class="card-body pb-2 pb-sm-3">
+            <div role="img" aria-label={coming_months_label(@months, @amount)}>
+              <div
+                id="coming-months-chart"
+                class="app-chart app-chart-sm"
+                phx-hook="UpcomingDividendChart"
+                phx-update="ignore"
+              >
+                <canvas></canvas>
+              </div>
+            </div>
+          </div>
+          <div class="card-footer small text-body-secondary">
+            Angekündigt sind Termine von DivvyDiary. Die Prognose nimmt die Zahlungen der letzten
+            12 Monate ein Jahr später, mal heutigem Bestand. Fremdwährungen zum letzten EZB‑Kurs.
+          </div>
+        </section>
+      </div>
+    </div>
+    """
+  end
+
+  attr :class, :any, default: nil
+
+  defp partly_gross(assigns) do
+    ~H"""
+    <span
+      class={@class}
+      title="Enthält Dividenden ohne gebuchte Vorjahresdividende, brutto gezählt"
+    >
+      teils brutto
+    </span>
+    """
+  end
+
+  defp partly_gross?(upcoming, amount),
+    do: amount == :net and Enum.any?(upcoming, & &1.net_is_gross)
 
   attr :years, :list, required: true, doc: "see `Dividends.by_year/2`"
   attr :amount, :atom, required: true
@@ -353,8 +551,40 @@ defmodule ZipfelfolioWeb.DividendsLive do
   defp muted(0), do: "text-body-tertiary"
   defp muted(_cents), do: nil
 
-  defp received?(%{empty: true}), do: false
-  defp received?(%{dividends: dividends}), do: dividends.received != []
+  defp any?(%{empty: true}), do: false
+  defp any?(%{dividends: dividends}), do: dividends.received != [] or dividends.upcoming != []
+
+  defp subtitle(:calendar), do: "Termine von DivvyDiary, Prognose aus 12\u00A0Monaten"
+  defp subtitle(_tab), do: "Gebucht, zum EZB\u2011Kurs des Zahltags"
+
+  defp kind_label(:announced), do: "angekündigt"
+  defp kind_label(:forecast), do: "Prognose"
+
+  defp expected(%{kind: :forecast} = dividend, amount, places),
+    do: "~" <> Format.euros(dividend[amount], places)
+
+  defp expected(dividend, amount, places), do: Format.euros(dividend[amount], places)
+
+  defp month_total(dividends, amount) do
+    total = Format.euros(sum(dividends, amount), 2)
+    if Enum.any?(dividends, &(&1.kind == :forecast)), do: "~" <> total, else: total
+  end
+
+  defp per_share(dividend),
+    do: Format.price(dividend.per_share, dividend.currency)
+
+  defp yield(_cents, 0), do: "–"
+  defp yield(cents, whole), do: cents |> Format.percent_of(whole) |> Format.percent()
+
+  defp month_name(date), do: Enum.at(@month_names, date.month - 1)
+
+  defp coming_months_label(months, amount) do
+    "Erwartete Dividenden " <>
+      Enum.map_join(months, ", ", fn month ->
+        cents = month.announced[amount] + month.forecast[amount]
+        "#{month_name(month.month)} #{month.month.year} #{Format.euros(cents)}"
+      end)
+  end
 
   defp amount_label(:net), do: "netto"
   defp amount_label(:gross), do: "brutto"
@@ -440,6 +670,25 @@ defmodule ZipfelfolioWeb.DividendsLive do
               year: year.year,
               colour: "--app-year-#{colour}",
               amounts: Enum.map(year.months, & &1[assigns.amount])
+            }
+          end
+      })
+    else
+      socket
+    end
+  end
+
+  defp push_chart(%{assigns: %{tab: :calendar} = assigns} = socket) do
+    if connected?(socket) do
+      push_event(socket, "upcoming-dividend-chart", %{
+        months:
+          for month <- assigns.dividends.months do
+            %{
+              label: Enum.at(@months, month.month.month - 1),
+              year: if(month.month.month == 1, do: month.month.year),
+              title: "#{month_name(month.month)} #{month.month.year}",
+              announced: month.announced[assigns.amount],
+              forecast: month.forecast[assigns.amount]
             }
           end
       })

@@ -5,12 +5,13 @@ defmodule Zipfelfolio.DividendsTest do
 
   alias Zipfelfolio.Dividends
   alias Zipfelfolio.Portfolios.{Transaction, TransactionUnit}
-  alias Zipfelfolio.Securities.Security
+  alias Zipfelfolio.Securities.{DivvyDiaryDividend, Security}
   alias Zipfelfolio.Valuation.Market
 
   @fund %Security{id: 1, name: "All-World", currency: "EUR"}
   @dollar_fund %Security{id: 2, name: "Quality", currency: "USD"}
   @market Market.new([@fund, @dollar_fund], [], [])
+  @today ~D[2026-10-10]
 
   defp dividend(date, net, attrs \\ []) do
     struct!(
@@ -147,6 +148,269 @@ defmodule Zipfelfolio.DividendsTest do
 
       assert Dividends.total(received, Date.range(~D[2026-01-01], ~D[2026-10-10])) ==
                %{gross: money(15), net: money(13)}
+    end
+  end
+
+  describe "upcoming/4" do
+    defp buy(date, count, security \\ @fund) do
+      %Transaction{
+        type: :buy,
+        date_time: NaiveDateTime.new!(date, ~T[10:00:00]),
+        portfolio_id: 20,
+        security_id: security.id,
+        shares: shares(count),
+        amount: 0,
+        currency: "EUR",
+        units: []
+      }
+    end
+
+    defp sell(date, count), do: %{buy(date, count) | type: :sell}
+
+    defp stored(ex_date, pay_date, per_share, attrs \\ []) do
+      struct!(
+        %DivvyDiaryDividend{
+          security_id: @fund.id,
+          ex_date: ex_date,
+          pay_date: pay_date,
+          per_share: round(per_share * 100_000_000),
+          currency: "EUR"
+        },
+        attrs
+      )
+    end
+
+    defp upcoming(transactions, stored, market \\ @market),
+      do: Dividends.upcoming(transactions, stored, market, @today)
+
+    test "an announced dividend counts the shares held at the end of its ex date" do
+      transactions = [buy(~D[2026-01-05], 100), buy(~D[2026-10-05], 50)]
+
+      assert [dividend] =
+               upcoming(transactions, [stored(~D[2026-10-01], ~D[2026-10-20], 0.5)])
+
+      assert %{
+               kind: :announced,
+               security: @fund,
+               ex_date: ~D[2026-10-01],
+               pay_date: ~D[2026-10-20],
+               per_share: 50_000_000,
+               currency: "EUR"
+             } = dividend
+
+      assert {dividend.shares, dividend.gross} == {shares(100), money(50)}
+    end
+
+    test "an announced dividend with its ex date still to come counts today's shares" do
+      transactions = [buy(~D[2026-01-05], 100), buy(~D[2026-10-10], 50)]
+
+      assert [%{shares: shares, gross: gross}] =
+               upcoming(transactions, [stored(~D[2026-10-15], ~D[2026-10-20], 0.5)])
+
+      assert {shares, gross} == {shares(150), money(75)}
+    end
+
+    test "an announced dividend for shares sold before its ex date is left out" do
+      transactions = [buy(~D[2026-01-05], 100), sell(~D[2026-09-30], 100)]
+
+      assert upcoming(transactions, [stored(~D[2026-10-01], ~D[2026-10-20], 0.5)]) == []
+    end
+
+    test "forecasts the dividends of the last 12 months one year later with today's shares" do
+      dividends = [
+        stored(~D[2025-12-01], ~D[2025-12-15], 0.4),
+        stored(~D[2026-03-01], ~D[2026-03-15], 0.4)
+      ]
+
+      assert [december, march] = upcoming([buy(~D[2024-01-05], 200)], dividends)
+
+      assert %{kind: :forecast, ex_date: ~D[2026-12-01], pay_date: ~D[2026-12-15]} = december
+      assert {december.shares, december.gross} == {shares(200), money(80)}
+      assert %{kind: :forecast, pay_date: ~D[2027-03-15], gross: gross} = march
+      assert gross == money(80)
+    end
+
+    test "forecasts only for securities held today" do
+      transactions = [buy(~D[2025-01-05], 200), sell(~D[2026-06-01], 200)]
+
+      assert upcoming(transactions, [stored(~D[2025-12-01], ~D[2025-12-15], 0.4)]) == []
+    end
+
+    test "an announced dividend replaces the forecast up to its pay date" do
+      dividends = [
+        stored(~D[2025-12-01], ~D[2025-12-15], 0.4),
+        stored(~D[2026-03-01], ~D[2026-03-15], 0.4),
+        stored(~D[2026-12-04], ~D[2026-12-18], 0.45)
+      ]
+
+      assert [december, march] = upcoming([buy(~D[2024-01-05], 200)], dividends)
+      assert {december.kind, december.pay_date} == {:announced, ~D[2026-12-18]}
+      assert {march.kind, march.pay_date} == {:forecast, ~D[2027-03-15]}
+    end
+
+    test "an announced dividend replaces the forecast of its month even when paid earlier" do
+      dividends = [
+        stored(~D[2025-12-01], ~D[2025-12-15], 0.4),
+        stored(~D[2026-11-28], ~D[2026-12-12], 0.45)
+      ]
+
+      assert [%{kind: :announced, pay_date: ~D[2026-12-12]}] =
+               upcoming([buy(~D[2024-01-05], 200)], dividends)
+    end
+
+    test "a dividend paid this month replaces the forecast of this month" do
+      dividends = [
+        stored(~D[2025-10-01], ~D[2025-10-15], 0.5),
+        stored(~D[2026-09-28], ~D[2026-10-05], 0.5)
+      ]
+
+      transactions = [buy(~D[2025-01-02], 100), dividend(~D[2026-10-05], 50, shares: shares(100))]
+
+      assert upcoming(transactions, dividends) == []
+    end
+
+    test "without DivvyDiary dividends a distribution this month replaces its forecast" do
+      transactions = [
+        buy(~D[2025-01-02], 10),
+        dividend(~D[2025-10-15], 10),
+        dividend(~D[2026-10-05], 10)
+      ]
+
+      assert upcoming(transactions, []) == []
+    end
+
+    test "covers the rest of this month and the next eleven" do
+      dividends = [
+        stored(~D[2025-10-01], ~D[2025-10-05], 0.1),
+        stored(~D[2025-10-10], ~D[2025-10-11], 0.1),
+        stored(~D[2026-09-20], ~D[2026-09-30], 0.1)
+      ]
+
+      assert upcoming([buy(~D[2024-01-05], 10)], dividends) |> Enum.map(& &1.pay_date) ==
+               [~D[2026-10-11], ~D[2027-09-30]]
+
+      assert upcoming([buy(~D[2024-01-05], 10)], [stored(nil, ~D[2027-10-01], 0.1)]) == []
+    end
+
+    test "without DivvyDiary dividends the user's own distributions stand in" do
+      transactions = [
+        buy(~D[2026-01-05], 10),
+        dividend(~D[2026-06-01], 10, ex_date: ~N[2026-05-20 00:00:00]),
+        buy(~D[2026-07-01], 20)
+      ]
+
+      assert [forecast] = upcoming(transactions, [])
+
+      assert %{kind: :forecast, ex_date: ~D[2027-05-20], pay_date: ~D[2027-06-01]} = forecast
+
+      assert {forecast.per_share, forecast.shares, forecast.gross} ==
+               {100_000_000, shares(30), money(30)}
+    end
+
+    test "with DivvyDiary dividends, even only old ones, the user's own do not count" do
+      transactions = [buy(~D[2026-01-05], 10), dividend(~D[2026-06-01], 10)]
+
+      assert upcoming(transactions, [stored(~D[2023-05-20], ~D[2023-06-01], 1)]) == []
+    end
+
+    test "estimates net from the security's dividends of the last 12 months" do
+      transactions = [
+        buy(~D[2025-01-05], 100),
+        dividend(~D[2025-10-10], 1000, units: [unit(:tax, 1000)]),
+        dividend(~D[2025-11-01], 163, units: [unit(:tax, 37)])
+      ]
+
+      assert [%{gross: gross, net: net, net_is_gross: false}] =
+               upcoming(transactions, [stored(~D[2026-10-30], ~D[2026-11-10], 1)])
+
+      assert {gross, net} == {money(100), money(81.5)}
+    end
+
+    test "estimates net from the dividends received where they are at hand" do
+      transactions = [
+        buy(~D[2025-01-05], 100),
+        dividend(~D[2025-11-01], 163, units: [unit(:tax, 37)])
+      ]
+
+      received = Dividends.received(transactions, @market)
+      stored = [stored(~D[2026-10-30], ~D[2026-11-10], 1)]
+
+      assert Dividends.upcoming(transactions, stored, @market, @today, received) ==
+               upcoming(transactions, stored)
+
+      assert [%{net: net}] = Dividends.upcoming(transactions, stored, @market, @today, [])
+      assert net == money(100)
+    end
+
+    test "a dividend booked without a security counts for no security's net" do
+      transactions = [
+        buy(~D[2025-01-05], 100),
+        dividend(~D[2026-09-01], 7, security_id: nil, shares: nil, units: [unit(:tax, 7)]),
+        dividend(~D[2025-11-01], 163, units: [unit(:tax, 37)])
+      ]
+
+      assert [%{gross: gross, net: net, net_is_gross: false}] =
+               upcoming(transactions, [stored(~D[2026-10-30], ~D[2026-11-10], 1)])
+
+      assert {gross, net} == {money(100), money(81.5)}
+    end
+
+    test "stays gross without dividends booked in the last 12 months, and says so" do
+      transactions = [buy(~D[2025-01-05], 100), dividend(~D[2025-10-10], 50)]
+
+      assert [%{gross: gross, net: net, net_is_gross: true}] =
+               upcoming(transactions, [stored(~D[2026-10-30], ~D[2026-11-10], 1)])
+
+      assert gross == net
+    end
+
+    test "converts at the latest ECB rate" do
+      market =
+        Market.new([@fund, @dollar_fund], [], [
+          {"USD", ~D[2026-10-08], Decimal.new("1.25")},
+          {"USD", ~D[2026-10-09], Decimal.new("1.10")}
+        ])
+
+      dividend = stored(nil, ~D[2026-12-20], 1.1, security_id: @dollar_fund.id, currency: "USD")
+
+      assert [%{gross: gross, ex_date: nil, currency: "USD"}] =
+               upcoming([buy(~D[2026-01-05], 100, @dollar_fund)], [dividend], market)
+
+      assert gross == money(100)
+    end
+
+    test "comes by pay date" do
+      dividends = [
+        stored(~D[2026-11-01], ~D[2026-11-20], 1),
+        stored(~D[2026-10-12], ~D[2026-10-15], 1, security_id: @dollar_fund.id)
+      ]
+
+      transactions = [buy(~D[2026-01-05], 1), buy(~D[2026-01-05], 1, @dollar_fund)]
+
+      assert upcoming(transactions, dividends) |> Enum.map(& &1.pay_date) ==
+               [~D[2026-10-15], ~D[2026-11-20]]
+    end
+  end
+
+  describe "by_coming_month/2" do
+    test "adds up announced and forecast dividends for this month and the next eleven" do
+      upcoming = [
+        %{kind: :announced, pay_date: ~D[2026-10-20], gross: 100, net: 80},
+        %{kind: :forecast, pay_date: ~D[2026-10-30], gross: 50, net: 40},
+        %{kind: :forecast, pay_date: ~D[2027-09-30], gross: 10, net: 10}
+      ]
+
+      assert [october | _] = months = Dividends.by_coming_month(upcoming, @today)
+      assert length(months) == 12
+
+      assert october == %{
+               month: ~D[2026-10-01],
+               announced: %{gross: 100, net: 80},
+               forecast: %{gross: 50, net: 40}
+             }
+
+      assert %{month: ~D[2027-09-01], forecast: %{gross: 10}, announced: %{gross: 0}} =
+               List.last(months)
     end
   end
 end

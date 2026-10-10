@@ -483,7 +483,7 @@ defmodule ZipfelfolioWeb.SecurityLive do
     {:ok,
      assign(socket,
        security_id: parse_id(id),
-       compositions_available: MarketData.compositions_available?()
+       compositions_available: MarketData.divvy_diary_available?()
      )}
   end
 
