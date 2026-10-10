@@ -36,8 +36,10 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
 
     {:ok, lv, _html} = live(conn, ~p"/")
 
-    assert lv |> element("#net-worth") |> render() =~ "1.020 €"
-    assert lv |> element("#net-worth .text-success") |> render() =~ "+20 € heute (+2,00\u00A0%)"
+    assert lv |> element("#net-worth") |> render() =~ "1.020\u00A0€"
+
+    assert lv |> element("#net-worth .text-success") |> render() =~
+             "+20\u00A0€ heute (+2,00\u00A0%)"
   end
 
   test "shows a loss since yesterday in red", %{conn: conn, scope: scope} do
@@ -46,8 +48,10 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
 
     {:ok, lv, _html} = live(conn, ~p"/")
 
-    assert lv |> element("#net-worth") |> render() =~ "975 €"
-    assert lv |> element("#net-worth .text-danger") |> render() =~ "−25 € heute (−2,50\u00A0%)"
+    assert lv |> element("#net-worth") |> render() =~ "975\u00A0€"
+
+    assert lv |> element("#net-worth .text-danger") |> render() =~
+             "−25\u00A0€ heute (−2,50\u00A0%)"
   end
 
   test "shows the change without a percentage when there was nothing yesterday", ctx do
@@ -61,7 +65,7 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
 
     {:ok, lv, _html} = live(ctx.conn, ~p"/")
 
-    assert lv |> element("#net-worth .text-success") |> render() =~ ~r/\+500 € heute\s*</
+    assert lv |> element("#net-worth .text-success") |> render() =~ ~r/\+500\x{00A0}€ heute\s*</u
   end
 
   test "updates when new prices arrive", %{conn: conn, scope: scope} do
@@ -71,7 +75,7 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
     Repo.update!(Ecto.Changeset.change(security, latest_close: price(110)))
     send(lv.pid, :market_data_updated)
 
-    assert lv |> element("#net-worth") |> render() =~ "1.100 €"
+    assert lv |> element("#net-worth") |> render() =~ "1.100\u00A0€"
   end
 
   describe "Wertentwicklung" do

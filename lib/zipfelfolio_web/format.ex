@@ -22,11 +22,11 @@ defmodule ZipfelfolioWeb.Format do
     Enum.join([group_thousands(whole) <> "," <> fraction, currency], " ") |> String.trim()
   end
 
-  @doc "Cents as whole euros, e.g. `149.118 €`."
-  def euros(cents), do: number(Decimal.div(cents, 100), 0, "") <> " €"
+  @doc "Cents as whole euros, e.g. `149.118 €`; the € never wraps onto a line of its own."
+  def euros(cents), do: number(Decimal.div(cents, 100), 0, "") <> "\u00A0€"
 
   @doc "A change in cents as whole euros with its sign, e.g. `+562 €`."
-  def signed_euros(cents), do: number(Decimal.div(cents, 100), 0, "+") <> " €"
+  def signed_euros(cents), do: number(Decimal.div(cents, 100), 0, "+") <> "\u00A0€"
 
   @doc "A change in percent with its sign, e.g. `+0,38 %`; the % never wraps onto a line of its own."
   def signed_percent(%Decimal{} = percent), do: number(percent, 2, "+") <> "\u00A0%"
