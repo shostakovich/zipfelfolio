@@ -78,6 +78,46 @@ defmodule Zipfelfolio.Performance do
   def ttwror(%__MODULE__{} = index), do: index |> accumulated() |> List.last()
 
   @doc """
+  The TTWROR of every month, year by year, as `%{year, months, total}` in order of time: each
+  month's from the last day of the month before, or the reference day, to its last day, or the
+  last day of the index; nil for a month without a day after the reference day or after the last
+  day, and for one after a total loss, which leaves nothing to return on. `total` chains the
+  months of the year. Only the years with a day after the reference day are given.
+  """
+  def monthly_returns(%__MODULE__{days: days} = index) do
+    series = Enum.zip(Enum.map(days, & &1.date), accumulated(index))
+    month_ends = Map.new(series, fn {date, accumulated} -> {month(date), accumulated} end)
+    months = series |> Enum.drop(1) |> MapSet.new(&month(elem(&1, 0)))
+    years = months |> Enum.map(&elem(&1, 0)) |> Enum.uniq() |> Enum.sort()
+
+    for year <- years do
+      returns = for month <- 1..12, do: month_return(month_ends, months, {year, month})
+      %{year: year, months: returns, total: chain(returns)}
+    end
+  end
+
+  # From the end of the month before, which is the reference day's 0 before the first month.
+  defp month_return(month_ends, months, month) do
+    if MapSet.member?(months, month) do
+      start = Map.get(month_ends, previous_month(month), 0.0)
+      if start + 1 > 0, do: (Map.fetch!(month_ends, month) + 1) / (start + 1) - 1
+    end
+  end
+
+  defp month(date), do: {date.year, date.month}
+
+  defp previous_month({year, 1}), do: {year - 1, 12}
+  defp previous_month({year, month}), do: {year, month - 1}
+
+  @doc "Compounds `returns`, fractions such as 0.1 for 10 %, into one; nil counts as none."
+  def chain(returns) do
+    returns
+    |> Enum.reject(&is_nil/1)
+    |> Enum.reduce(1.0, &(&2 * (&1 + 1)))
+    |> Kernel.-(1)
+  end
+
+  @doc """
   The TTWROR spread over years of 365 days, as PP annualises it; nil after a loss of more than
   everything, which has no such rate.
   """

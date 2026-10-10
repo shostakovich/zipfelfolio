@@ -120,6 +120,17 @@ defmodule ZipfelfolioWeb.FormatTest do
     assert Format.month_abbr(~D[2026-12-24]) == "Dez"
   end
 
+  test "months are named in German, by number or date" do
+    assert Format.month_name(3) == "März"
+    assert Format.month_name(~D[2026-12-24]) == "Dezember"
+  end
+
+  test "signed numbers leave out the unit" do
+    assert Format.signed_number(Decimal.new("1.25"), 1) == "+1,3"
+    assert Format.signed_number(Decimal.new("-0.384"), 2) == "−0,38"
+    assert Format.signed_number(Decimal.new("-0.04"), 1) == "0,0"
+  end
+
   test "dates are German" do
     assert Format.date(~D[2026-10-09]) == "09.10.2026"
   end

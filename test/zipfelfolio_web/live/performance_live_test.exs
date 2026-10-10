@@ -102,6 +102,63 @@ defmodule ZipfelfolioWeb.PerformanceLiveTest do
     assert drawdown =~ ZipfelfolioWeb.Format.date(Date.shift(today(), year: -1))
   end
 
+  describe "monthly returns" do
+    defp cells(lv, year) do
+      lv
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("#monthly-returns-#{year} td")
+      |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
+    end
+
+    test "show every year since the first transaction, newest first, whatever the period", ctx do
+      {:ok, lv, _html} = live(ctx.conn, ~p"/performance?period=1m")
+
+      years =
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#monthly-returns tbody th")
+        |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
+
+      assert years == Enum.map(0..2, &Integer.to_string(today().year - &1))
+      assert has_element?(lv, "#monthly-returns thead th.app-heatmap-total", "Jahr")
+    end
+
+    test "leave the months before the first transaction and after today empty", ctx do
+      {:ok, lv, _html} = live(ctx.conn, ~p"/performance")
+      first_month = Date.shift(today(), year: -2).month
+
+      first_year = lv |> cells(today().year - 2) |> Enum.map(&String.match?(&1, ~r/^\D*\d/))
+
+      assert first_year ==
+               List.duplicate(false, first_month - 1) ++ List.duplicate(true, 14 - first_month)
+
+      this_year = lv |> cells(today().year) |> Enum.map(&(&1 == "keine Daten"))
+
+      assert this_year ==
+               List.duplicate(false, today().month) ++
+                 List.duplicate(true, 12 - today().month) ++ [false]
+    end
+
+    test "chain the months to the year", ctx do
+      # 900 € in shares on 31 December and 500 € coming in yesterday; 1,600 € today.
+      {:ok, lv, _html} = live(ctx.conn, ~p"/performance")
+
+      cells = cells(lv, today().year)
+      assert Enum.at(cells, today().month - 1) =~ "+14,3"
+      assert List.last(cells) =~ "+14,29"
+    end
+
+    test "follow the portfolio", ctx do
+      {:ok, lv, _html} = live(ctx.conn, ~p"/performance?#{[portfolio: ctx.sparplan.id]}")
+
+      cells = cells(lv, today().year)
+      assert Enum.at(cells, today().month - 1) == "±0,0"
+      assert List.last(cells) == "±0,00"
+    end
+  end
+
   test "keeps the period and the portfolio in the URL, so that they survive a reload", ctx do
     {:ok, lv, _html} = live(ctx.conn, ~p"/performance")
 

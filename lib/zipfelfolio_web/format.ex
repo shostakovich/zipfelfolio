@@ -38,6 +38,12 @@ defmodule ZipfelfolioWeb.Format do
   def month_abbr(%{month: month}), do: month_abbr(month)
   def month_abbr(month) when month in 1..12, do: Enum.at(@month_abbrs, month - 1)
 
+  @month_names ~w(Januar Februar März April Mai Juni Juli August September Oktober November Dezember)
+
+  @doc "The name of a month, by its number or a date in it, e.g. `März`."
+  def month_name(%{month: month}), do: month_name(month)
+  def month_name(month) when month in 1..12, do: Enum.at(@month_names, month - 1)
+
   @doc "A currency as prices name it: `€` for euros, otherwise its code."
   def currency("EUR"), do: "€"
   def currency(code), do: code
@@ -105,7 +111,10 @@ defmodule ZipfelfolioWeb.Format do
   never wraps onto a line of its own.
   """
   def signed_percent(%Decimal{} = percent, places \\ 2),
-    do: number(percent, places, "+") <> "\u00A0%"
+    do: signed_number(percent, places) <> "\u00A0%"
+
+  @doc "A number with its sign and `places` decimal places, e.g. `+1,2` or `−0,38`."
+  def signed_number(%Decimal{} = number, places), do: number(number, places, "+")
 
   @doc "`part` in percent of `whole`, for `percent/2` and `signed_percent/2`."
   def percent_of(part, whole), do: part |> Decimal.mult(100) |> Decimal.div(whole)
@@ -145,13 +154,11 @@ defmodule ZipfelfolioWeb.Format do
   def date(%DateTime{} = utc),
     do: utc |> LocalTime.from_utc() |> NaiveDateTime.to_date() |> date()
 
-  @months ~w(Januar Februar März April Mai Juni Juli August September Oktober November Dezember)
-
   @doc "The days from `first` to `last`, e.g. `1. Januar bis 7. Oktober 2026`."
   def days(day, day), do: long_date(day)
 
   def days(%Date{year: year} = first, %Date{year: year} = last),
-    do: "#{first.day}. #{month(first)} bis #{long_date(last)}"
+    do: "#{first.day}. #{month_name(first)} bis #{long_date(last)}"
 
   def days(first, last), do: "#{long_date(first)} bis #{long_date(last)}"
 
@@ -178,9 +185,7 @@ defmodule ZipfelfolioWeb.Format do
   defp short_date(date, true), do: date(date)
   defp short_date(date, false), do: Calendar.strftime(date, "%d.%m.")
 
-  defp long_date(date), do: "#{date.day}. #{month(date)} #{date.year}"
-
-  defp month(date), do: Enum.at(@months, date.month - 1)
+  defp long_date(date), do: "#{date.day}. #{month_name(date)} #{date.year}"
 
   def datetime(nil), do: "–"
 

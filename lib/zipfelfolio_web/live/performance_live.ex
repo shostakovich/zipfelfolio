@@ -119,8 +119,11 @@ defmodule ZipfelfolioWeb.PerformanceLive do
       </div>
 
       <div :if={!@empty} class="row g-3">
-        <div class="col-lg-6">
+        <div class="col-lg-6 app-col-breakdown">
           <.breakdown breakdown={@performance.breakdown} interval={@performance.interval} />
+        </div>
+        <div class="col-12 app-col-heatmap">
+          <.monthly_returns years={@performance.monthly_returns} />
         </div>
       </div>
     </Layouts.app>
@@ -157,6 +160,123 @@ defmodule ZipfelfolioWeb.PerformanceLive do
       </ul>
     </section>
     """
+  end
+
+  # Month abbreviation and name.
+  @months Enum.map(1..12, &{Format.month_abbr(&1), Format.month_name(&1)})
+
+  attr :years, :list, required: true
+
+  # The TTWROR of every month since the first transaction as a heatmap, the newest year on top;
+  # on a phone each year folds into two rows of six months.
+  defp monthly_returns(assigns) do
+    assigns = assign(assigns, months: @months)
+
+    ~H"""
+    <section
+      id="monthly-returns"
+      class="card h-100 app-heatmap"
+      aria-labelledby="monthly-returns-title"
+    >
+      <div class="card-header">
+        <h2 class="stat-label mb-0" id="monthly-returns-title">Monatsrenditen</h2>
+      </div>
+      <div class="card-body d-flex flex-column">
+        <table class="app-heatmap-table tabular-nums">
+          <thead>
+            <tr>
+              <th scope="col"><span class="visually-hidden">Jahr</span></th>
+              <th :for={{short, long} <- @months} scope="col">
+                <abbr title={long}>{short}</abbr>
+              </th>
+              <th scope="col" class="app-heatmap-total">
+                <abbr title="Jahr, aus den Monaten verkettet">Jahr</abbr>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={row <- Enum.reverse(@years)} id={"monthly-returns-#{row.year}"}>
+              <th scope="row">{row.year}</th>
+              <.heat
+                :for={{rate, {short, long}} <- Enum.zip(row.months, @months)}
+                rate={rate}
+                places={1}
+                scale={0.035}
+                label={short}
+                title={"#{long} #{row.year}"}
+              />
+              <.heat
+                rate={row.total}
+                places={2}
+                scale={0.1}
+                label="Jahr"
+                title={"Jahr #{row.year}"}
+                class="app-heatmap-total"
+              />
+            </tr>
+          </tbody>
+        </table>
+        <p class="small text-body-secondary mb-0 mt-auto pt-3 app-heatmap-note">
+          TTWROR je Monat in %, verkettet zum Jahr
+        </p>
+      </div>
+    </section>
+    """
+  end
+
+  attr :rate, :float, required: true, doc: "nil for a month without returns"
+  attr :places, :integer, required: true
+  attr :scale, :float, required: true, doc: "the rate shown in the strongest colour"
+  attr :label, :string, required: true, doc: "shown with the value on a phone"
+  attr :title, :string, required: true
+  attr :class, :string, default: nil
+
+  defp heat(%{rate: nil} = assigns) do
+    ~H"""
+    <td class={@class} title={"#{@title}: keine Daten"}>
+      <span class="app-heat app-heat-none" data-label={@label}>
+        <span class="visually-hidden">keine Daten</span>
+      </span>
+    </td>
+    """
+  end
+
+  defp heat(assigns) do
+    rounded = assigns.rate |> in_percent() |> Decimal.round(assigns.places)
+
+    assigns =
+      assign(assigns,
+        text: heat_text(rounded, assigns.places),
+        tone: tone_class(rounded),
+        strength: strength(assigns.rate, assigns.scale)
+      )
+
+    ~H"""
+    <td class={@class} title={"#{@title}: #{@text}\u00A0%"}>
+      <span class={["app-heat", @tone]} style={"--heat: #{@strength}"} data-label={@label}>
+        {@text}
+      </span>
+    </td>
+    """
+  end
+
+  # How strong a cell's colour is, from 0 to 1 at `scale`; the root spreads the small rates, which
+  # are the most.
+  defp strength(rate, scale), do: Float.round(:math.sqrt(min(abs(rate) / scale, 1.0)), 2)
+
+  # Zero as ±0,0, so that it lines up with the signed figures.
+  defp heat_text(rounded, places) do
+    if Decimal.eq?(rounded, 0),
+      do: "±" <> Format.signed_number(rounded, places),
+      else: Format.signed_number(rounded, places)
+  end
+
+  defp tone_class(rounded) do
+    cond do
+      Decimal.positive?(rounded) -> "app-heat-up"
+      Decimal.negative?(rounded) -> "app-heat-down"
+      true -> nil
+    end
   end
 
   attr :value, :integer, required: true

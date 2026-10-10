@@ -111,16 +111,25 @@ defmodule Zipfelfolio.Portfolios do
   - `interval`: the days of the period, the first the reference day, see `Period.interval/3`
   - `ttwror`, `ttwror_per_year`, `irr`, `drawdown` and `volatility`, see `Performance`
   - `breakdown`: where the change in value came from, see `Performance.Breakdown`
+  - `monthly_returns`: the TTWROR of every month and year since the first transaction, whatever
+    the period, see `Performance.monthly_returns/1`
   """
   def performance(%Scope{} = scope, period, portfolio_id, today) do
     transactions = list_transactions(scope)
     accounts = list_accounts(scope)
     portfolios = shown_portfolios(scope, Valuation.holdings(transactions, today))
     portfolio = Enum.find(portfolios, &(&1.id == portfolio_id))
-    interval = Period.interval(period, today, first_transaction_day(transactions))
-    market = load_market(transactions, accounts, interval.first, :since_first_transaction)
+    first_day = first_transaction_day(transactions)
+    interval = Period.interval(period, today, first_day)
+    all_time = Period.interval(:max, today, first_day)
+    market = load_market(transactions, accounts, all_time.first, :since_first_transaction)
     filter = performance_filter(portfolio, transactions)
     index = Performance.index(transactions, accounts, market, filter, interval)
+
+    all_time_index =
+      if interval == all_time,
+        do: index,
+        else: Performance.index(transactions, accounts, market, filter, all_time)
 
     %{
       portfolios: portfolios,
@@ -131,7 +140,8 @@ defmodule Zipfelfolio.Portfolios do
       irr: Performance.irr(index),
       drawdown: Performance.drawdown(index),
       volatility: Performance.volatility(index),
-      breakdown: Breakdown.of(transactions, accounts, market, filter, index)
+      breakdown: Breakdown.of(transactions, accounts, market, filter, index),
+      monthly_returns: Performance.monthly_returns(all_time_index)
     }
   end
 

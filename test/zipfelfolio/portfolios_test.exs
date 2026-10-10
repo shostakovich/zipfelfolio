@@ -245,6 +245,58 @@ defmodule Zipfelfolio.PortfoliosTest do
     end
   end
 
+  describe "performance/4 monthly returns" do
+    # 1,000 € came in and bought 10 shares at 100 € on 31 December 2024; they closed at 110 € on
+    # 31 January and at 99 € on 28 February 2025, and have not moved since.
+    setup %{scope: scope, portfolio: portfolio} do
+      account = account_fixture(scope)
+      security = security_fixture(quote_feed: :manual)
+
+      for {date, close} <- [{~D[2024-12-31], 100}, {~D[2025-01-31], 110}, {~D[2025-02-28], 99}],
+          do: price_fixture(security, date, price(close), :pp)
+
+      transaction_fixture(scope, ~D[2024-12-31],
+        type: :deposit,
+        account_id: account.id,
+        amount: money(1_000)
+      )
+
+      transaction_fixture(scope, ~D[2024-12-31],
+        type: :buy,
+        portfolio_id: portfolio.id,
+        account_id: account.id,
+        security_id: security.id,
+        shares: shares(10),
+        amount: money(1_000)
+      )
+
+      :ok
+    end
+
+    test "the year column chains the months", %{scope: scope} do
+      performance = Portfolios.performance(scope, :one_month, nil, ~D[2025-12-31])
+
+      assert [%{year: 2024} = first, %{year: 2025} = second] = performance.monthly_returns
+      assert first.months == List.duplicate(nil, 11) ++ [0.0]
+      assert first.total == 0.0
+
+      assert [january, february | rest] = second.months
+      assert_in_delta january, 0.1, 1.0e-12
+      assert_in_delta february, -0.1, 1.0e-12
+      assert Enum.all?(rest, &(&1 == 0.0))
+      assert_in_delta second.total, -0.01, 1.0e-12
+    end
+
+    test "leaves out the months after today", %{scope: scope} do
+      performance = Portfolios.performance(scope, :max, nil, ~D[2025-02-14])
+
+      assert [_, %{year: 2025, months: [january, february | rest]}] = performance.monthly_returns
+      assert_in_delta january, 0.1, 1.0e-12
+      assert february == 0.0
+      assert rest == List.duplicate(nil, 10)
+    end
+  end
+
   describe "holdings/3" do
     defp security_at(close, name, attrs \\ []) do
       security = security_fixture([quote_feed: :manual, name: name] ++ attrs)

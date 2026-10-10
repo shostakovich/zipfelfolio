@@ -89,6 +89,97 @@ defmodule Zipfelfolio.PerformanceTest do
     end
   end
 
+  describe "monthly_returns/1" do
+    # Every day from `first` to `last` at the value of the latest of `values` up to it.
+    defp days_between(first, last, values) do
+      for date <- Date.range(first, last) do
+        {_date, value} =
+          values |> Enum.filter(&(Date.compare(elem(&1, 0), date) != :gt)) |> List.last()
+
+        day(date, value)
+      end
+    end
+
+    test "gives each month from the last day of the month before, and chains them to the year" do
+      days =
+        days_between(~D[2025-12-31], ~D[2026-03-31], [
+          {~D[2025-12-31], money(1_000)},
+          {~D[2026-01-31], money(1_100)},
+          {~D[2026-02-28], money(990)}
+        ])
+
+      assert [%{year: 2026, months: [january, february, march | rest], total: total}] =
+               Performance.monthly_returns(index(days))
+
+      assert_in_delta january, 0.1, 1.0e-12
+      assert_in_delta february, -0.1, 1.0e-12
+      assert march == 0.0
+      assert rest == List.duplicate(nil, 9)
+      assert_in_delta total, -0.01, 1.0e-12
+    end
+
+    test "starts after the reference day and ends on the last day, in any month" do
+      days =
+        days_between(~D[2025-11-14], ~D[2026-01-10], [
+          {~D[2025-11-14], money(1_000)},
+          {~D[2025-11-30], money(1_200)},
+          {~D[2026-01-10], money(1_260)}
+        ])
+
+      assert [
+               %{year: 2025, months: months_2025, total: total_2025},
+               %{year: 2026, months: [january | later]}
+             ] = Performance.monthly_returns(index(days))
+
+      assert Enum.take(months_2025, 10) == List.duplicate(nil, 10)
+      assert [november, december] = Enum.drop(months_2025, 10)
+      assert_in_delta november, 0.2, 1.0e-12
+      assert december == 0.0
+      assert_in_delta total_2025, 0.2, 1.0e-12
+      assert_in_delta january, 0.05, 1.0e-12
+      assert later == List.duplicate(nil, 11)
+    end
+
+    test "counts money on the last day of a month in that month" do
+      days = [
+        day(~D[2026-01-30], money(1_000)),
+        day(~D[2026-01-31], money(1_600), inbound: money(500)),
+        day(~D[2026-02-01], money(1_760))
+      ]
+
+      assert [%{months: [january, february | _]}] = Performance.monthly_returns(index(days))
+      assert_in_delta january, 1_600 / 1_500 - 1, 1.0e-12
+      assert_in_delta february, 0.1, 1.0e-12
+    end
+
+    test "has no month without a day after the reference day" do
+      days = days_between(~D[2026-01-31], ~D[2026-02-02], [{~D[2026-01-31], money(1_000)}])
+
+      assert [%{months: [nil, +0.0 | _]}] = Performance.monthly_returns(index(days))
+    end
+
+    test "has no month after a total loss" do
+      days =
+        days_between(~D[2025-12-31], ~D[2026-03-31], [
+          {~D[2025-12-31], money(1_000)},
+          {~D[2026-01-31], 0}
+        ])
+
+      assert [%{months: [january, nil, nil | _], total: total}] =
+               Performance.monthly_returns(index(days))
+
+      assert_in_delta january, -1.0, 1.0e-12
+      assert_in_delta total, -1.0, 1.0e-12
+    end
+  end
+
+  describe "chain/1" do
+    test "compounds the returns, leaving out the missing ones" do
+      assert_in_delta Performance.chain([nil, 0.1, -0.1, 0.0]), -0.01, 1.0e-12
+      assert Performance.chain([nil, nil]) == 0.0
+    end
+  end
+
   describe "drawdown/1" do
     test "is the largest fall of the accumulated TTWROR from a peak, with its days" do
       days = [
