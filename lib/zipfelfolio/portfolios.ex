@@ -1,5 +1,9 @@
 defmodule Zipfelfolio.Portfolios do
-  @moduledoc "Portfolios, accounts, their transactions and savings plans; each belongs to a user."
+  @moduledoc """
+  Portfolios, accounts, their transactions and savings plans, each of one user, and what the
+  screens show of them: net worth, the overview, the holdings, the sidebar and the user's holding
+  of a security, computed from the transactions on every request.
+  """
 
   import Ecto.Query, warn: false
 
