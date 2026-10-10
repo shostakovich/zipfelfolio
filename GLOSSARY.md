@@ -55,6 +55,36 @@ Self-hosted portfolio tracker for one household. Replaces Portfolio Performance 
   in the payment's.
 - _Example:_ "0,50 USD per share on 30 September, for 40 shares"
 
+## Performance
+
+**Benchmark** · _de:_ Benchmark
+- The **Security** a **User** compares their portfolios with, such as an MSCI ACWI ETF. Each user picks their own,
+  or none.
+
+**Shadow portfolio** · _de:_ Schattendepot
+- What the **User**'s money would be worth in the **Benchmark**: it starts with the **Net worth** of the chart's
+  first day, and every deposit, removal or delivery buys or sells benchmark shares that day.
+- _Example:_ "1,000 € at 100 €, then 500 € deposited at 125 €, benchmark now at 150 €: 2,100 €"
+
+## Dividends
+
+**Dividend** · _de:_ Dividende
+- What a **User** receives or will receive for their shares of a **Security** on a pay date. Unlike a
+  **Distribution**, which is per share, it is the user's amount.
+- _Avoid:_ Payment
+
+**Announced dividend** · _de:_ angekündigt
+- A future **Dividend** that DivvyDiary has announced with ex date and pay date.
+
+**Forecast dividend** · _de:_ Prognose
+- A future **Dividend** projected from what the **Security** paid per share in the last 12 months, moved one year
+  later, times today's shares; only after its last **Announced dividend**.
+
+**Net dividend** · _de:_ Netto
+- A **Dividend**'s gross value minus taxes and fees, what reaches the account. For a future one it is estimated
+  from the ratio of net to gross over the **User**'s dividends of the last 12 months.
+- _Example:_ "100 € gross, 18.50 € tax: 81.50 € net"
+
 ## Bookings
 
 **Transaction** · _de:_ Buchung
