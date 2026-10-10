@@ -109,15 +109,22 @@ defmodule ZipfelfolioWeb.OverviewLive do
           <section class="card h-100" aria-labelledby="history-title">
             <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
               <h2 class="app-card-title mb-0" id="history-title">Wertentwicklung</h2>
-              <span class="small text-body-secondary d-flex gap-3">
+              <span class="small text-body-secondary d-flex flex-wrap column-gap-3 row-gap-1 app-legend">
                 <span class="text-nowrap"><span class="app-swatch app-swatch-primary"></span> Vermögen</span>
                 <span class="text-nowrap">
                   <span class="app-swatch app-swatch-secondary"></span> Investiert
                 </span>
+                <Benchmark.legend
+                  :if={@benchmark_shown and @overview.benchmark}
+                  security={@overview.benchmark.security}
+                />
               </span>
             </div>
             <div class="card-body">
-              <div role="img" aria-label={"Vermögen und investiertes Kapital #{period_text(@period)}"}>
+              <div
+                role="img"
+                aria-label={chart_label(@period, @benchmark_shown && @overview.benchmark)}
+              >
                 <div
                   id="net-worth-chart"
                   class="app-chart"
@@ -231,6 +238,13 @@ defmodule ZipfelfolioWeb.OverviewLive do
   defp period_text(:one_year), do: "des letzten Jahres"
   defp period_text(:max), do: "seit der ersten Buchung"
 
+  defp chart_label(period, %{security: security}),
+    do:
+      "Vermögen, investiertes Kapital und Schattendepot in #{security.name} #{period_text(period)}"
+
+  defp chart_label(period, _hidden),
+    do: "Vermögen und investiertes Kapital #{period_text(period)}"
+
   defp period_label(period),
     do: Enum.find_value(@periods, fn {_param, p, label} -> p == period && label end)
 
@@ -314,10 +328,16 @@ defmodule ZipfelfolioWeb.OverviewLive do
       push_event(socket, "net-worth-chart", %{
         dates: Enum.map(chart, & &1.date),
         net_worth: Enum.map(chart, & &1.net_worth),
-        invested_capital: Enum.map(chart, & &1.invested_capital)
+        invested_capital: Enum.map(chart, & &1.invested_capital),
+        benchmark: socket.assigns.overview.benchmark && Enum.map(chart, & &1.benchmark),
+        benchmark_name: benchmark_name(socket.assigns.overview.benchmark),
+        benchmark_shown: socket.assigns.benchmark_shown
       })
     else
       socket
     end
   end
+
+  defp benchmark_name(nil), do: nil
+  defp benchmark_name(benchmark), do: Benchmark.short_name(benchmark.security.name)
 end

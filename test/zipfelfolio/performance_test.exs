@@ -406,6 +406,96 @@ defmodule Zipfelfolio.PerformanceTest do
     end
   end
 
+  describe "shadow_portfolio/4" do
+    defp shadow(days, closes, first_day \\ @thursday, currency \\ "EUR", rates \\ []) do
+      market =
+        Market.new(
+          [%Security{id: 30, currency: currency}],
+          Enum.map(closes, fn {date, close} -> {30, date, close} end),
+          rates
+        )
+
+      Performance.shadow_portfolio(index(days), market, 30, first_day)
+    end
+
+    test "buys with every deposit" do
+      days = [
+        day(@thursday, money(1_000)),
+        day(@friday, money(1_500), inbound: money(500)),
+        day(@saturday, money(1_500))
+      ]
+
+      closes = [{@thursday, price(100)}, {@friday, price(125)}, {@saturday, price(150)}]
+
+      assert shadow(days, closes) == %{
+               @thursday => money(1_000),
+               @friday => money(1_750),
+               @saturday => money(2_100)
+             }
+    end
+
+    test "sells with every removal" do
+      days = [
+        day(@thursday, money(1_000)),
+        day(@friday, money(800), outbound: money(200)),
+        day(@saturday, money(800))
+      ]
+
+      closes = [{@thursday, price(100)}, {@saturday, price(150)}]
+
+      assert %{@friday => 80_000, @saturday => 120_000} = shadow(days, closes)
+    end
+
+    test "starts on the chart's first day with its net worth, whatever came before" do
+      days = [
+        day(@thursday, money(1_000)),
+        day(@friday, money(2_000), inbound: money(1_000)),
+        day(@saturday, money(2_000))
+      ]
+
+      closes = [{@thursday, price(100)}, {@friday, price(100)}, {@saturday, price(110)}]
+
+      assert shadow(days, closes, @friday) == %{
+               @friday => money(2_000),
+               @saturday => money(2_200)
+             }
+    end
+
+    test "starts with the benchmark's first price" do
+      days = [
+        day(@thursday, money(1_000)),
+        day(@friday, money(1_000)),
+        day(@saturday, money(1_000))
+      ]
+
+      assert shadow(days, [{@friday, price(100)}, {@saturday, price(90)}]) ==
+               %{@friday => money(1_000), @saturday => money(900)}
+
+      assert shadow(days, []) == %{}
+    end
+
+    test "is empty with a price of 0" do
+      days = [
+        day(@thursday, money(1_000)),
+        day(@friday, money(1_500), inbound: money(500)),
+        day(@saturday, money(1_500))
+      ]
+
+      assert shadow(days, [{@thursday, price(100)}, {@friday, 0}]) == %{}
+      assert shadow(days, [{@thursday, 0}, {@friday, price(100)}]) == %{}
+    end
+
+    test "converts each day's price at the ECB rate of that day" do
+      days = [day(@thursday, money(1_000)), day(@friday, money(1_000))]
+
+      rates = [{"USD", @thursday, Decimal.new("1.25")}, {"USD", @friday, Decimal.new("1.00")}]
+      closes = [{@thursday, price(100)}, {@friday, price(100)}]
+
+      assert shadow(days, closes, @thursday, "USD", rates) ==
+               %{@thursday => money(1_000), @friday => money(1_250)}
+    end
+  end
+
   describe "irr/1" do
     test "pays in the reference day's value and the money in after it, and gets the last day's" do
       days = [day(~D[2025-01-01], money(1_000)), day(~D[2026-01-01], money(1_650))]

@@ -72,7 +72,9 @@ defmodule Zipfelfolio.Portfolios do
   amounts in euro cents:
 
   - `net_worth` today and `net_worth_yesterday`
-  - `chart`: net worth and invested capital on the days of the period a chart shows
+  - `chart`: net worth, invested capital and the value of the shadow portfolio in the benchmark
+    (`benchmark`, nil without one) on the days of the period a chart shows, see
+    `Performance.shadow_portfolio/4`
   - `ttwror` and `irr` of all portfolios and accounts over the period, see `Performance`
   - `benchmark`: the user's benchmark as `%{security, ttwror}` over the same interval, see
     `Performance.benchmark_ttwror/3`; nil when they picked none
@@ -96,11 +98,12 @@ defmodule Zipfelfolio.Portfolios do
 
     index = Performance.index(transactions, accounts, market, Filter.all(), interval)
     [yesterday, today_point] = Enum.take(index.days, -2)
+    range = Period.range(period, today, first_day)
 
     %{
       net_worth: today_point.value,
       net_worth_yesterday: yesterday.value,
-      chart: chart(index, Period.range(period, today, first_day)),
+      chart: chart(index, range, shadow_portfolio(benchmark, index, market, range.first)),
       ttwror: Performance.ttwror(index),
       irr: Performance.irr(index),
       benchmark: benchmark(benchmark, index, market),
@@ -179,13 +182,23 @@ defmodule Zipfelfolio.Portfolios do
   defp first_transaction_day([first | _]), do: NaiveDateTime.to_date(first.date_time)
   defp first_transaction_day([]), do: nil
 
-  defp chart(%Performance{days: days}, range) do
+  defp chart(%Performance{days: days}, range, shadow_portfolio) do
     chart_days = range |> Period.chart_days() |> MapSet.new()
 
     for day <- days,
         MapSet.member?(chart_days, day.date),
-        do: %{date: day.date, net_worth: day.value, invested_capital: day.invested_capital}
+        do: %{
+          date: day.date,
+          net_worth: day.value,
+          invested_capital: day.invested_capital,
+          benchmark: shadow_portfolio[day.date]
+        }
   end
+
+  defp shadow_portfolio(nil, _index, _market, _first_day), do: %{}
+
+  defp shadow_portfolio(security, index, market, first_day),
+    do: Performance.shadow_portfolio(index, market, security.id, first_day)
 
   defp year_to_date(%Date{year: year} = today), do: Date.range(Date.new!(year, 1, 1), today)
 

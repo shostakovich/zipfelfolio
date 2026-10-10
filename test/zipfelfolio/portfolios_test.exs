@@ -94,7 +94,8 @@ defmodule Zipfelfolio.PortfoliosTest do
       assert List.last(overview.chart) == %{
                date: @saturday,
                net_worth: money(2_134),
-               invested_capital: money(2_000)
+               invested_capital: money(2_000),
+               benchmark: nil
              }
     end
 
@@ -107,6 +108,23 @@ defmodule Zipfelfolio.PortfoliosTest do
 
       assert benchmark.security.symbol == "IUSQ.DE"
       assert_in_delta benchmark.ttwror, -0.1, 1.0e-12
+    end
+
+    test "charts the shadow portfolio in the benchmark, which buys with every deposit", ctx do
+      account = account_fixture(ctx.scope)
+      deposit(ctx.scope, account, ~D[2026-10-01], 1_000)
+      deposit(ctx.scope, account, @friday, 500)
+
+      assert [%{benchmark: nil} | _] = Portfolios.overview(ctx.scope, :max, @saturday).chart
+
+      scope =
+        benchmark_scope(ctx.scope, [{~D[2026-10-01], 100}, {@friday, 125}, {@saturday, 150}])
+
+      assert scope
+             |> Portfolios.overview(:max, @saturday)
+             |> Map.fetch!(:chart)
+             |> Enum.map(& &1.benchmark) ==
+               [money(1_000), money(1_750), money(2_100)]
     end
 
     test "counts this year's dividends up to today only", ctx do

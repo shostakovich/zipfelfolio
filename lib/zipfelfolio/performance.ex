@@ -248,6 +248,34 @@ defmodule Zipfelfolio.Performance do
     end
   end
 
+  @doc """
+  The value of the shadow portfolio in the benchmark with `security_id`, in euro cents per day of
+  `index` from `first_day` on: on that day it holds the benchmark for the day's value, and the
+  money in and out of every later day buys or sells benchmark shares at that day's price in
+  euros. It starts with the benchmark's first price when that comes later; empty without one,
+  and with a price of 0, which buys no shares.
+  """
+  def shadow_portfolio(%__MODULE__{days: days}, %Market{} = market, security_id, first_day) do
+    with {first_price, _last_price} <- Market.price_days(market, security_id),
+         start = Enum.max([first_day, first_price], Date),
+         [_ | _] = days <- Enum.drop_while(days, &Date.before?(&1.date, start)),
+         prices = Enum.map(days, &euro_price(market, security_id, &1.date)),
+         false <- Enum.any?(prices, &(&1 <= 0)) do
+      [{first, first_price} | rest] = Enum.zip(days, prices)
+
+      rest
+      |> Enum.map_reduce(first.value / first_price, fn {day, price}, shares ->
+        shares = shares + (day.inbound - day.outbound) / price
+        {{day.date, round(shares * price)}, shares}
+      end)
+      |> elem(0)
+      |> Map.new()
+      |> Map.put(first.date, first.value)
+    else
+      _no_price -> %{}
+    end
+  end
+
   defp euro_price(market, security_id, date) do
     price = Market.price(market, security_id, date)
     Market.to_euros(market, price, Market.currency(market, security_id), date)

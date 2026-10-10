@@ -66,6 +66,22 @@ defmodule ZipfelfolioWeb.Benchmark do
     """
   end
 
+  attr :security, :map, required: true
+
+  @doc """
+  The key of the shadow portfolio's line on the net worth chart, on the phone „Benchmark“ as on
+  the button, so that all keys fit one row.
+  """
+  def legend(assigns) do
+    ~H"""
+    <span id="benchmark-legend" class="app-benchmark-legend" title={@security.name}>
+      <span class="app-swatch app-swatch-benchmark"></span>
+      <span class="d-none d-sm-inline">{short_name(@security.name)}</span>
+      <span class="d-sm-none">Benchmark</span>
+    </span>
+    """
+  end
+
   @doc """
   The name without what most fund names end with, such as „UCITS ETF USD (Acc)“, a last „ETF“
   with its currency or „(Dist)“, so that a note shows the part that tells funds apart.

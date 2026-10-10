@@ -70,6 +70,21 @@ defmodule ZipfelfolioWeb.BenchmarkTest do
       assert has_element?(lv, "#ttwror #benchmark-ttwror", "+5,00\u00A0%")
     end
 
+    test "draws the shadow portfolio in it on the net worth chart while shown", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/")
+
+      assert_push_event(lv, "net-worth-chart", %{dates: dates, benchmark: values} = chart)
+      assert chart.benchmark_shown == false
+      assert length(values) == length(dates)
+      assert Enum.all?(values, &is_integer/1)
+      refute has_element?(lv, "#benchmark-legend")
+
+      lv |> element("#benchmark-toggle") |> render_click()
+
+      assert_push_event(lv, "benchmark", %{shown: true})
+      assert has_element?(lv, "#benchmark-legend", "Weltindex-ETF")
+    end
+
     test "keeps it shown after a reload on the same device", %{conn: conn} do
       {:ok, lv, _html} = live(shown_on_this_device(conn), ~p"/")
       assert has_element?(lv, "#ttwror #benchmark-ttwror", "+5,00 %")
@@ -99,7 +114,11 @@ defmodule ZipfelfolioWeb.BenchmarkTest do
 
       refute has_element?(lv, "#benchmark-toggle")
       refute has_element?(lv, "#benchmark-ttwror")
+      refute has_element?(lv, "#benchmark-legend")
     end
+
+    {:ok, lv, _html} = live(shown_on_this_device(conn), ~p"/")
+    assert_push_event(lv, "net-worth-chart", %{benchmark: nil})
   end
 
   test "the note shortens a fund's name to what tells it apart" do
