@@ -40,50 +40,52 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
         <p>
           Übersicht und Performance vergleichen deine Depots mit diesem Wertpapier, wenn du dort „Benchmark“ einschaltest.
         </p>
-        <.form
-          for={@benchmark_form}
-          id="benchmark-form"
-          class="app-benchmark-form"
-          phx-change="save_benchmark"
-          phx-submit="save_benchmark"
-        >
-          <.input
-            field={@benchmark_form[:benchmark_id]}
-            type="select"
-            label="Wertpapier"
-            options={benchmark_options(@active, @benchmark)}
-            wrapper_class=""
-          />
-        </.form>
-        <.form
-          for={@symbol_form}
-          id="yahoo-security"
-          phx-submit="create_security"
-          class="mt-4 app-benchmark-form"
-        >
-          <label class="form-label" for={@symbol_form[:symbol].id}>
-            Oder neu per Yahoo-Symbol anlegen
-          </label>
-          <div class="input-group">
-            <input
-              type="text"
-              name={@symbol_form[:symbol].name}
-              id={@symbol_form[:symbol].id}
-              value={@symbol_form[:symbol].value}
-              class={["form-control", symbol_errors(@symbol_form) != [] && "is-invalid"]}
-              spellcheck="false"
-              autocapitalize="characters"
-            />
-            <.button variant="outline-primary" phx-disable-with="Wird abgerufen …">
-              Anlegen
-            </.button>
+        <div class="row g-4">
+          <div class="col-lg-6">
+            <.form
+              for={@benchmark_form}
+              id="benchmark-form"
+              phx-change="save_benchmark"
+              phx-submit="save_benchmark"
+            >
+              <.input
+                field={@benchmark_form[:benchmark_id]}
+                type="select"
+                label="Wertpapier"
+                options={benchmark_options(@active, @benchmark)}
+                wrapper_class=""
+              />
+            </.form>
+            <p class="small text-body-secondary mt-2 mb-0">Gilt sofort, ohne Speichern.</p>
           </div>
-          <.error :for={message <- symbol_errors(@symbol_form)}>{message}</.error>
-        </.form>
-        <p class="text-body-secondary mt-2 mb-0 app-benchmark-form">
-          Das Wertpapier wird deine Benchmark. Name, Währung und Kurse kommen von Yahoo; ein
-          vorhandenes Symbol wird übernommen statt doppelt angelegt.
-        </p>
+          <div class="col-lg-6">
+            <.form for={@symbol_form} id="yahoo-security" phx-submit="create_security">
+              <label class="form-label" for={@symbol_form[:symbol].id}>
+                Oder neu per Yahoo-Symbol anlegen
+              </label>
+              <div class="input-group">
+                <input
+                  type="text"
+                  name={@symbol_form[:symbol].name}
+                  id={@symbol_form[:symbol].id}
+                  value={@symbol_form[:symbol].value}
+                  class={["form-control", symbol_errors(@symbol_form) != [] && "is-invalid"]}
+                  spellcheck="false"
+                  autocapitalize="characters"
+                  aria-describedby="yahoo-security-help"
+                />
+                <.button variant="outline-primary" phx-disable-with="Wird abgerufen …">
+                  Anlegen
+                </.button>
+              </div>
+              <.error :for={message <- symbol_errors(@symbol_form)}>{message}</.error>
+            </.form>
+            <p id="yahoo-security-help" class="small text-body-secondary mt-2 mb-0">
+              Wird deine Benchmark. Name, Währung und Kurse kommen von Yahoo; ein vorhandenes
+              Symbol wird übernommen statt doppelt angelegt.
+            </p>
+          </div>
+        </div>
       </.card>
 
       <.card title="Wechselkurse" id="exchange-rates">
@@ -150,7 +152,9 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
         <div class="me-auto">
           <span class="d-block fw-semibold">
             {@security.name}
-            <span :if={@benchmark} class="badge text-bg-warning ms-1 app-benchmark-badge">Benchmark</span>
+            <span :if={@benchmark} class="badge ms-1 app-benchmark-badge">
+              <span class="app-benchmark-key" aria-hidden="true"></span>Benchmark
+            </span>
           </span>
           <span class="small text-body-secondary">
             {[@security.isin, @security.currency] |> Enum.reject(&is_nil/1) |> Enum.join(" · ")}

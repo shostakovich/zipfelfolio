@@ -85,10 +85,10 @@ defmodule ZipfelfolioWeb.OverviewLive do
           <.stat
             id="irr"
             label={"IZF · #{period_label(@period)}"}
-            value={percent_text(@overview.irr, 1)}
-            value_class={tone(percent_text(@overview.irr, 1))}
+            value={percent_text(@overview.irr, 2)}
+            value_class={tone(percent_text(@overview.irr, 2))}
           >
-            <:note class="text-body-secondary">p. a., geldgewichtet</:note>
+            <:note class="text-body-secondary">{"p.\u00A0a."} · geldgewichtet</:note>
           </.stat>
         </div>
         <div class="col-12 col-sm-6 col-lg-3">

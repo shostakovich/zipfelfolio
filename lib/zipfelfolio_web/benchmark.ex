@@ -51,13 +51,17 @@ defmodule ZipfelfolioWeb.Benchmark do
 
   attr :benchmark, :map, required: true, doc: "`%{security, ttwror}`"
 
-  @doc "The benchmark's TTWROR and name, the name cut short when it does not fit."
+  @doc """
+  The benchmark's TTWROR beside its label, its name on the next line, cut short when it does not
+  fit.
+  """
   def note(assigns) do
+    assigns = assign(assigns, :figure, ttwror(assigns.benchmark.ttwror))
+
     ~H"""
     <span id="benchmark-ttwror" class="app-benchmark-note">
-      <span class="visually-hidden">Benchmark:</span>
-      <span class="text-nowrap tabular-nums app-benchmark-ttwror">
-        <span class="app-benchmark-key" aria-hidden="true"></span>{ttwror(@benchmark.ttwror)}
+      <span class="text-nowrap app-benchmark-figure">
+        <span class="app-benchmark-key" aria-hidden="true"></span><span class="app-benchmark-label">Benchmark</span><span class="app-benchmark-ttwror">{@figure}</span>
       </span>
       <span class="app-benchmark-name" title={@benchmark.security.name}>
         {short_name(@benchmark.security.name)}

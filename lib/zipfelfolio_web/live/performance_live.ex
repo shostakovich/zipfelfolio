@@ -135,12 +135,16 @@ defmodule ZipfelfolioWeb.PerformanceLive do
         </div>
       </div>
 
-      <div :if={!@empty} class="row g-3">
-        <div class="col-lg-6 app-col-breakdown">
-          <.breakdown breakdown={@performance.breakdown} interval={@performance.interval} />
-        </div>
-        <div class="col-12 app-col-heatmap">
-          <.monthly_returns years={@performance.monthly_returns} />
+      <%!-- Side by side, each as tall as its content, only where the heatmap's months get room; else the
+           heatmap under the breakdown. --%>
+      <div :if={!@empty} class="app-performance-grid">
+        <div class="row g-3 align-items-start">
+          <div class="col-12 app-col-breakdown">
+            <.breakdown breakdown={@performance.breakdown} interval={@performance.interval} />
+          </div>
+          <div class="col-12 app-col-heatmap">
+            <.monthly_returns years={@performance.monthly_returns} />
+          </div>
         </div>
       </div>
     </Layouts.app>
@@ -154,7 +158,7 @@ defmodule ZipfelfolioWeb.PerformanceLive do
   # there are any.
   defp breakdown(assigns) do
     ~H"""
-    <section id="breakdown" class="card h-100 app-breakdown" aria-labelledby="breakdown-title">
+    <section id="breakdown" class="card app-breakdown" aria-labelledby="breakdown-title">
       <div class="card-header">
         <h2 class="stat-label mb-0" id="breakdown-title">Berechnung</h2>
       </div>
@@ -192,13 +196,13 @@ defmodule ZipfelfolioWeb.PerformanceLive do
     ~H"""
     <section
       id="monthly-returns"
-      class="card h-100 app-heatmap"
+      class="card app-heatmap"
       aria-labelledby="monthly-returns-title"
     >
       <div class="card-header">
         <h2 class="stat-label mb-0" id="monthly-returns-title">Monatsrenditen</h2>
       </div>
-      <div class="card-body d-flex flex-column">
+      <div class="card-body">
         <table class="app-heatmap-table tabular-nums">
           <thead>
             <tr>
@@ -233,7 +237,7 @@ defmodule ZipfelfolioWeb.PerformanceLive do
             </tr>
           </tbody>
         </table>
-        <p class="small text-body-secondary mb-0 mt-auto pt-3 app-heatmap-note">
+        <p class="small text-body-secondary mb-0 pt-3 app-heatmap-note">
           TTWROR je Monat in %, verkettet zum Jahr
         </p>
       </div>
