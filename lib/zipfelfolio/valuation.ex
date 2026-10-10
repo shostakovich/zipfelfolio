@@ -1,8 +1,8 @@
 defmodule Zipfelfolio.Valuation do
   @moduledoc """
-  Holdings, account balances and net worth on a date, computed from transactions and a `Market`
-  on every request (ADR 0002). Pure, without the database, and computed as PP does so that the
-  figures match PP's. Amounts in cents, shares and prices × 10⁸.
+  Holdings, account balances, net worth and invested capital, computed from transactions and a
+  `Market` on every request (ADR 0002). Pure, without the database, and computed as PP does so
+  that the figures match PP's. Amounts in cents, shares and prices × 10⁸.
   """
 
   alias Zipfelfolio.Portfolios.Transaction
@@ -11,20 +11,14 @@ defmodule Zipfelfolio.Valuation do
   @credits [:deposit, :sell, :dividend, :interest, :tax_refund, :fee_refund]
   @debits [:removal, :buy, :interest_charge, :tax, :fee]
   @purchases [:buy, :inbound_delivery]
+  @transferals_in [:deposit, :inbound_delivery]
+  @transferals_out [:removal, :outbound_delivery]
 
   # PP multiplies shares and price to ten significant digits.
   @pp_math %Decimal.Context{precision: 10, rounding: :half_up}
 
   @doc "The holdings on `date` per portfolio and security; holdings without shares are left out."
   def holdings(transactions, date), do: transactions |> share_movements(date) |> to_holdings()
-
-  # One holding per security over all portfolios, as PP values net worth.
-  defp joint_holdings(transactions, date) do
-    transactions
-    |> share_movements(date)
-    |> Enum.map(fn {_portfolio_id, shares, t} -> {nil, shares, t} end)
-    |> to_holdings()
-  end
 
   defp to_holdings(movements) do
     movements
@@ -60,11 +54,8 @@ defmodule Zipfelfolio.Valuation do
 
   @doc "The balance of each account on `date`, in the account's currency."
   def balances(transactions, date) do
-    for t <- transactions,
-        on_or_before?(t, date),
-        {account_id, amount} <- cash_moved(t),
-        reduce: %{} do
-      balances -> Map.update(balances, account_id, amount, &(&1 + amount))
+    for t <- transactions, on_or_before?(t, date), reduce: %{} do
+      balances -> add(balances, cash_moved(t))
     end
   end
 
@@ -94,6 +85,12 @@ defmodule Zipfelfolio.Valuation do
 
   defp on_or_before?(%Transaction{date_time: date_time}, date),
     do: not Date.after?(NaiveDateTime.to_date(date_time), date)
+
+  defp add(totals, amounts) do
+    Enum.reduce(amounts, totals, fn {key, amount}, totals ->
+      Map.update(totals, key, amount, &(&1 + amount))
+    end)
+  end
 
   @doc """
   The value of a holding on `date`, in euro cents. Without any price, PP takes the gross price per
@@ -151,20 +148,95 @@ defmodule Zipfelfolio.Valuation do
 
   defp gross_value_unit(t), do: Enum.find(t.units, &(&1.type == :gross_value))
 
+  # The transactions up to a day, added up: the balance per account, the shares and the last
+  # transaction that moved them per security over all portfolios, and invested capital.
+  @empty_ledger %{balances: %{}, shares: %{}, last: %{}, invested_capital: 0}
+
   @doc """
-  The value of all holdings plus the account balances on `date`, in euro cents. `accounts` give the
-  currency of each balance.
+  Net worth and invested capital on each of `dates`, in euro cents and in order of date, from one
+  pass over the transactions. `accounts` give the currency of each balance. Invested capital
+  converts each transferal at the ECB rate of its own day, so `market` needs the rates from the
+  first transaction on.
   """
-  def net_worth(transactions, accounts, %Market{} = market, date) do
+  def history(transactions, accounts, %Market{} = market, dates) do
     currencies = Map.new(accounts, &{&1.id, &1.currency})
+    transactions = Enum.sort_by(transactions, & &1.date_time, NaiveDateTime)
 
-    balances =
-      transactions
-      |> balances(date)
-      |> Enum.map(fn {id, amount} -> Market.to_euros(market, amount, currencies[id], date) end)
+    dates
+    |> Enum.sort(Date)
+    |> Enum.map_reduce({transactions, @empty_ledger}, fn date, {pending, ledger} ->
+      {due, pending} = Enum.split_while(pending, &on_or_before?(&1, date))
+      ledger = Enum.reduce(due, ledger, &book(&2, &1, market))
 
-    values = transactions |> joint_holdings(date) |> Enum.map(&value(&1, market, date))
+      point = %{
+        date: date,
+        net_worth: net_worth(ledger, currencies, market, date),
+        invested_capital: ledger.invested_capital
+      }
 
-    Enum.sum(balances) + Enum.sum(values)
+      {point, {pending, ledger}}
+    end)
+    |> elem(0)
   end
+
+  defp book(ledger, %Transaction{} = t, market) do
+    ledger = %{
+      ledger
+      | balances: add(ledger.balances, cash_moved(t)),
+        invested_capital: ledger.invested_capital + transferal(t, market)
+    }
+
+    case shares_moved(t) do
+      [] ->
+        ledger
+
+      moved ->
+        shares = Enum.sum_by(moved, &elem(&1, 1))
+
+        %{
+          ledger
+          | shares: add(ledger.shares, [{t.security_id, shares}]),
+            last: Map.update(ledger.last, t.security_id, t, &latest(&1, t))
+        }
+    end
+  end
+
+  # The first of the latest, as `Enum.max_by/3` in `last_price/2` picks it.
+  defp latest(last, t),
+    do: if(NaiveDateTime.after?(t.date_time, last.date_time), do: t, else: last)
+
+  # PP values one joint holding per security over all portfolios; its price without any close
+  # needs only the last of its transactions.
+  defp net_worth(ledger, currencies, market, date) do
+    balances =
+      Enum.sum_by(ledger.balances, fn {account_id, amount} ->
+        Market.to_euros(market, amount, currencies[account_id], date)
+      end)
+
+    values =
+      for {security_id, shares} <- ledger.shares, shares != 0, reduce: 0 do
+        sum ->
+          holding = %Holding{
+            security_id: security_id,
+            shares: shares,
+            transactions: [ledger.last[security_id]]
+          }
+
+          sum + value(holding, market, date)
+      end
+
+    balances + values
+  end
+
+  # Money from outside, in euros at the rate of its day, as PP counts invested capital.
+  defp transferal(%Transaction{type: type} = t, market) when type in @transferals_in,
+    do: in_euros(t, market)
+
+  defp transferal(%Transaction{type: type} = t, market) when type in @transferals_out,
+    do: -in_euros(t, market)
+
+  defp transferal(_transaction, _market), do: 0
+
+  defp in_euros(t, market),
+    do: Market.to_euros(market, t.amount, t.currency, NaiveDateTime.to_date(t.date_time))
 end

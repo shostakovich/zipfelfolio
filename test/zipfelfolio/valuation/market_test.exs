@@ -24,6 +24,8 @@ defmodule Zipfelfolio.Valuation.MarketTest do
     Market.new([security], Enum.map(closes, fn {date, close} -> {1, date, close} end), [])
   end
 
+  defp weekend?(date), do: Date.day_of_week(date) > 5
+
   defp rates(usd_rates) do
     rates = Enum.map(usd_rates, fn {date, rate} -> {"USD", date, Decimal.new(rate)} end)
     Market.new([], [], rates)
@@ -40,6 +42,16 @@ defmodule Zipfelfolio.Valuation.MarketTest do
 
     test "is the first close on a day before it, as in PP" do
       assert Market.price(market([{@thursday, 99}, {@friday, 100}]), 1, @wednesday) == 99
+    end
+
+    test "is the last close before any day of a long history" do
+      weekdays = Enum.reject(Date.range(~D[2025-01-01], ~D[2026-12-31]), &weekend?/1)
+      market = market(Enum.map(weekdays, &{&1, Date.to_gregorian_days(&1)}))
+
+      for date <- Date.range(~D[2025-01-01], ~D[2026-12-31]) do
+        friday = Date.add(date, -max(Date.day_of_week(date) - 5, 0))
+        assert Market.price(market, 1, date) == Date.to_gregorian_days(friday)
+      end
     end
 
     test "is nil for a security without any price" do
@@ -111,5 +123,17 @@ defmodule Zipfelfolio.Valuation.MarketTest do
     test "leaves an amount without any rate as it is, as PP does" do
       assert Market.to_euros(rates([]), money(1_100), "USD", @friday) == money(1_100)
     end
+
+    test "converts pence, agorot and cents at a hundredth of the main currency's rate, as PP does" do
+      for {currency, main} <- [{"GBX", "GBP"}, {"ILA", "ILS"}, {"ZAC", "ZAR"}] do
+        market = Market.new([], [], [{main, @friday, Decimal.new("0.85")}])
+
+        assert Market.to_euros(market, money(500_000), currency, @friday) == money(5_882.35)
+      end
+    end
+  end
+
+  test "rate_currencies/1 adds the main currency of pence, agorot and cents" do
+    assert Market.rate_currencies(["EUR", "GBX", "USD", "GBP"]) == ["EUR", "GBX", "GBP", "USD"]
   end
 end

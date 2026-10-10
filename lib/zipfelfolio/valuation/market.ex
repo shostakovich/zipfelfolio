@@ -15,15 +15,18 @@ defmodule Zipfelfolio.Valuation.Market do
   def new(securities, closes, rates) do
     %__MODULE__{
       securities: Map.new(securities, &{&1.id, &1}),
-      closes: newest_first(closes),
-      rates: newest_first(rates)
+      closes: series(closes),
+      rates: series(rates)
     }
   end
 
-  defp newest_first(rows) do
+  # Per key a tuple of `{date, value}` in order of date, for a binary search.
+  defp series(rows) do
     rows
     |> Enum.group_by(&elem(&1, 0), &{elem(&1, 1), elem(&1, 2)})
-    |> Map.new(fn {key, series} -> {key, Enum.sort_by(series, &elem(&1, 0), {:desc, Date})} end)
+    |> Map.new(fn {key, series} ->
+      {key, series |> Enum.sort_by(&elem(&1, 0), Date) |> List.to_tuple()}
+    end)
   end
 
   def currency(%__MODULE__{securities: securities}, security_id),
@@ -35,7 +38,7 @@ defmodule Zipfelfolio.Valuation.Market do
   earlier day. Nil without any price.
   """
   def price(%__MODULE__{} = market, security_id, date) do
-    closes = Map.get(market.closes, security_id, [])
+    closes = Map.get(market.closes, security_id, {})
     quote = latest_quote(market.securities[security_id])
 
     if quote_applies?(quote, closes, date), do: elem(quote, 1), else: on(closes, date)
@@ -48,37 +51,64 @@ defmodule Zipfelfolio.Valuation.Market do
   defp latest_quote(_security), do: nil
 
   defp quote_applies?(nil, _closes, _date), do: false
-  defp quote_applies?(_quote, [] = _closes, _date), do: true
+  defp quote_applies?(_quote, {} = _closes, _date), do: true
 
-  defp quote_applies?({quote_date, _close}, [{last_close_date, _last_close} | _], date),
-    do: not Date.before?(date, quote_date) and not Date.before?(quote_date, last_close_date)
+  defp quote_applies?({quote_date, _close}, closes, date) do
+    {last_close_date, _last_close} = elem(closes, tuple_size(closes) - 1)
+    not Date.before?(date, quote_date) and not Date.before?(quote_date, last_close_date)
+  end
+
+  # Pence, agorot and cents, with their main currency.
+  @subunits %{"GBX" => "GBP", "ILA" => "ILS", "ZAC" => "ZAR"}
+
+  @doc "The currencies whose ECB rates `to_euros/4` needs to convert `currencies`."
+  def rate_currencies(currencies),
+    do: currencies |> Enum.flat_map(&[&1 | List.wrap(@subunits[&1])]) |> Enum.uniq()
 
   @doc """
   Converts an amount in `currency` to euro cents at the ECB rate on `date` as PP does: with the
-  inverse rate to ten places, rounded half down; without any rate, it stays as it is.
+  inverse rate to ten places, rounded half down, and pence, agorot and cents at a hundredth of
+  their main currency's; without any rate, it stays as it is.
   """
   def to_euros(_market, amount, "EUR", _date), do: amount
 
   def to_euros(%__MODULE__{rates: rates}, amount, currency, date) do
-    case on(Map.get(rates, currency, []), date) do
-      nil ->
-        amount
+    case euro_rate(rates, currency, date) do
+      nil -> amount
+      rate -> rate |> Decimal.mult(amount) |> Decimal.round(0, :half_down) |> Decimal.to_integer()
+    end
+  end
 
-      rate ->
-        Decimal.new(1)
-        |> Decimal.div(rate)
-        |> Decimal.round(10, :half_down)
-        |> Decimal.mult(amount)
-        |> Decimal.round(0, :half_down)
-        |> Decimal.to_integer()
+  defp euro_rate(rates, currency, date) when is_map_key(@subunits, currency) do
+    case euro_rate(rates, @subunits[currency], date) do
+      nil -> nil
+      rate -> Decimal.mult(rate, Decimal.new("0.01"))
+    end
+  end
+
+  defp euro_rate(rates, currency, date) do
+    case on(Map.get(rates, currency, {}), date) do
+      nil -> nil
+      rate -> Decimal.new(1) |> Decimal.div(rate) |> Decimal.round(10, :half_down)
     end
   end
 
   # The value on `date` or the last one before it; the first one for an earlier day, as in PP.
-  defp on([], _date), do: nil
+  defp on({}, _date), do: nil
 
   defp on(series, date) do
-    Enum.find_value(series, fn {day, value} -> if not Date.after?(day, date), do: value end) ||
-      series |> List.last() |> elem(1)
+    {_day, value} = elem(series, last_on_or_before(series, date, 0, tuple_size(series) - 1))
+    value
   end
+
+  defp last_on_or_before(series, date, low, high) when low < high do
+    middle = div(low + high + 1, 2)
+    {day, _value} = elem(series, middle)
+
+    if Date.after?(day, date),
+      do: last_on_or_before(series, date, low, middle - 1),
+      else: last_on_or_before(series, date, middle, high)
+  end
+
+  defp last_on_or_before(_series, _date, low, _high), do: low
 end

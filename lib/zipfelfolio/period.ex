@@ -1,0 +1,34 @@
+defmodule Zipfelfolio.Period do
+  @moduledoc """
+  A period up to today, as the overview offers it for its chart and returns: six months, the year
+  to date, one year, or everything since the first transaction (`:max`).
+  """
+
+  @type t :: :six_months | :year_to_date | :one_year | :max
+
+  @doc """
+  The days of `period` up to `today`, from `first_day` on at the earliest, such as the day of the
+  first transaction; only today without a `first_day` up to today.
+  """
+  def range(period, today, first_day) do
+    first_day = if first_day, do: Enum.min([first_day, today], Date), else: today
+
+    Date.range(Enum.max([start(period, today) || first_day, first_day], Date), today)
+  end
+
+  defp start(:six_months, today), do: Date.shift(today, month: -6)
+  defp start(:year_to_date, today), do: Date.new!(today.year, 1, 1)
+  defp start(:one_year, today), do: Date.shift(today, year: -1)
+  defp start(:max, _today), do: nil
+
+  @doc """
+  The days of `range` a chart shows: all of them for up to a year. Beyond, the first and every
+  seventh counting back from the last; every day of many years would outnumber the chart's pixels
+  and swell the data sent to the browser.
+  """
+  def chart_days(%Date.Range{first: first, last: last} = range) do
+    if Date.before?(first, Date.shift(last, year: -1)),
+      do: Enum.uniq([first | Enum.reverse(Date.range(last, first, -7))]),
+      else: Enum.to_list(range)
+  end
+end

@@ -2,3 +2,8 @@
 .app-avatar { width: 2.25rem; height: 2.25rem; flex-shrink: 0; }
 /* `d-flex` would show the hidden connection alerts of the flash group. */
 .alert[hidden] { display: none !important; }
+.app-chart { position: relative; height: 14rem; }
+@media (min-width: 992px) { .app-chart { height: 19rem; } }
+.app-swatch { display: inline-block; width: .75rem; height: .75rem; border-radius: .2rem; vertical-align: -.05rem; }
+.app-swatch-primary { background: var(--felt-primary); }
+.app-swatch-secondary { background: var(--felt-secondary); }

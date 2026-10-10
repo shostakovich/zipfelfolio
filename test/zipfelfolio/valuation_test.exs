@@ -263,12 +263,26 @@ defmodule Zipfelfolio.ValuationTest do
     end
   end
 
-  describe "net_worth/4" do
+  describe "history/4" do
     setup do
       %{accounts: [%Account{id: 10, currency: "EUR"}, %Account{id: 11, currency: "USD"}]}
     end
 
-    test "adds the values of the holdings and the account balances", %{accounts: accounts} do
+    defp net_worth(transactions, accounts, market, date) do
+      [%{date: ^date, net_worth: net_worth}] =
+        Valuation.history(transactions, accounts, market, [date])
+
+      net_worth
+    end
+
+    defp invested_capital(transactions, market \\ market([]), date) do
+      [%{date: ^date, invested_capital: invested_capital}] =
+        Valuation.history(transactions, [], market, [date])
+
+      invested_capital
+    end
+
+    test "net worth adds the values of the holdings and the account balances", ctx do
       transactions = [
         transaction(:deposit, @thursday, account_id: 10, amount: money(1_000)),
         in_portfolio(:buy, @friday, 1, 20, 10, account_id: 10, amount: money(900))
@@ -276,28 +290,20 @@ defmodule Zipfelfolio.ValuationTest do
 
       market = market([{20, @friday, price(95)}])
 
-      assert Valuation.net_worth(transactions, accounts, market, @friday) == money(1_050)
+      assert net_worth(transactions, ctx.accounts, market, @friday) == money(1_050)
     end
 
-    test "converts account balances in a foreign currency", %{accounts: accounts} do
+    test "net worth converts account balances in a foreign currency", ctx do
       transactions = [
         transaction(:deposit, @friday, account_id: 11, currency: "USD", amount: money(110))
       ]
 
       market = market([], rates: [{"USD", @friday, Decimal.new("1.10")}])
 
-      assert Valuation.net_worth(transactions, accounts, market, @friday) == money(100)
+      assert net_worth(transactions, ctx.accounts, market, @friday) == money(100)
     end
 
-    test "changes with today's quote", %{accounts: accounts} do
-      transactions = [in_portfolio(:inbound_delivery, @thursday, 1, 20, 10)]
-      market = market([{20, @friday, price(100)}], quote_date: @saturday, quote: price(102))
-
-      assert Valuation.net_worth(transactions, accounts, market, @friday) == money(1_000)
-      assert Valuation.net_worth(transactions, accounts, market, @saturday) == money(1_020)
-    end
-
-    test "values a security held in several portfolios once, as PP does", %{accounts: accounts} do
+    test "net worth values a security held in several portfolios once, as PP does", ctx do
       transactions = [
         in_portfolio(:inbound_delivery, @friday, 1, 20, 1),
         in_portfolio(:inbound_delivery, @friday, 2, 20, 1)
@@ -305,7 +311,95 @@ defmodule Zipfelfolio.ValuationTest do
 
       market = market([{20, @friday, price(0.015)}])
 
-      assert Valuation.net_worth(transactions, accounts, market, @friday) == 3
+      assert net_worth(transactions, ctx.accounts, market, @friday) == 3
+    end
+
+    test "net worth takes the gross price of the last transaction up to each day without any price",
+         ctx do
+      transactions = [
+        in_portfolio(:buy, @friday, 1, 20, 1, amount: money(110)),
+        in_portfolio(:buy, @thursday, 1, 20, 1, amount: money(100))
+      ]
+
+      assert [%{net_worth: thursday}, %{net_worth: friday}] =
+               Valuation.history(transactions, ctx.accounts, market([]), [@friday, @thursday])
+
+      assert {thursday, friday} == {money(100), money(220)}
+    end
+
+    test "gives each of the dates in order the transactions up to it and today's quote", ctx do
+      transactions = [
+        transaction(:deposit, @saturday, account_id: 10, amount: money(5)),
+        in_portfolio(:inbound_delivery, @thursday, 1, 20, 10, amount: money(990))
+      ]
+
+      market = market([{20, @friday, price(100)}], quote_date: @saturday, quote: price(102))
+
+      assert Valuation.history(transactions, ctx.accounts, market, [@saturday, @friday]) == [
+               %{date: @friday, net_worth: money(1_000), invested_capital: money(990)},
+               %{date: @saturday, net_worth: money(1_025), invested_capital: money(995)}
+             ]
+    end
+
+    test "invested capital counts money from outside only" do
+      transactions = [
+        transaction(:deposit, ~D[2026-03-01], account_id: 10, amount: money(1_000)),
+        in_portfolio(:buy, ~D[2026-03-02], 1, 20, 10, account_id: 10, amount: money(1_000)),
+        in_portfolio(:inbound_delivery, ~D[2026-03-03], 1, 20, 5, amount: money(500)),
+        transaction(:dividend, ~D[2026-03-04],
+          account_id: 10,
+          security_id: 20,
+          shares: shares(15),
+          amount: money(20)
+        )
+      ]
+
+      assert invested_capital(transactions, ~D[2026-03-04]) == money(1_500)
+    end
+
+    test "invested capital goes down with removals and outbound deliveries" do
+      transactions = [
+        transaction(:deposit, @thursday, account_id: 10, amount: money(1_000)),
+        transaction(:removal, @friday, account_id: 10, amount: money(300)),
+        in_portfolio(:inbound_delivery, @thursday, 1, 20, 5, amount: money(500)),
+        in_portfolio(:outbound_delivery, @friday, 1, 20, 2, amount: money(250))
+      ]
+
+      assert invested_capital(transactions, @friday) == money(950)
+    end
+
+    test "invested capital does not change with transfers between accounts or portfolios" do
+      transactions = [
+        transaction(:deposit, @thursday, account_id: 10, amount: money(1_000)),
+        transaction(:cash_transfer, @friday,
+          account_id: 10,
+          other_account_id: 11,
+          amount: money(400)
+        ),
+        in_portfolio(:inbound_delivery, @thursday, 1, 20, 5, amount: money(500)),
+        in_portfolio(:security_transfer, @friday, 1, 20, 5,
+          other_portfolio_id: 2,
+          amount: money(520)
+        )
+      ]
+
+      assert invested_capital(transactions, @friday) == money(1_500)
+    end
+
+    test "invested capital converts each transferal at the ECB rate of its own day" do
+      transactions = [
+        transaction(:deposit, @thursday, account_id: 11, currency: "USD", amount: money(110))
+      ]
+
+      market =
+        market([],
+          rates: [
+            {"USD", @thursday, Decimal.new("1.10")},
+            {"USD", @saturday, Decimal.new("1.25")}
+          ]
+        )
+
+      assert invested_capital(transactions, market, @saturday) == money(100)
     end
   end
 end

@@ -33,18 +33,26 @@ defmodule Zipfelfolio.Portfolios do
   end
 
   @doc """
-  The user's net worth on each of `dates` as `%{date => cents}`: the value of all holdings plus
-  the account balances, in euros.
+  The user's net worth and invested capital on each of `dates`, in euro cents and in order of
+  date, as `%{date: date, net_worth: cents, invested_capital: cents}`.
   """
-  def net_worth(%Scope{} = scope, dates) do
+  def history(%Scope{} = scope, dates) do
     transactions = list_transactions(scope)
     accounts = list_accounts(scope)
     market = load_market(transactions, accounts, Enum.min(dates, Date))
 
-    Map.new(dates, &{&1, Valuation.net_worth(transactions, accounts, market, &1)})
+    Valuation.history(transactions, accounts, market, dates)
   end
 
-  # The securities of the transactions with their prices from `date` on, and the rates they need.
+  @doc """
+  The user's net worth on each of `dates` as `%{date => cents}`: the value of all holdings plus
+  the account balances, in euros.
+  """
+  def net_worth(%Scope{} = scope, dates),
+    do: scope |> history(dates) |> Map.new(&{&1.date, &1.net_worth})
+
+  # The securities of the transactions with their closes from `date` on, and the rates of every
+  # currency involved from the first transaction on, at which invested capital converts.
   defp load_market(transactions, accounts, date) do
     security_ids =
       transactions |> Enum.map(& &1.security_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
@@ -52,13 +60,35 @@ defmodule Zipfelfolio.Portfolios do
     securities = Securities.list_securities_by_id(security_ids)
 
     currencies =
-      Enum.uniq(Enum.map(accounts, & &1.currency) ++ Enum.map(securities, & &1.currency))
+      (accounts ++ securities ++ transactions)
+      |> Enum.map(& &1.currency)
+      |> Market.rate_currencies()
 
     Market.new(
       securities,
       Securities.list_closes_since(security_ids, date),
-      ExchangeRates.list_rates_since(currencies, date)
+      ExchangeRates.list_rates_since(currencies, first_day(transactions, date))
     )
+  end
+
+  # The transactions come in order of time.
+  defp first_day([first | _], date),
+    do: Enum.min([NaiveDateTime.to_date(first.date_time), date], Date)
+
+  defp first_day([], date), do: date
+
+  @doc "The day of the user's first transaction; nil without any."
+  def first_transaction_date(%Scope{} = scope) do
+    first =
+      Repo.one(
+        from t in Transaction,
+          where: t.user_id == ^scope.user.id,
+          order_by: t.date_time,
+          limit: 1,
+          select: t.date_time
+      )
+
+    first && NaiveDateTime.to_date(first)
   end
 
   @doc "Whether the user has transactions that did not come from a PP import."
