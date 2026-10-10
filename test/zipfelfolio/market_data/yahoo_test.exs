@@ -13,6 +13,7 @@ defmodule Zipfelfolio.MarketData.YahooTest do
     assert {:ok, chart} = Yahoo.parse(@body, @after_close)
 
     assert chart.currency == "EUR"
+    assert chart.name == "Vanguard FTSE All-World UCITS ETF"
 
     assert chart.closes == [
              {~D[2026-10-05], 16_704_000_000},
@@ -26,6 +27,42 @@ defmodule Zipfelfolio.MarketData.YahooTest do
              date: ~D[2026-10-09],
              close: 16_666_000_000
            }
+  end
+
+  test "takes the short name without a long one, and no name without either" do
+    meta = ["chart", "result", Access.at(0), "meta"]
+    decoded = JSON.decode!(@body)
+    short_only = decoded |> update_in(meta, &Map.delete(&1, "longName")) |> JSON.encode!()
+    nameless = decoded |> update_in(meta, &Map.drop(&1, ~w(longName shortName))) |> JSON.encode!()
+
+    assert {:ok, %{name: "VANGUARD FTSE AW"}} = Yahoo.parse(short_only, @after_close)
+    assert {:ok, %{name: nil}} = Yahoo.parse(nameless, @after_close)
+  end
+
+  test "names pence and cents as ISO 4217 does" do
+    for {yahoo, iso} <- [{"GBp", "GBX"}, {"ZAc", "ZAC"}, {"ILA", "ILA"}, {"GBP", "GBP"}] do
+      body =
+        @body
+        |> JSON.decode!()
+        |> put_in(["chart", "result", Access.at(0), "meta", "currency"], yahoo)
+        |> JSON.encode!()
+
+      assert {:ok, %{currency: ^iso}} = Yahoo.parse(body, @after_close)
+    end
+  end
+
+  test "leaves out closes of 0" do
+    body =
+      @body
+      |> JSON.decode!()
+      |> update_in(
+        ["chart", "result", Access.at(0), "indicators", "quote", Access.at(0), "close"],
+        fn [_, _ | rest] -> [0, 0.0 | rest] end
+      )
+      |> JSON.encode!()
+
+    assert {:ok, %{closes: closes}} = Yahoo.parse(body, @after_close)
+    assert Enum.map(closes, &elem(&1, 0)) == [~D[2026-10-07], ~D[2026-10-09]]
   end
 
   test "leaves out the day that is still trading" do

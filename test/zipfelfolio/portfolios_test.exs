@@ -24,6 +24,14 @@ defmodule Zipfelfolio.PortfoliosTest do
     )
   end
 
+  # The scope of a user who picked a benchmark with the closes `{date, euros}`.
+  defp benchmark_scope(scope, closes) do
+    benchmark = security_fixture(%{name: "Weltindex-ETF", symbol: "IUSQ.DE"})
+    for {date, close} <- closes, do: price_fixture(benchmark, date, price(close), :yahoo)
+    {:ok, user} = Zipfelfolio.Users.update_benchmark(scope, benchmark.id)
+    user_scope_fixture(user)
+  end
+
   describe "overview/3" do
     # 10 shares delivered on Friday for 1,000 €, closing at 100 € that day and at 102 € today.
     defp shares_fixture(scope, portfolio, count \\ 10) do
@@ -86,8 +94,37 @@ defmodule Zipfelfolio.PortfoliosTest do
       assert List.last(overview.chart) == %{
                date: @saturday,
                net_worth: money(2_134),
-               invested_capital: money(2_000)
+               invested_capital: money(2_000),
+               benchmark: nil
              }
+    end
+
+    test "gives the benchmark's TTWROR over the period, nil without one", ctx do
+      shares_fixture(ctx.scope, ctx.portfolio)
+      assert Portfolios.overview(ctx.scope, :max, @saturday).benchmark == nil
+
+      scope = benchmark_scope(ctx.scope, [{~D[2026-10-01], 100}, {@friday, 120}, {@saturday, 90}])
+      benchmark = Portfolios.overview(scope, :max, @saturday).benchmark
+
+      assert benchmark.security.symbol == "IUSQ.DE"
+      assert_in_delta benchmark.ttwror, -0.1, 1.0e-12
+    end
+
+    test "charts the shadow portfolio in the benchmark, which buys with every deposit", ctx do
+      account = account_fixture(ctx.scope)
+      deposit(ctx.scope, account, ~D[2026-10-01], 1_000)
+      deposit(ctx.scope, account, @friday, 500)
+
+      assert [%{benchmark: nil} | _] = Portfolios.overview(ctx.scope, :max, @saturday).chart
+
+      scope =
+        benchmark_scope(ctx.scope, [{~D[2026-10-01], 100}, {@friday, 125}, {@saturday, 150}])
+
+      assert scope
+             |> Portfolios.overview(:max, @saturday)
+             |> Map.fetch!(:chart)
+             |> Enum.map(& &1.benchmark) ==
+               [money(1_000), money(1_750), money(2_100)]
     end
 
     test "counts this year's dividends up to today only", ctx do
@@ -159,6 +196,154 @@ defmodule Zipfelfolio.PortfoliosTest do
 
       assert [%{portfolio: %{name: "Alt"}, value: 51_000}] =
                Portfolios.overview(ctx.scope, :max, @saturday).portfolios
+    end
+  end
+
+  describe "performance/4" do
+    # A portfolio with its account and 10 shares bought at 100 € plus a 5 € fee on 1 September,
+    # at 90 € on 1 October and 99 € on Friday; another portfolio with 1,000 € in its account
+    # from 15 September.
+    setup %{scope: scope, portfolio: portfolio} do
+      account = account_fixture(scope, %{name: "Konto Langfristig"})
+      portfolio = Repo.update!(change(portfolio, reference_account_id: account.id))
+      security = security_fixture(quote_feed: :manual)
+
+      for {date, close} <- [{~D[2026-09-01], 100}, {~D[2026-10-01], 90}, {@friday, 99}],
+          do: price_fixture(security, date, price(close), :pp)
+
+      transaction_fixture(scope, ~D[2026-09-01],
+        type: :deposit,
+        account_id: account.id,
+        amount: money(1_005)
+      )
+
+      transaction_fixture(scope, ~D[2026-09-01],
+        type: :buy,
+        portfolio_id: portfolio.id,
+        account_id: account.id,
+        security_id: security.id,
+        shares: shares(10),
+        amount: money(1_005),
+        units: [%TransactionUnit{type: :fee, amount: money(5), currency: "EUR"}]
+      )
+
+      savings = account_fixture(scope, %{name: "Konto Sparplan"})
+      other = portfolio_fixture(scope, %{name: "Sparplan", reference_account_id: savings.id})
+
+      transaction_fixture(scope, ~D[2026-09-15],
+        type: :deposit,
+        account_id: savings.id,
+        amount: money(1_000)
+      )
+
+      %{portfolio: portfolio, other: other}
+    end
+
+    test "gives the returns, drawdown, volatility and breakdown of all portfolios", ctx do
+      performance = Portfolios.performance(ctx.scope, :max, nil, @saturday)
+
+      assert performance.portfolio == nil
+      assert Enum.map(performance.portfolios, & &1.name) == ["Langfristig", "Sparplan"]
+      assert performance.interval == Date.range(~D[2026-08-31], @saturday)
+      assert_in_delta performance.ttwror, 1_000 / 1_005 * (1_990 / 2_000) - 1, 1.0e-12
+      assert %{max: max, from: ~D[2026-09-01], to: ~D[2026-10-01]} = performance.drawdown
+      assert_in_delta max, 0.05, 1.0e-12
+      assert performance.volatility > 0
+      assert is_float(performance.irr) and is_float(performance.ttwror_per_year)
+
+      assert %{
+               initial_value: 0,
+               capital_gains: -1_000,
+               fees: 500,
+               transfers: 200_500,
+               final_value: 199_000
+             } = performance.breakdown
+    end
+
+    test "gives the benchmark's TTWROR over the same interval, nil without one", ctx do
+      assert Portfolios.performance(ctx.scope, :max, nil, @saturday).benchmark == nil
+
+      scope = benchmark_scope(ctx.scope, [{~D[2026-08-31], 100}, {~D[2026-10-01], 104}])
+      benchmark = Portfolios.performance(scope, :max, nil, @saturday).benchmark
+
+      assert benchmark.security.name == "Weltindex-ETF"
+      assert_in_delta benchmark.ttwror, 0.04, 1.0e-12
+
+      one_month = Portfolios.performance(scope, :one_month, ctx.portfolio.id, @saturday)
+      assert_in_delta one_month.benchmark.ttwror, 0.04, 1.0e-12
+    end
+
+    test "gives one portfolio with its reference account", ctx do
+      performance = Portfolios.performance(ctx.scope, :one_month, ctx.other.id, @saturday)
+
+      assert performance.portfolio.id == ctx.other.id
+      assert performance.interval == Date.range(~D[2026-09-03], @saturday)
+      assert %{initial_value: 0, transfers: 100_000, final_value: 100_000} = performance.breakdown
+      assert performance.ttwror == 0.0
+    end
+
+    test "shows all portfolios for one of another user", ctx do
+      foreign = portfolio_fixture(user_scope_fixture(), %{name: "Fremd"})
+
+      performance = Portfolios.performance(ctx.scope, :max, foreign.id, @saturday)
+      all = Portfolios.performance(ctx.scope, :max, nil, @saturday)
+
+      assert performance.portfolio == nil
+      assert Enum.map(performance.portfolios, & &1.name) == ["Langfristig", "Sparplan"]
+      assert performance.ttwror == all.ttwror
+      assert performance.breakdown == all.breakdown
+    end
+  end
+
+  describe "performance/4 monthly returns" do
+    # 1,000 € came in and bought 10 shares at 100 € on 31 December 2024; they closed at 110 € on
+    # 31 January and at 99 € on 28 February 2025, and have not moved since.
+    setup %{scope: scope, portfolio: portfolio} do
+      account = account_fixture(scope)
+      security = security_fixture(quote_feed: :manual)
+
+      for {date, close} <- [{~D[2024-12-31], 100}, {~D[2025-01-31], 110}, {~D[2025-02-28], 99}],
+          do: price_fixture(security, date, price(close), :pp)
+
+      transaction_fixture(scope, ~D[2024-12-31],
+        type: :deposit,
+        account_id: account.id,
+        amount: money(1_000)
+      )
+
+      transaction_fixture(scope, ~D[2024-12-31],
+        type: :buy,
+        portfolio_id: portfolio.id,
+        account_id: account.id,
+        security_id: security.id,
+        shares: shares(10),
+        amount: money(1_000)
+      )
+
+      :ok
+    end
+
+    test "the year column chains the months", %{scope: scope} do
+      performance = Portfolios.performance(scope, :one_month, nil, ~D[2025-12-31])
+
+      assert [%{year: 2024} = first, %{year: 2025} = second] = performance.monthly_returns
+      assert first.months == List.duplicate(nil, 11) ++ [0.0]
+      assert first.total == 0.0
+
+      assert [january, february | rest] = second.months
+      assert_in_delta january, 0.1, 1.0e-12
+      assert_in_delta february, -0.1, 1.0e-12
+      assert Enum.all?(rest, &(&1 == 0.0))
+      assert_in_delta second.total, -0.01, 1.0e-12
+    end
+
+    test "leaves out the months after today", %{scope: scope} do
+      performance = Portfolios.performance(scope, :max, nil, ~D[2025-02-14])
+
+      assert [_, %{year: 2025, months: [january, february | rest]}] = performance.monthly_returns
+      assert_in_delta january, 0.1, 1.0e-12
+      assert february == 0.0
+      assert rest == List.duplicate(nil, 10)
     end
   end
 

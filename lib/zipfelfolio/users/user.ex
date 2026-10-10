@@ -4,6 +4,8 @@ defmodule Zipfelfolio.Users.User do
 
   import Ecto.Changeset
 
+  alias Zipfelfolio.Securities.Security
+
   schema "users" do
     field :email, :string
     # The WebAuthn user handle: random, so passkeys reveal nothing about the account.
@@ -12,6 +14,8 @@ defmodule Zipfelfolio.Users.User do
     field :authenticated_at, :utc_datetime_usec, virtual: true
 
     has_many :passkeys, Zipfelfolio.Users.Passkey
+    # The security the user compares their portfolios with, nil for none.
+    belongs_to :benchmark, Security
 
     timestamps()
   end
@@ -59,6 +63,15 @@ defmodule Zipfelfolio.Users.User do
     else
       changeset
     end
+  end
+
+  @doc "A changeset for the benchmark; `security?` says whether a security id exists."
+  def benchmark_changeset(user, attrs, security?) do
+    user
+    |> cast(attrs, [:benchmark_id])
+    |> validate_change(:benchmark_id, fn :benchmark_id, id ->
+      if security?.(id), do: [], else: [benchmark_id: "ist kein Wertpapier"]
+    end)
   end
 
   def confirm_changeset(user), do: change(user, confirmed_at: DateTime.utc_now())

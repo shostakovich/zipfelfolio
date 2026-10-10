@@ -4,7 +4,9 @@ defmodule ZipfelfolioWeb.OverviewLive do
   import ZipfelfolioWeb.DividendComponents
 
   alias Zipfelfolio.{LocalTime, Portfolios}
-  alias ZipfelfolioWeb.{Format, Sidebar}
+  alias ZipfelfolioWeb.{Benchmark, Format, Sidebar}
+
+  on_mount Benchmark
 
   # URL parameter, period and button label; the first is the default.
   @periods [
@@ -31,7 +33,8 @@ defmodule ZipfelfolioWeb.OverviewLive do
       <.header class="flex-wrap">
         Übersicht
         <:actions :if={!@empty}>
-          <nav id="period" class="btn-group btn-group-sm" aria-label="Zeitraum">
+          <Benchmark.toggle_button :if={@overview.benchmark} shown={@benchmark_shown} />
+          <nav id="period" class="btn-group btn-group-sm app-periods" aria-label="Zeitraum">
             <.link
               :for={{param, period, label} <- @periods}
               patch={~p"/?#{[period: param]}"}
@@ -51,7 +54,10 @@ defmodule ZipfelfolioWeb.OverviewLive do
       </.card>
 
       <%!-- The net worth card spans the phone's width, so that seven digits fit. --%>
-      <div :if={!@empty} class="row g-3 mb-4 app-stats">
+      <div
+        :if={!@empty}
+        class={["row g-3 mb-4 app-stats", @overview.benchmark && "app-stats-benchmark"]}
+      >
         <div class="col-12 col-sm-6 col-lg-3">
           <.stat id="net-worth" label="Vermögen" value={Format.euros(@overview.net_worth)}>
             <:note class={tone(change_note(@change, @change_percent))}>
@@ -63,20 +69,26 @@ defmodule ZipfelfolioWeb.OverviewLive do
           <.stat
             id="ttwror"
             label={"TTWROR · #{period_label(@period)}"}
-            value={percent_text(@overview.ttwror, 2)}
-            value_class={tone(percent_text(@overview.ttwror, 2))}
+            value={Format.signed_rate(@overview.ttwror, 2)}
+            value_class={tone(Format.signed_rate(@overview.ttwror, 2))}
           >
-            <:note class="text-body-secondary">zeitgewichtet</:note>
+            <:note class="text-body-secondary">
+              <Benchmark.note
+                :if={@benchmark_shown and @overview.benchmark}
+                benchmark={@overview.benchmark}
+              />
+              <span :if={!(@benchmark_shown and @overview.benchmark)}>zeitgewichtet</span>
+            </:note>
           </.stat>
         </div>
         <div class="col-6 col-lg-3">
           <.stat
             id="irr"
             label={"IZF · #{period_label(@period)}"}
-            value={percent_text(@overview.irr, 1)}
-            value_class={tone(percent_text(@overview.irr, 1))}
+            value={Format.signed_rate(@overview.irr, 2)}
+            value_class={tone(Format.signed_rate(@overview.irr, 2))}
           >
-            <:note class="text-body-secondary">p. a., geldgewichtet</:note>
+            <:note class="text-body-secondary">{"p.\u00A0a."} · geldgewichtet</:note>
           </.stat>
         </div>
         <div class="col-12 col-sm-6 col-lg-3">
@@ -97,15 +109,22 @@ defmodule ZipfelfolioWeb.OverviewLive do
           <section class="card h-100" aria-labelledby="history-title">
             <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
               <h2 class="app-card-title mb-0" id="history-title">Wertentwicklung</h2>
-              <span class="small text-body-secondary d-flex gap-3">
+              <span class="small text-body-secondary d-flex flex-wrap column-gap-3 row-gap-1 app-legend">
                 <span class="text-nowrap"><span class="app-swatch app-swatch-primary"></span> Vermögen</span>
                 <span class="text-nowrap">
                   <span class="app-swatch app-swatch-secondary"></span> Investiert
                 </span>
+                <Benchmark.legend
+                  :if={@benchmark_shown and @overview.benchmark}
+                  security={@overview.benchmark.security}
+                />
               </span>
             </div>
             <div class="card-body">
-              <div role="img" aria-label={"Vermögen und investiertes Kapital #{period_text(@period)}"}>
+              <div
+                role="img"
+                aria-label={chart_label(@period, @benchmark_shown && @overview.benchmark)}
+              >
                 <div
                   id="net-worth-chart"
                   class="app-chart"
@@ -149,9 +168,9 @@ defmodule ZipfelfolioWeb.OverviewLive do
               <span class="d-block fw-bold tabular-nums">{Format.euros(row.value, 2)}</span>
               <span
                 :if={row.securities > 0}
-                class={["small tabular-nums", tone(percent_text(row.ttwror, 1))]}
+                class={["small tabular-nums", tone(Format.signed_rate(row.ttwror, 1))]}
               >
-                {percent_text(row.ttwror, 1)} YTD
+                {Format.signed_rate(row.ttwror, 1)} YTD
               </span>
               <span :if={row.securities == 0} class="small text-body-secondary">nur Cash</span>
             </span>
@@ -219,14 +238,17 @@ defmodule ZipfelfolioWeb.OverviewLive do
   defp period_text(:one_year), do: "des letzten Jahres"
   defp period_text(:max), do: "seit der ersten Buchung"
 
+  defp chart_label(period, %{security: security}),
+    do:
+      "Vermögen, investiertes Kapital und Schattendepot in #{security.name} #{period_text(period)}"
+
+  defp chart_label(period, _hidden),
+    do: "Vermögen und investiertes Kapital #{period_text(period)}"
+
   defp period_label(period),
     do: Enum.find_value(@periods, fn {_param, p, label} -> p == period && label end)
 
   # A rate of return as a fraction, in percent; nil where there is none.
-  defp percent_text(nil, _places), do: "–"
-  defp percent_text(rate, places), do: rate |> in_percent() |> Format.signed_percent(places)
-
-  defp in_percent(rate), do: Decimal.from_float(rate * 100)
 
   # Each part stays on one line.
   defp portfolio_note(%{securities: count, account: account, balance: balance}) do
@@ -302,10 +324,16 @@ defmodule ZipfelfolioWeb.OverviewLive do
       push_event(socket, "net-worth-chart", %{
         dates: Enum.map(chart, & &1.date),
         net_worth: Enum.map(chart, & &1.net_worth),
-        invested_capital: Enum.map(chart, & &1.invested_capital)
+        invested_capital: Enum.map(chart, & &1.invested_capital),
+        benchmark: socket.assigns.overview.benchmark && Enum.map(chart, & &1.benchmark),
+        benchmark_name: benchmark_name(socket.assigns.overview.benchmark),
+        benchmark_shown: socket.assigns.benchmark_shown
       })
     else
       socket
     end
   end
+
+  defp benchmark_name(nil), do: nil
+  defp benchmark_name(benchmark), do: Benchmark.short_name(benchmark.security.name)
 end

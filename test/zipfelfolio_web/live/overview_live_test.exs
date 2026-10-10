@@ -164,8 +164,11 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
       assert lv |> element("#ttwror .stat-label") |> render() =~ "TTWROR · 6 M"
       assert lv |> element("#ttwror .stat-value.text-success") |> render() =~ "+0,67\u00A0%"
       assert lv |> element("#irr .stat-label") |> render() =~ "IZF · 6 M"
-      assert lv |> element("#irr .stat-value.text-success") |> render() =~ ~r/\+\d+,\d\x{00A0}%/u
-      assert lv |> element("#irr") |> render() =~ "p. a., geldgewichtet"
+
+      assert lv |> element("#irr .stat-value.text-success") |> render() =~
+               ~r/\+\d+,\d\d\x{00A0}%/u
+
+      assert lv |> element("#irr") |> render() =~ "p.\u00A0a. · geldgewichtet"
 
       lv |> element("#period a", "Max") |> render_click()
 

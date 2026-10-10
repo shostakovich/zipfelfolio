@@ -16,8 +16,8 @@ defmodule ZipfelfolioWeb.Layouts do
   attr :current, :any,
     default: nil,
     doc: """
-    what is open: `:overview`, `:dividends`, `:portfolios`, `:settings`, or `{:holdings,
-    portfolio_id, account_id}` with nil for all portfolios or no marked account
+    what is open: `:overview`, `:dividends`, `:portfolios`, `:performance`, `:settings`, or
+    `{:holdings, portfolio_id, account_id}` with nil for all portfolios or no marked account
     """
 
   slot :inner_block, required: true
@@ -66,6 +66,15 @@ defmodule ZipfelfolioWeb.Layouts do
             open={:dividends}
           >
             Dividenden
+          </.side_link>
+          <.side_link
+            id="side-performance"
+            navigate={~p"/performance"}
+            icon="trend"
+            current={@current}
+            open={:performance}
+          >
+            Performance
           </.side_link>
         </nav>
         <.side_money sidebar={@sidebar} current={@current} />
@@ -144,6 +153,14 @@ defmodule ZipfelfolioWeb.Layouts do
           active={@current == :dividends}
         >
           Dividenden
+        </.tab>
+        <.tab
+          id="tab-performance"
+          navigate={~p"/performance"}
+          icon="trend"
+          active={@current == :performance}
+        >
+          Performance
         </.tab>
         <.tab
           id="tab-settings"
@@ -329,6 +346,77 @@ defmodule ZipfelfolioWeb.Layouts do
     ~H"""
     <span class="app-chip" style={@style} aria-hidden="true">{initial(@portfolio.name)}</span>
     """
+  end
+
+  attr :portfolios, :list, required: true
+  attr :portfolio, :any, required: true, doc: "the one shown, nil for all"
+  attr :path, :any, required: true, doc: "the page for a portfolio's id, nil for all"
+
+  @doc """
+  A menu to show all portfolios or one; a Bootstrap dropdown without Bootstrap's JS, which
+  LiveView's JS commands toggle.
+  """
+  def portfolio_switcher(assigns) do
+    ~H"""
+    <div
+      class="dropdown"
+      phx-click-away={hide_portfolio_menu()}
+      phx-window-keydown={hide_portfolio_menu()}
+      phx-key="Escape"
+    >
+      <button
+        id="portfolio-menu-toggle"
+        type="button"
+        class="btn btn-sm btn-light dropdown-toggle"
+        aria-expanded="false"
+        aria-controls="portfolio-menu"
+        phx-click={
+          JS.toggle_class("show", to: "#portfolio-menu")
+          |> JS.toggle_attribute({"aria-expanded", "true", "false"})
+        }
+      >
+        {if @portfolio, do: @portfolio.name, else: "Gesamt"}
+      </button>
+      <ul id="portfolio-menu" class="dropdown-menu dropdown-menu-end" data-bs-popper="static">
+        <li>
+          <.portfolio_menu_item patch={@path.(nil)} active={!@portfolio}>
+            Gesamt
+          </.portfolio_menu_item>
+        </li>
+        <li :if={@portfolios != []}><hr class="dropdown-divider" /></li>
+        <li :for={portfolio <- @portfolios}>
+          <.portfolio_menu_item
+            patch={@path.(portfolio.id)}
+            active={@portfolio && @portfolio.id == portfolio.id}
+          >
+            <.chip portfolio={portfolio} />{portfolio.name}
+          </.portfolio_menu_item>
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  attr :patch, :string, required: true
+  attr :active, :boolean, required: true
+  slot :inner_block, required: true
+
+  defp portfolio_menu_item(assigns) do
+    ~H"""
+    <.link
+      patch={@patch}
+      class={["dropdown-item d-flex align-items-center gap-2", @active && "active"]}
+      aria-current={@active && "page"}
+      phx-click={hide_portfolio_menu()}
+    >
+      {render_slot(@inner_block)}
+    </.link>
+    """
+  end
+
+  defp hide_portfolio_menu do
+    JS.remove_class("show", to: "#portfolio-menu")
+    |> JS.set_attribute({"aria-expanded", "false"}, to: "#portfolio-menu-toggle")
   end
 
   @doc "The chip of an account of no portfolio: an outlined square with a wallet."

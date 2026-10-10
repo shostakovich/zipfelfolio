@@ -26,6 +26,13 @@ defmodule ZipfelfolioWeb.FormatTest do
     assert Format.price(nil, "EUR", places) == "–"
   end
 
+  test "rates are changes in percent with their sign, none a dash" do
+    assert Format.signed_rate(0.0038) == "+0,38\u00A0%"
+    assert Format.signed_rate(-0.123456, 1) == "−12,3\u00A0%"
+    assert Format.signed_rate(-0.0) == "0,00\u00A0%"
+    assert Format.signed_rate(nil) == "–"
+  end
+
   test "changes in prices carry their sign and a real minus" do
     assert Format.signed_price(106_000_000, "EUR") == "+1,06\u00A0€"
     assert Format.signed_price(-106_000_000, "USD") == "−1,06\u00A0USD"
@@ -120,8 +127,34 @@ defmodule ZipfelfolioWeb.FormatTest do
     assert Format.month_abbr(~D[2026-12-24]) == "Dez"
   end
 
+  test "months are named in German, by number or date" do
+    assert Format.month_name(3) == "März"
+    assert Format.month_name(~D[2026-12-24]) == "Dezember"
+  end
+
+  test "signed numbers leave out the unit" do
+    assert Format.signed_number(Decimal.new("1.25"), 1) == "+1,3"
+    assert Format.signed_number(Decimal.new("-0.384"), 2) == "−0,38"
+    assert Format.signed_number(Decimal.new("-0.04"), 1) == "0,0"
+  end
+
   test "dates are German" do
     assert Format.date(~D[2026-10-09]) == "09.10.2026"
+  end
+
+  test "a span of days names its months, its year once when it is in one" do
+    assert Format.days(~D[2026-01-01], ~D[2026-10-07]) == "1. Januar bis 7. Oktober 2026"
+    assert Format.days(~D[2023-10-10], ~D[2026-10-09]) == "10. Oktober 2023 bis 9. Oktober 2026"
+    assert Format.days(~D[2026-03-01], ~D[2026-03-01]) == "1. März 2026"
+  end
+
+  test "a short span of days names its month and year once where they are the same" do
+    assert Format.date_span(~D[2026-01-12], ~D[2026-01-28]) == "12.–28.01.2026"
+    assert Format.date_span(~D[2026-01-12], ~D[2026-02-03]) == "12.01.–03.02.2026"
+    assert Format.date_span(~D[2025-12-12], ~D[2026-01-03]) == "12.12.2025–03.01.2026"
+    assert Format.date_span(~D[2026-01-12], ~D[2026-01-12]) == "12.01.2026"
+    assert Format.date_span(~D[2026-01-12], ~D[2026-01-28], false) == "12.–28.01."
+    assert Format.date_span(~D[2026-01-12], ~D[2026-02-03], false) == "12.01.–03.02."
   end
 
   test "a point in time has the date of the host's local time" do

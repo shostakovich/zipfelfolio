@@ -96,10 +96,12 @@ defmodule Zipfelfolio.Valuation do
   """
   def value(%Holding{} = holding, %Market{} = market, date) do
     currency = Market.currency(market, holding.security_id)
-    price = price(holding, market, date) || 0
-
-    Market.to_euros(market, amount(holding.shares, price), currency, date)
+    Market.to_euros(market, value_in_currency(holding, market, date), currency, date)
   end
+
+  @doc "The value of a holding on `date`, in cents of the security's currency."
+  def value_in_currency(%Holding{} = holding, %Market{} = market, date),
+    do: amount(holding.shares, price(holding, market, date) || 0)
 
   @doc """
   The price per share × 10⁸ a holding is valued at on `date`, in the security's currency; nil

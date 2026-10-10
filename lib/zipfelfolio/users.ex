@@ -7,7 +7,8 @@ defmodule Zipfelfolio.Users do
   import Ecto.Query, warn: false
 
   alias Zipfelfolio.Repo
-  alias Zipfelfolio.Users.{Passkey, User, UserNotifier, UserToken}
+  alias Zipfelfolio.Securities.Security
+  alias Zipfelfolio.Users.{Passkey, Scope, User, UserNotifier, UserToken}
   alias Zipfelfolio.WebAuthn
 
   ## Users
@@ -15,6 +16,16 @@ defmodule Zipfelfolio.Users do
   def get_user_by_email(email) when is_binary(email), do: Repo.get_by(User, email: email)
 
   def get_user!(id), do: Repo.get!(User, id)
+
+  @doc "Picks the security with `security_id` as the user's benchmark, nil for none."
+  def update_benchmark(%Scope{user: user}, security_id) do
+    # SQLite names no constraint that fails, so the security is looked up beforehand.
+    security? = &Repo.exists?(from s in Security, where: s.id == ^&1)
+
+    user
+    |> User.benchmark_changeset(%{benchmark_id: security_id}, security?)
+    |> Repo.update()
+  end
 
   def create_user(attrs) do
     %User{}

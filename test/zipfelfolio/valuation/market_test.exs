@@ -83,6 +83,25 @@ defmodule Zipfelfolio.Valuation.MarketTest do
     end
   end
 
+  describe "price_days/2" do
+    test "are the first and the last close" do
+      assert Market.price_days(market([{@wednesday, 98}, {@friday, 100}]), 1) ==
+               {@wednesday, @friday}
+    end
+
+    test "count the latest quote as a price, as PP does" do
+      assert Market.price_days(market([{@thursday, 99}], {@saturday, 102}), 1) ==
+               {@thursday, @saturday}
+
+      assert Market.price_days(market([], {@friday, 102}), 1) == {@friday, @friday}
+    end
+
+    test "are nil without any price" do
+      assert Market.price_days(market([]), 1) == nil
+      assert Market.price_days(market([]), 2) == nil
+    end
+  end
+
   test "security/2 and currency/2 are the security and its currency" do
     security = %Security{id: 1, currency: "USD"}
     market = Market.new([security], [], [])
