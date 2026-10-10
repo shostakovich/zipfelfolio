@@ -22,7 +22,7 @@ defmodule Zipfelfolio.MarketData do
   @doc """
   Fetches the exchange rates, the prices of every Yahoo security and, with an API key, the
   composition of every security with an ISIN, then records the run. A step that fails, even with
-  an exception, is recorded or logged and does not stop the others.
+  an exception or an exit, is recorded or logged and does not stop the others.
   """
   def run_daily(now \\ DateTime.utc_now()) do
     rates_error = update_rates()
@@ -63,6 +63,8 @@ defmodule Zipfelfolio.MarketData do
     end
   rescue
     exception -> log_and_describe(exception, __STACKTRACE__, "Die Wechselkurse")
+  catch
+    :exit, _reason -> exited("the exchange rates", "Die Wechselkurse")
   end
 
   @doc """
@@ -101,6 +103,9 @@ defmodule Zipfelfolio.MarketData do
     exception ->
       message = log_and_describe(exception, __STACKTRACE__, "Die Kurse")
       record_failure(security, message, now)
+  catch
+    :exit, _reason ->
+      record_failure(security, exited("the prices of #{security.symbol}", "Die Kurse"), now)
   end
 
   # Recording fails too when the database is the problem; the log has it then.
@@ -170,6 +175,12 @@ defmodule Zipfelfolio.MarketData do
   defp log_and_describe(exception, stacktrace, what) do
     Logger.error(Exception.format(:error, exception, stacktrace))
     "#{what} ließen sich nicht speichern: #{Exception.message(exception)}"
+  end
+
+  # The reason of an exit, e.g. from `:httpc`, may hold the request with its credentials.
+  defp exited(logged, what) do
+    Logger.error("The request for #{logged} exited")
+    "#{what} ließen sich nicht abrufen."
   end
 
   defp check_currency(%{currency: currency}, %{currency: expected})

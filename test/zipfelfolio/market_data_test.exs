@@ -131,6 +131,25 @@ defmodule Zipfelfolio.MarketDataTest do
       assert prices_of(fine) == [{~D[2026-10-08], 100, :yahoo}]
     end
 
+    test "an exit is recorded without its reason, which may hold the request" do
+      broken = security_fixture(symbol: "BROKEN.DE")
+      fine = security_fixture(symbol: "FINE.DE")
+      FakeRateSource.stub(fn _from -> exit({:noproc, [{"authorization", "SECRET"}]}) end)
+
+      FakePriceFeed.stub(fn
+        "BROKEN.DE", _from, _now -> exit({:noproc, [{"authorization", "SECRET"}]})
+        _symbol, _from, _now -> {:ok, FakePriceFeed.chart_result([{~D[2026-10-08], 100}])}
+      end)
+
+      log = ExUnit.CaptureLog.capture_log(fn -> MarketData.run_daily(@now) end)
+
+      assert MarketData.last_run().error == "Die Wechselkurse ließen sich nicht abrufen."
+      assert Repo.reload!(broken).fetch_error == "Die Kurse ließen sich nicht abrufen."
+      assert prices_of(fine) == [{~D[2026-10-08], 100, :yahoo}]
+      assert log =~ "BROKEN.DE"
+      refute log =~ "SECRET"
+    end
+
     test "never asks for prices after today" do
       security = security_fixture()
       price_fixture(security, ~D[2026-12-24], 100, :manual)
