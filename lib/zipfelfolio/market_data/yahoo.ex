@@ -1,7 +1,8 @@
 defmodule Zipfelfolio.MarketData.Yahoo do
   @moduledoc """
   Prices from Yahoo's chart API. An explicit range keeps daily data (`range=max` thins it out).
-  Stores the plain close, not the adjusted one, which would count distributions twice.
+  Stores the plain close, not the adjusted one, which would count distributions twice. Pence and
+  cents are named as ISO 4217 lists them, `GBX` for Yahoo's `GBp` and `ZAC` for its `ZAc`.
   """
   @behaviour Zipfelfolio.MarketData.PriceFeed
 
@@ -43,7 +44,7 @@ defmodule Zipfelfolio.MarketData.Yahoo do
 
     {:ok,
      %{
-       currency: Map.fetch!(meta, "currency"),
+       currency: currency(Map.fetch!(meta, "currency")),
        closes: closes(result, offset, open_since(meta, now)),
        quote: %{
          at: DateTime.from_unix!(meta["regularMarketTime"] * 1_000_000, :microsecond),
@@ -54,6 +55,10 @@ defmodule Zipfelfolio.MarketData.Yahoo do
   rescue
     _error -> :error
   end
+
+  defp currency("GBp"), do: "GBX"
+  defp currency("ZAc"), do: "ZAC"
+  defp currency(code), do: code
 
   # The start of the trading day that has not closed yet at `now`, if any.
   defp open_since(%{"currentTradingPeriod" => %{"regular" => regular}}, now) do

@@ -28,6 +28,18 @@ defmodule Zipfelfolio.MarketData.YahooTest do
            }
   end
 
+  test "names pence and cents as ISO 4217 does" do
+    for {yahoo, iso} <- [{"GBp", "GBX"}, {"ZAc", "ZAC"}, {"ILA", "ILA"}, {"GBP", "GBP"}] do
+      body =
+        @body
+        |> JSON.decode!()
+        |> put_in(["chart", "result", Access.at(0), "meta", "currency"], yahoo)
+        |> JSON.encode!()
+
+      assert {:ok, %{currency: ^iso}} = Yahoo.parse(body, @after_close)
+    end
+  end
+
   test "leaves out the day that is still trading" do
     assert {:ok, chart} = Yahoo.parse(@body, @during_trading)
 
