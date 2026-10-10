@@ -14,6 +14,9 @@ defmodule Zipfelfolio.Securities do
   def list_securities(%Scope{}),
     do: Repo.all(from s in Security, order_by: [s.retired, fragment("? COLLATE NOCASE", s.name)])
 
+  @doc "The security with `id`, nil for an unknown one."
+  def get_security(%Scope{}, id), do: Repo.get(Security, id)
+
   def list_prices(%Scope{}, %Security{id: id}),
     do: Repo.all(from p in Price, where: p.security_id == ^id, order_by: p.date)
 

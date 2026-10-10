@@ -3,8 +3,6 @@
 // instead of a date adapter.
 import Chart from "../vendor/chart.umd.min.js"
 
-export { Chart }
-
 const DAY = 86_400_000
 const MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
 const euroFormat = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 })
@@ -79,3 +77,38 @@ export function transparent(color, alpha) {
 }
 
 export const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches
+
+// A LiveView hook for one chart: draws what `config(data, el)` gives for the data the page pushes
+// as `event`, and again in the other colours when the device switches between light and dark.
+// Without a config there is nothing to draw.
+export function chartHook(event, config) {
+  return {
+    mounted() {
+      this.handleEvent(event, (data) => this.draw(data))
+      this.scheme = matchMedia("(prefers-color-scheme: dark)")
+      this.redraw = () => this.data && this.draw(this.data)
+      this.scheme.addEventListener("change", this.redraw)
+    },
+
+    destroyed() {
+      this.scheme.removeEventListener("change", this.redraw)
+      this.chart?.destroy()
+    },
+
+    draw(data) {
+      this.data = data
+      const chart = config(data, this.el)
+
+      if (!chart) {
+        this.chart?.destroy()
+        this.chart = null
+      } else if (this.chart) {
+        this.chart.data = chart.data
+        this.chart.options = chart.options
+        this.chart.update()
+      } else {
+        this.chart = new Chart(this.el.querySelector("canvas"), chart)
+      }
+    },
+  }
+}

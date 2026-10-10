@@ -22,6 +22,21 @@ defmodule ZipfelfolioWeb.Format do
     Enum.join([group_thousands(whole) <> "," <> fraction, currency], " ") |> String.trim()
   end
 
+  @doc "A currency as prices name it: `€` for euros, otherwise its code."
+  def currency("EUR"), do: "€"
+  def currency(code), do: code
+
+  @doc "A change of a price × 10⁸ with its sign, e.g. `−1,06 €`; none when it rounds to zero."
+  def signed_price(change, currency) do
+    unchanged = price(0, currency)
+
+    case price(abs(change), currency) do
+      ^unchanged -> unchanged
+      shown when change > 0 -> "+" <> shown
+      shown -> "−" <> shown
+    end
+  end
+
   @doc """
   Cents as whole euros, e.g. `149.118 €`, or with `places` decimal places; the € never wraps onto
   a line of its own.
@@ -50,11 +65,14 @@ defmodule ZipfelfolioWeb.Format do
   """
   def fund_size(nil, _currency), do: "–"
 
-  def fund_size(cents, currency) when cents >= 10_000_000_000,
-    do: number(Decimal.div(cents, 100_000_000_000), 1, "") <> "\u00A0Mrd.\u00A0" <> currency
+  def fund_size(cents, currency) do
+    amount =
+      if cents >= 10_000_000_000,
+        do: number(Decimal.div(cents, 100_000_000_000), 1, "") <> "\u00A0Mrd.",
+        else: number(Decimal.div(cents, 100_000_000), 0, "") <> "\u00A0Mio."
 
-  def fund_size(cents, currency),
-    do: number(Decimal.div(cents, 100_000_000), 0, "") <> "\u00A0Mio.\u00A0" <> currency
+    amount <> "\u00A0" <> currency(currency)
+  end
 
   @doc """
   A change in percent with its sign and two or `places` decimal places, e.g. `+0,38 %`; the %

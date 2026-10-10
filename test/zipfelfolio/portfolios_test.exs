@@ -5,7 +5,7 @@ defmodule Zipfelfolio.PortfoliosTest do
 
   alias Zipfelfolio.{ExchangeRates, Portfolios}
   alias Zipfelfolio.Performance.IRR
-  alias Zipfelfolio.Portfolios.{Portfolio, TransactionUnit}
+  alias Zipfelfolio.Portfolios.TransactionUnit
 
   @friday ~D[2026-10-02]
   @saturday ~D[2026-10-03]
@@ -393,16 +393,115 @@ defmodule Zipfelfolio.PortfoliosTest do
     end
   end
 
-  describe "reference_account_owners/1" do
-    test "gives an account several portfolios settle against to the first of them" do
-      portfolios = [
-        %Portfolio{id: 1, reference_account_id: 10},
-        %Portfolio{id: 2, reference_account_id: 10},
-        %Portfolio{id: 3, reference_account_id: nil},
-        %Portfolio{id: 4, reference_account_id: 11}
-      ]
+  describe "security/4" do
+    defp trade(scope, type, portfolio, security, date, count, amount) do
+      transaction_fixture(scope, date,
+        type: type,
+        portfolio_id: portfolio.id,
+        security_id: security.id,
+        shares: shares(count),
+        amount: money(amount)
+      )
+    end
 
-      assert Portfolios.reference_account_owners(portfolios) == %{10 => 1, 11 => 4}
+    defp chart_dates(security) do
+      for period <- [:one_year, :five_years, :max] do
+        chart = Portfolios.security(security.scope, security.security, period, @saturday).chart
+        Enum.map(chart.prices, & &1.date)
+      end
+    end
+
+    test "gives the user's holdings of the security by portfolio name and their total", ctx do
+      security = security_fixture(quote_feed: :manual)
+      price_fixture(security, @friday, price(120), :pp)
+      pension = portfolio_fixture(ctx.scope, %{name: "Altersvorsorge"})
+      trade(ctx.scope, :buy, ctx.portfolio, security, ~D[2026-09-01], 10, 1_000)
+      trade(ctx.scope, :buy, pension, security, ~D[2026-09-02], 5, 550)
+      trade(ctx.scope, :sell, pension, security, ~D[2026-09-03], 1, 115)
+      other = user_scope_fixture()
+      trade(other, :buy, portfolio_fixture(other), security, ~D[2026-09-01], 7, 700)
+
+      %{holdings: holdings, total: total} =
+        Portfolios.security(ctx.scope, security, :one_year, @saturday)
+
+      assert Enum.map(holdings, &{&1.portfolio.name, &1.shares, &1.value, &1.purchase_value}) ==
+               [
+                 {"Altersvorsorge", shares(4), money(480), money(440)},
+                 {"Langfristig", shares(10), money(1_200), money(1_000)}
+               ]
+
+      assert Enum.map(holdings, & &1.gain) == [money(40), money(200)]
+
+      assert total == %{
+               shares: shares(14),
+               value: money(1_680),
+               purchase_value: money(1_440),
+               gain: money(240)
+             }
+    end
+
+    test "values a holding in pence at a hundredth of the pound's ECB rate", ctx do
+      security = security_fixture(quote_feed: :manual, currency: "GBX")
+      price_fixture(security, @friday, price(500), :pp)
+      ExchangeRates.store([{"GBP", @friday, Decimal.new("0.85")}])
+      deliver(ctx.scope, ctx.portfolio, security, @friday, 1_000)
+
+      assert Portfolios.security(ctx.scope, security, :one_year, @saturday).total.value ==
+               money(5_882.35)
+    end
+
+    test "gives nothing held of a security the user does not hold", ctx do
+      security = security_fixture(quote_feed: :manual)
+      other = user_scope_fixture()
+      trade(other, :buy, portfolio_fixture(other), security, @friday, 7, 700)
+
+      result = Portfolios.security(ctx.scope, security, :one_year, @saturday)
+
+      assert result.holdings == []
+      assert result.total == %{shares: 0, value: 0, purchase_value: 0, gain: 0}
+      assert result.chart.trades == []
+    end
+
+    test "gives the price today and yesterday", ctx do
+      security =
+        security_fixture(quote_feed: :manual, latest_date: @saturday, latest_close: price(102))
+
+      price_fixture(security, @friday, price(100), :pp)
+
+      result = Portfolios.security(ctx.scope, security, :one_year, @saturday)
+
+      assert {result.price, result.price_yesterday} == {price(102), price(100)}
+    end
+
+    test "gives the price chart of the period with the user's purchases and sales", ctx do
+      security = security_fixture(quote_feed: :manual)
+
+      for {date, close} <- [{~D[2020-10-01], 50}, {~D[2025-10-01], 90}, {@friday, 100}],
+          do: price_fixture(security, date, price(close), :pp)
+
+      trade(ctx.scope, :buy, ctx.portfolio, security, ~D[2026-09-01], 10, 950)
+      other = user_scope_fixture()
+      trade(other, :buy, portfolio_fixture(other), security, ~D[2026-09-02], 7, 700)
+
+      assert chart_dates(%{scope: ctx.scope, security: security}) == [
+               [@friday],
+               [~D[2025-10-01], @friday],
+               [~D[2020-10-01], ~D[2025-10-01], @friday]
+             ]
+
+      assert [%{date: ~D[2026-09-01], type: :buy, shares: shares(10), price: price(95)}] ==
+               Portfolios.security(ctx.scope, security, :one_year, @saturday).chart.trades
+    end
+
+    test "starts Max at the first trade before the first price", ctx do
+      security = security_fixture(quote_feed: :manual)
+      price_fixture(security, @friday, price(100), :pp)
+      trade(ctx.scope, :buy, ctx.portfolio, security, ~D[2024-05-02], 1, 80)
+
+      chart = Portfolios.security(ctx.scope, security, :max, @saturday).chart
+
+      assert [%{date: ~D[2024-05-02], price: 8_000_000_000}] = chart.trades
+      assert Enum.map(chart.prices, & &1.date) == [@friday]
     end
   end
 

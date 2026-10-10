@@ -109,6 +109,18 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
     assert has_element?(lv, "#costs", "Wertpapiere ohne TER")
   end
 
+  test "links the securities of the holdings and the costs to their page", ctx do
+    portfolio = portfolio_fixture(ctx.scope)
+    security = security(100, attributes: %{"ter" => 0.002})
+    deliver(ctx.scope, portfolio, security, 1, 100)
+
+    {:ok, lv, _html} = live(ctx.conn, ~p"/holdings")
+
+    link = "a[href='#{~p"/securities/#{security}"}']"
+    assert has_element?(lv, "#holding-#{portfolio.id}-#{security.id} #{link}", security.name)
+    assert has_element?(lv, "#cost-#{security.id} #{link}", security.name)
+  end
+
   test "shows no costs without securities", ctx do
     deposit(ctx.scope, account_fixture(ctx.scope), 100)
 

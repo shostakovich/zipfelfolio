@@ -3,9 +3,11 @@ defmodule Zipfelfolio.Portfolios do
 
   import Ecto.Query, warn: false
 
-  alias Zipfelfolio.{Allocation, Costs, ExchangeRates, Performance, Period, Repo, Securities}
+  alias Zipfelfolio.{Allocation, Costs, ExchangeRates, Performance, Period, PriceChart, Repo}
   alias Zipfelfolio.Allocation.Classifications
   alias Zipfelfolio.Portfolios.{Account, Portfolio, SavingsPlan, Transaction}
+  alias Zipfelfolio.Securities
+  alias Zipfelfolio.Securities.Security
   alias Zipfelfolio.Taxonomies
   alias Zipfelfolio.Users.Scope
   alias Zipfelfolio.Valuation
@@ -131,12 +133,10 @@ defmodule Zipfelfolio.Portfolios do
     Enum.filter(list_portfolios(scope), &(not &1.retired or MapSet.member?(held, &1.id)))
   end
 
-  @doc """
-  The portfolio each reference account of `portfolios` belongs to, as `%{account_id =>
-  portfolio_id}`: an account several of them settle against belongs to the first. The screens
-  list the portfolios by name, so it is the first by name.
-  """
-  def reference_account_owners(portfolios) do
+  # The portfolio each reference account of `portfolios` belongs to, as `%{account_id =>
+  # portfolio_id}`: an account several of them settle against belongs to the first. The screens
+  # list the portfolios by name, so it is the first by name.
+  defp reference_account_owners(portfolios) do
     for %{reference_account_id: account_id, id: id} <- Enum.reverse(portfolios),
         account_id != nil,
         into: %{},
@@ -203,6 +203,74 @@ defmodule Zipfelfolio.Portfolios do
           do: allocation
 
     holdings |> Allocation.of(compositions) |> Map.put(:taxonomies, taxonomies)
+  end
+
+  @doc """
+  What the security page shows of `security` on `today`; amounts in euro cents, prices × 10⁸ in
+  the security's currency, shares × 10⁸. The security and its prices are shared by all users,
+  the holdings and trades are the user's:
+
+  - `price` today and `price_yesterday`, nil without any price
+  - `chart`: see `PriceChart.of/4`, over the days of `period` from the first price or trade on
+  - `holdings`: the holdings of it by portfolio name, each with its `portfolio`, `shares`,
+    `value`, `purchase_value` and `gain`
+  - `total`: the `shares`, `value`, `purchase_value` and `gain` of all holdings
+  """
+  def security(%Scope{} = scope, %Security{} = security, period, today) do
+    transactions = list_transactions_of(scope, security)
+    closes = scope |> Securities.list_prices(security) |> Enum.map(&{&1.date, &1.close})
+    market = security_market(security, closes, transactions, today)
+    holdings = security_holdings(scope, transactions, market, today)
+    range = Period.range(period, today, first_price_or_trade(security, closes, transactions))
+
+    %{
+      price: Market.price(market, security.id, today),
+      price_yesterday: Market.price(market, security.id, Date.add(today, -1)),
+      chart: PriceChart.of(security, closes, transactions, range),
+      holdings: holdings,
+      total: holdings |> totals(holdings) |> Map.put(:shares, Enum.sum_by(holdings, & &1.shares))
+    }
+  end
+
+  defp list_transactions_of(scope, %Security{id: security_id}) do
+    Repo.all(
+      from t in Transaction,
+        where: t.user_id == ^scope.user.id and t.security_id == ^security_id,
+        order_by: [t.date_time, t.id],
+        preload: :units
+    )
+  end
+
+  # Purchase values convert each purchase at the rate of its day.
+  defp security_market(security, closes, transactions, today) do
+    currencies = [security | transactions] |> Enum.map(& &1.currency) |> Market.rate_currencies()
+
+    Market.new(
+      [security],
+      Enum.map(closes, fn {date, close} -> {security.id, date, close} end),
+      ExchangeRates.list_rates_since(currencies, first_day(transactions, today))
+    )
+  end
+
+  defp security_holdings(scope, transactions, market, today) do
+    portfolios = Map.new(list_portfolios(scope), &{&1.id, &1})
+
+    transactions
+    |> Valuation.holdings(today)
+    |> holding_rows(transactions, market, today)
+    |> Enum.map(&Map.put(&1, :portfolio, portfolios[&1.portfolio_id]))
+    |> Enum.sort_by(& &1.portfolio.name)
+  end
+
+  # Closes and transactions come in order of date; the latest quote may be all there is.
+  defp first_price_or_trade(security, closes, transactions) do
+    [
+      Enum.map(Enum.take(closes, 1), &elem(&1, 0)),
+      List.wrap(security.latest_date),
+      Enum.map(Enum.take(transactions, 1), &NaiveDateTime.to_date(&1.date_time))
+    ]
+    |> Enum.concat()
+    |> Enum.min(Date, fn -> nil end)
   end
 
   @doc """

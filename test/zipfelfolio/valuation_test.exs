@@ -49,14 +49,8 @@ defmodule Zipfelfolio.ValuationTest do
     Market.new(securities, closes, opts[:rates] || [])
   end
 
-  defp holding(security_id, count, transactions \\ []) do
-    %Holding{
-      portfolio_id: 1,
-      security_id: security_id,
-      shares: shares(count),
-      transactions: transactions
-    }
-  end
+  defp holding(security_id, count, last \\ nil),
+    do: %Holding{portfolio_id: 1, security_id: security_id, shares: shares(count), last: last}
 
   defp shares_per_holding(holdings),
     do: holdings |> Enum.map(&{&1.portfolio_id, &1.security_id, &1.shares}) |> Enum.sort()
@@ -71,7 +65,7 @@ defmodule Zipfelfolio.ValuationTest do
                  portfolio_id: 1,
                  security_id: 20,
                  shares: shares(6),
-                 transactions: [buy, sell]
+                 last: sell
                }
              ]
     end
@@ -115,6 +109,17 @@ defmodule Zipfelfolio.ValuationTest do
 
       assert Valuation.holdings(transactions, @thursday) == []
       assert shares_per_holding(Valuation.holdings(transactions, @friday)) == [{1, 20, shares(1)}]
+    end
+
+    test "take the largest of transactions at the same time as the last, as PP does" do
+      small = in_portfolio(:buy, @friday, 1, 20, 10, amount: money(1_000))
+      large = in_portfolio(:buy, @friday, 1, 20, 10, amount: money(1_200))
+
+      for transactions <- [[small, large], [large, small]] do
+        [holding] = Valuation.holdings(transactions, @friday)
+
+        assert Valuation.value(holding, market([]), @friday) == money(2_400)
+      end
     end
 
     test "do not change with dividends" do
@@ -240,7 +245,9 @@ defmodule Zipfelfolio.ValuationTest do
         in_portfolio(:buy, @friday, 1, 20, 4, amount: money(410), units: [fee])
       ]
 
-      assert Valuation.value(holding(20, 6, transactions), market([]), @friday) == money(600)
+      [holding] = Valuation.holdings(transactions, @friday)
+
+      assert Valuation.value(holding, market([]), @friday) == money(600)
     end
 
     test "takes the price in the security's currency from the gross value of a foreign purchase" do
@@ -252,17 +259,17 @@ defmodule Zipfelfolio.ValuationTest do
         fx_currency: "USD"
       }
 
-      transactions = [in_portfolio(:buy, @friday, 1, 21, 10, amount: money(920), units: [unit])]
+      buy = in_portfolio(:buy, @friday, 1, 21, 10, amount: money(920), units: [unit])
       market = market([], rates: [{"USD", @friday, Decimal.new("1.25")}])
 
-      assert Valuation.value(holding(21, 10, transactions), market, @friday) == money(800)
+      assert Valuation.value(holding(21, 10, buy), market, @friday) == money(800)
     end
 
     test "takes a price of 0 as none, as PP does" do
-      transactions = [in_portfolio(:buy, @thursday, 1, 20, 10, amount: money(1_000))]
+      buy = in_portfolio(:buy, @thursday, 1, 20, 10, amount: money(1_000))
       market = market([{20, @friday, 0}])
 
-      assert Valuation.value(holding(20, 10, transactions), market, @friday) == money(1_000)
+      assert Valuation.value(holding(20, 10, buy), market, @friday) == money(1_000)
     end
 
     test "is nothing without any price or transaction" do
@@ -278,13 +285,62 @@ defmodule Zipfelfolio.ValuationTest do
     end
 
     test "is the gross price per share of the last transaction without any price" do
-      transactions = [in_portfolio(:buy, @friday, 1, 20, 4, amount: money(410))]
+      buy = in_portfolio(:buy, @friday, 1, 20, 4, amount: money(410))
 
-      assert Valuation.price(holding(20, 4, transactions), market([]), @friday) == price(102.5)
+      assert Valuation.price(holding(20, 4, buy), market([]), @friday) == price(102.5)
     end
 
     test "is nil without any price or transaction" do
       assert Valuation.price(holding(20, 10), market([]), @friday) == nil
+    end
+  end
+
+  describe "price_per_share/2" do
+    test "is a purchase's price before fees and taxes" do
+      fee = %TransactionUnit{type: :fee, amount: money(10), currency: "EUR"}
+      buy = in_portfolio(:buy, @friday, 1, 20, 4, amount: money(410), units: [fee])
+
+      assert Valuation.price_per_share(buy, "EUR") == price(100)
+    end
+
+    test "is a sale's price before fees and taxes" do
+      tax = %TransactionUnit{type: :tax, amount: money(20), currency: "EUR"}
+      sale = in_portfolio(:sell, @friday, 1, 20, 4, amount: money(380), units: [tax])
+
+      assert Valuation.price_per_share(sale, "EUR") == price(100)
+    end
+
+    test "counts a delivery as a purchase or a sale" do
+      fee = %TransactionUnit{type: :fee, amount: money(2), currency: "EUR"}
+
+      inbound =
+        in_portfolio(:inbound_delivery, @friday, 1, 20, 2, amount: money(202), units: [fee])
+
+      outbound =
+        in_portfolio(:outbound_delivery, @friday, 1, 20, 2, amount: money(198), units: [fee])
+
+      assert Valuation.price_per_share(inbound, "EUR") == price(100)
+      assert Valuation.price_per_share(outbound, "EUR") == price(100)
+    end
+
+    test "is in the security's currency from the gross value of a foreign purchase" do
+      unit = %TransactionUnit{
+        type: :gross_value,
+        amount: money(920),
+        currency: "EUR",
+        fx_amount: money(1_000),
+        fx_currency: "USD"
+      }
+
+      buy = in_portfolio(:buy, @friday, 1, 21, 10, amount: money(920), units: [unit])
+
+      assert Valuation.price_per_share(buy, "USD") == price(100)
+    end
+
+    test "is nil when the gross value is not known in the currency" do
+      buy = in_portfolio(:buy, @friday, 1, 21, 10, amount: money(920))
+
+      assert Valuation.price_per_share(buy, "USD") == nil
     end
   end
 
@@ -350,6 +406,15 @@ defmodule Zipfelfolio.ValuationTest do
                Valuation.history(transactions, ctx.accounts, market([]), [@friday, @thursday])
 
       assert {thursday, friday} == {money(100), money(220)}
+    end
+
+    test "net worth takes the largest of transactions at the same time as the last", ctx do
+      small = in_portfolio(:buy, @friday, 1, 20, 10, amount: money(1_000))
+      large = in_portfolio(:buy, @friday, 2, 20, 10, amount: money(1_200))
+
+      for transactions <- [[small, large], [large, small]] do
+        assert net_worth(transactions, ctx.accounts, market([]), @friday) == money(2_400)
+      end
     end
 
     test "gives each of the dates in order the transactions up to it and today's quote", ctx do

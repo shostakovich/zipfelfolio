@@ -35,6 +35,7 @@ defmodule ZipfelfolioWeb.Router do
       live "/", OverviewLive
       live "/holdings", HoldingsLive
       live "/portfolios", PortfoliosLive
+      live "/securities/:id", SecurityLive
       live "/settings/import", ImportLive
       live "/settings/securities", SecuritiesLive
       live "/users/settings", UserLive.Settings, :edit

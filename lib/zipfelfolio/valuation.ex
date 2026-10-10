@@ -26,7 +26,7 @@ defmodule Zipfelfolio.Valuation do
         portfolio_id: portfolio_id,
         security_id: security_id,
         shares: Enum.sum_by(movements, &elem(&1, 1)),
-        transactions: Enum.map(movements, &elem(&1, 2))
+        last: movements |> Enum.map(&elem(&1, 2)) |> Enum.reduce(&latest(&2, &1))
       }
     end)
     |> Enum.reject(&(&1.shares == 0))
@@ -127,12 +127,15 @@ defmodule Zipfelfolio.Valuation do
     |> Decimal.to_integer()
   end
 
-  defp last_price(%Holding{transactions: []}, _currency), do: nil
+  defp last_price(%Holding{last: nil}, _currency), do: nil
+  defp last_price(%Holding{last: last}, currency), do: price_per_share(last, currency)
 
-  defp last_price(%Holding{transactions: transactions}, currency) do
-    %Transaction{shares: shares} = last = Enum.max_by(transactions, & &1.date_time, NaiveDateTime)
-
-    case gross_value(last, currency) do
+  @doc """
+  The price per share × 10⁸ of a purchase, sale or delivery in `currency`, before fees and taxes,
+  as PP rounds it; nil when its gross value is not known in that currency.
+  """
+  def price_per_share(%Transaction{shares: shares} = t, currency) do
+    case gross_value(t, currency) do
       gross when is_integer(gross) and shares > 0 ->
         @pp_math
         |> Decimal.Context.with(fn -> Decimal.div(gross * 100_000_000_000_000, shares) end)
@@ -217,9 +220,15 @@ defmodule Zipfelfolio.Valuation do
 
   defp inside(moved, included?), do: Enum.filter(moved, fn {id, _amount} -> included?.(id) end)
 
-  # The first of the latest, as `Enum.max_by/3` in `last_price/2` picks it.
-  defp latest(last, t),
-    do: if(NaiveDateTime.after?(t.date_time, last.date_time), do: t, else: last)
+  # The later of two transactions; of two at the same time the one with the larger amount, as PP
+  # orders them.
+  defp latest(last, t) do
+    case NaiveDateTime.compare(t.date_time, last.date_time) do
+      :gt -> t
+      :eq when t.amount > last.amount -> t
+      _not_later -> last
+    end
+  end
 
   # PP values one joint holding per security over all portfolios; its price without any close
   # needs only the last of its transactions.
@@ -235,7 +244,7 @@ defmodule Zipfelfolio.Valuation do
           holding = %Holding{
             security_id: security_id,
             shares: shares,
-            transactions: [ledger.last[security_id]]
+            last: ledger.last[security_id]
           }
 
           sum + value(holding, market, date)

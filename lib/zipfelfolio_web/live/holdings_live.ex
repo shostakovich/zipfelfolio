@@ -90,7 +90,12 @@ defmodule ZipfelfolioWeb.HoldingsLive do
                 id={"holding-#{group.portfolio.id}-#{row.security.id}"}
               >
                 <td>
-                  <span class="fw-semibold">{row.security.name}</span>
+                  <.link
+                    navigate={~p"/securities/#{row.security}"}
+                    class="fw-semibold text-body text-decoration-none"
+                  >
+                    {row.security.name}
+                  </.link>
                   <div :if={row.security.isin} class="small text-body-secondary d-none d-lg-block">
                     {row.security.isin}
                   </div>
@@ -329,7 +334,9 @@ defmodule ZipfelfolioWeb.HoldingsLive do
           <tbody>
             <tr :for={fund <- @costs.funds} id={"cost-#{fund.security.id}"}>
               <td>
-                {fund.security.name}
+                <.link navigate={~p"/securities/#{fund.security}"} class="text-body">
+                  {fund.security.name}
+                </.link>
                 <div :if={fund.fund_size} class="small text-body-secondary text-nowrap d-sm-none">
                   {fund_size(fund)}
                 </div>
@@ -524,10 +531,8 @@ defmodule ZipfelfolioWeb.HoldingsLive do
   defp account_note(%{portfolio: nil}, account), do: account.currency
   defp account_note(_portfolio_group, account), do: "Referenzkonto · #{account.currency}"
 
-  defp price(%{price: price, security: security}), do: Format.price(price, currency(security))
-
-  defp currency(%{currency: "EUR"}), do: "€"
-  defp currency(%{currency: currency}), do: currency
+  defp price(%{price: price, security: security}),
+    do: Format.price(price, Format.currency(security.currency))
 
   defp label(nil), do: "Ohne Angabe"
   defp label(region) when is_atom(region), do: Map.fetch!(@regions, region)
@@ -579,7 +584,7 @@ defmodule ZipfelfolioWeb.HoldingsLive do
   defp ter(nil), do: "–"
   defp ter(ter), do: ter |> Decimal.mult(100) |> Format.percent(2)
 
-  defp fund_size(fund), do: Format.fund_size(fund.fund_size, currency(fund.security))
+  defp fund_size(fund), do: Format.fund_size(fund.fund_size, fund.security.currency)
 
   defp per_year(nil), do: "–"
   defp per_year(cents), do: Format.euros(cents)

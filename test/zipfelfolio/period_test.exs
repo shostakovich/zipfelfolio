@@ -11,6 +11,7 @@ defmodule Zipfelfolio.PeriodTest do
           six_months: ~D[2026-04-09],
           year_to_date: ~D[2026-01-01],
           one_year: ~D[2025-10-09],
+          five_years: ~D[2021-10-09],
           max: @long_ago
         ] do
       test "#{period} starts on #{first}" do

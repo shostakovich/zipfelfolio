@@ -8,6 +8,15 @@ defmodule Zipfelfolio.SecuritiesTest do
 
   @scope %Scope{}
 
+  describe "get_security/2" do
+    test "gives any security by id, as securities are shared, and nil for an unknown one" do
+      security = security_fixture()
+
+      assert Securities.get_security(@scope, security.id) == security
+      assert Securities.get_security(@scope, security.id + 1) == nil
+    end
+  end
+
   describe "store_yahoo_prices/2" do
     test "adds new days and replaces Yahoo prices, but keeps PP and manual ones" do
       security = security_fixture()

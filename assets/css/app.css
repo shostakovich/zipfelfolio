@@ -12,6 +12,9 @@
 .app-swatch { display: inline-block; width: .75rem; height: .75rem; border-radius: .2rem; vertical-align: -.05rem; }
 .app-swatch-primary { background: var(--felt-primary); }
 .app-swatch-secondary { background: var(--felt-secondary); }
+/* The price chart's dots: a purchase as a ring, a sale filled. */
+.app-dot { display: inline-block; width: .7rem; height: .7rem; border-radius: 50%; border: 2px solid var(--felt-success-text); vertical-align: -.05rem; }
+.app-dot-sale { border: none; background: var(--felt-danger-text); }
 /* Allocation: one bar per region, sector or classification, the largest at full width; „Ohne Angabe“
  * muted; a classification's target as a line across its bar. */
 .app-allocation-bar { position: relative; height: .6rem; }

@@ -274,6 +274,7 @@ defmodule ZipfelfolioWeb.CoreComponents do
 
   # The click dummy's line icons on a 24 px grid, each as the paths it draws.
   @icons %{
+    "back" => ["m15 6-6 6 6 6"],
     "chevron" => ["m9 6 6 6-6 6"],
     "down" => ["m6 9 6 6 6-6"],
     "gear" => [

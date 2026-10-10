@@ -12,6 +12,23 @@ defmodule ZipfelfolioWeb.FormatTest do
     assert Format.price(nil, "EUR") == "–"
   end
 
+  test "currencies are € for euros, otherwise their code" do
+    assert Format.currency("EUR") == "€"
+    assert Format.currency("USD") == "USD"
+  end
+
+  test "changes in prices carry their sign and a real minus" do
+    assert Format.signed_price(106_000_000, "€") == "+1,06 €"
+    assert Format.signed_price(-106_000_000, "USD") == "−1,06 USD"
+    assert Format.signed_price(0, "€") == "0,00 €"
+  end
+
+  test "a change in price that rounds to zero has no sign" do
+    assert Format.signed_price(153, "€") == "0,00 €"
+    assert Format.signed_price(-4_999, "€") == "0,00 €"
+    assert Format.signed_price(5_000, "€") == "+0,0001 €"
+  end
+
   test "euros are whole, with German separators, a real minus and a € that never wraps" do
     assert Format.euros(14_911_750) == "149.118\u00A0€"
     assert Format.euros(14_911_749) == "149.117\u00A0€"
@@ -58,11 +75,11 @@ defmodule ZipfelfolioWeb.FormatTest do
   end
 
   test "fund sizes are in billions with one decimal place, below 100 million in millions" do
-    assert Format.fund_size(1_784_999_999_999, "\u20AC") == "17,8\u00A0Mrd.\u00A0\u20AC"
-    assert Format.fund_size(40_000_000_000, "\u20AC") == "0,4\u00A0Mrd.\u00A0\u20AC"
+    assert Format.fund_size(1_784_999_999_999, "EUR") == "17,8\u00A0Mrd.\u00A0\u20AC"
+    assert Format.fund_size(40_000_000_000, "EUR") == "0,4\u00A0Mrd.\u00A0\u20AC"
     assert Format.fund_size(10_000_000_000, "USD") == "0,1\u00A0Mrd.\u00A0USD"
-    assert Format.fund_size(9_949_999_999, "\u20AC") == "99\u00A0Mio.\u00A0\u20AC"
-    assert Format.fund_size(nil, "\u20AC") == "\u2013"
+    assert Format.fund_size(9_949_999_999, "EUR") == "99\u00A0Mio.\u00A0\u20AC"
+    assert Format.fund_size(nil, "EUR") == "\u2013"
   end
 
   test "changes in percent carry their sign and two decimal places" do
