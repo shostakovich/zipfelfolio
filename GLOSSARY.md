@@ -74,11 +74,11 @@ Self-hosted portfolio tracker for one household. Replaces Portfolio Performance 
 - _Avoid:_ Payment
 
 **Announced dividend** · _de:_ angekündigt
-- A future **Dividend** that DivvyDiary has announced with ex date and pay date.
+- A future **Dividend** that DivvyDiary has announced with pay date and, where known, ex date.
 
 **Forecast dividend** · _de:_ Prognose
 - A future **Dividend** projected from what the **Security** paid per share in the last 12 months, moved one year
-  later, times today's shares; only after its last **Announced dividend**.
+  later, times today's shares; only after the month of the last dividend known of it, paid or **Announced**.
 
 **Net dividend** · _de:_ Netto
 - A **Dividend**'s gross value minus taxes and fees, what reaches the account. For a future one it is estimated
