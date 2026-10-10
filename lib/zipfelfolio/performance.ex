@@ -2,8 +2,10 @@ defmodule Zipfelfolio.Performance do
   @moduledoc """
   The true time-weighted rate of return (TTWROR) and the internal rate of return (IRR) of a
   user's portfolios and accounts, or of a `Filter` of them, over an interval such as
-  `Zipfelfolio.Period.interval/3` gives. Pure, and computed as PP 0.88 does, so that its figures
-  match PP's; PP's `ClientIndex`, `ClientIRRYield` and `IRR` were read, not copied:
+  `Zipfelfolio.Period.interval/3` gives, with the figures built on them: the maximum drawdown,
+  the volatility, the monthly returns, and the TTWROR of a benchmark and the value of a shadow
+  portfolio in it. Pure, and computed as PP 0.88 does, so that its figures match PP's; PP's
+  `ClientIndex`, `ClientIRRYield`, `IRR`, `Risk` and `SecurityIndex` were read, not copied:
 
   - The interval's first day is the reference day: the returns start from its closing value, and
     what happens on it counts no further.
@@ -15,6 +17,11 @@ defmodule Zipfelfolio.Performance do
   - IRR: XIRR of the reference day's value paid in, the money in and out after it including both
     sides of transfers inside, and the last day's value paid out; values of nothing are left out,
     and without any cash flow the IRR is 0. `IRR` solves it as PP does.
+  - Drawdown and volatility follow the accumulated TTWROR from the first day with a value; the
+    volatility only on trading days.
+  - Monthly returns chain the days of each month from the end of the month before.
+  - The benchmark's TTWROR is the change of its price in euros over the interval; the shadow
+    portfolio buys and sells the benchmark with the money in and out of each day.
   """
 
   alias Zipfelfolio.Performance.{IRR, TradeCalendar}
