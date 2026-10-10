@@ -366,6 +366,16 @@ defmodule ZipfelfolioWeb.CoreComponents do
   def tone("−" <> _rest), do: "text-danger"
   def tone(_unsigned), do: "text-body-secondary"
 
+  @doc "A database id from a URL parameter; nil for anything else, beyond SQLite's integers too."
+  def parse_id(param) when is_binary(param) do
+    case Integer.parse(param) do
+      {id, ""} when id in 1..9_223_372_036_854_775_807 -> id
+      _invalid -> nil
+    end
+  end
+
+  def parse_id(_missing), do: nil
+
   def show(js \\ %JS{}, selector) do
     JS.show(js, to: selector, time: 200, transition: {"fade", "opacity-0", "opacity-100"})
   end

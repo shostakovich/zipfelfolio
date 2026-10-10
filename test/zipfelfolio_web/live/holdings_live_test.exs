@@ -2,7 +2,7 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
   use ZipfelfolioWeb.ConnCase
 
   import Phoenix.LiveViewTest
-  import Zipfelfolio.{PortfoliosFixtures, SecuritiesFixtures}
+  import Zipfelfolio.{PortfoliosFixtures, SecuritiesFixtures, TaxonomiesFixtures}
 
   alias Zipfelfolio.{FakeCompositionSource, LocalTime, Repo}
   alias Zipfelfolio.Portfolios.TransactionUnit
@@ -222,6 +222,151 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
         assert allocation(lv) == []
         assert has_element?(lv, "#allocation", "DIVVYDIARY_API_KEY")
         refute has_element?(lv, "#allocation", "Stand")
+      end
+    end
+  end
+
+  describe "allocation by taxonomy" do
+    setup %{scope: scope} do
+      account = account_fixture(scope, %{name: "Tagesgeld"})
+      deposit(scope, account, 2_000)
+      portfolio = portfolio_fixture(scope, %{reference_account_id: account.id})
+      world = security(70, name: "Welt")
+      em = security(10, name: "Schwellenländer-ETF")
+      deliver(scope, portfolio, world, 100, 7_000)
+      deliver(scope, portfolio, em, 100, 1_000)
+
+      {taxonomy, root} = taxonomy_fixture(scope, "Anlageklassen")
+      equity = classification_fixture(root, "Aktien", 8_000, 0)
+      assignment_fixture(classification_fixture(equity, "Industrieländer", 8_500), world)
+      assignment_fixture(classification_fixture(equity, "Schwellenländer", 1_500), em)
+      real_estate = classification_fixture(root, "Immobilien", 1_000, 1)
+      risk_free = classification_fixture(root, "Risikofrei", 1_000, 2)
+      assignment_fixture(risk_free, account)
+
+      %{
+        portfolio: portfolio,
+        world: world,
+        taxonomy: taxonomy,
+        real_estate: real_estate,
+        risk_free: risk_free
+      }
+    end
+
+    # Each row as "name share / Ziel target".
+    defp classifications(lv) do
+      lv
+      |> texts("#allocation-rows > li > div:first-child span:not(.tabular-nums)")
+      |> Enum.chunk_every(3)
+      |> Enum.map(&Enum.join(&1, " "))
+    end
+
+    # The bar and the target marker of a classification's row, in percent of the bar.
+    defp bar(lv, classification) do
+      html = lv |> element("#classification-#{classification.id}") |> render()
+      [_, width] = Regex.run(~r/width: ([\d.]+)%/, html)
+      [_, target] = Regex.run(~r/app-allocation-target" style="left: ([\d.]+)%/, html)
+      {width, target}
+    end
+
+    test "compares the top-level classifications with their targets; accounts count", ctx do
+      {:ok, lv, _html} = live(ctx.conn, ~p"/holdings")
+
+      lv |> element("#allocation nav a", "Anlageklassen") |> render_click()
+
+      assert classifications(lv) == [
+               "Aktien 80,0\u00A0% / Ziel 80,0\u00A0%",
+               "Immobilien 0,0\u00A0% / Ziel 10,0\u00A0%",
+               "Risikofrei 20,0\u00A0% / Ziel 10,0\u00A0%"
+             ]
+
+      assert has_element?(lv, "#classification-#{ctx.real_estate.id} .text-danger", "0,0")
+      assert has_element?(lv, "#classification-#{ctx.risk_free.id} .text-warning-emphasis")
+      assert bar(lv, ctx.real_estate) == {"0", "12.5"}
+      assert bar(lv, ctx.risk_free) == {"25", "12.5"}
+      assert has_element?(lv, "#allocation", "Ziele aus Portfolio Performance")
+      refute has_element?(lv, "#allocation", "Ohne Kategorie")
+    end
+
+    test "names the value in no classification „Ohne Kategorie“", ctx do
+      deliver(ctx.scope, ctx.portfolio, security(20, name: "Gold"), 100, 2_000)
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/holdings?allocation=#{ctx.taxonomy.id}")
+
+      assert ["Aktien 80,0\u00A0% / Ziel 80,0\u00A0%" | _] = classifications(lv)
+
+      assert has_element?(
+               lv,
+               "#allocation",
+               "Ohne Kategorie: 2.000,00\u00A0€ (16,7\u00A0% des Werts)"
+             )
+    end
+
+    test "shows odd targets as they are and keeps their marker on the bar", ctx do
+      Repo.update!(Ecto.Changeset.change(ctx.real_estate, weight: -30_000))
+      Repo.update!(Ecto.Changeset.change(ctx.risk_free, weight: 40_000))
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/holdings?allocation=#{ctx.taxonomy.id}")
+
+      assert classifications(lv) == [
+               "Aktien 80,0\u00A0% / Ziel 80,0\u00A0%",
+               "Immobilien 0,0\u00A0% / Ziel −300,0\u00A0%",
+               "Risikofrei 20,0\u00A0% / Ziel 400,0\u00A0%"
+             ]
+
+      assert bar(lv, ctx.real_estate) == {"0", "0"}
+      assert bar(lv, ctx.risk_free) == {"20", "100"}
+    end
+
+    test "keeps the tab in the URL, so that it survives a reload and the switcher", ctx do
+      {:ok, lv, _html} = live(ctx.conn, ~p"/holdings")
+
+      lv |> element("#allocation nav a", "Anlageklassen") |> render_click()
+      url = assert_patch(lv, ~p"/holdings?allocation=#{ctx.taxonomy.id}")
+
+      {:ok, lv, _html} = live(ctx.conn, url)
+
+      assert has_element?(lv, "#allocation nav a.active[aria-current]", "Anlageklassen")
+
+      lv |> element("#portfolio-menu a", "Langfristig") |> render_click()
+
+      assert_patch(lv, ~p"/holdings?allocation=#{ctx.taxonomy.id}&portfolio=#{ctx.portfolio.id}")
+      assert has_element?(lv, "#allocation nav a.active", "Anlageklassen")
+    end
+
+    test "shows the regions for a portfolio without value in the taxonomy", ctx do
+      other = portfolio_fixture(ctx.scope, %{name: "Spielgeld"})
+      deliver(ctx.scope, other, security(50, name: "Einzelaktie"), 10, 500)
+      {:ok, lv, _html} = live(ctx.conn, ~p"/holdings?allocation=#{ctx.taxonomy.id}")
+
+      lv |> element("#portfolio-menu a", "Spielgeld") |> render_click()
+
+      assert_patch(lv, ~p"/holdings?allocation=#{ctx.taxonomy.id}&portfolio=#{other.id}")
+      assert has_element?(lv, "#allocation nav a.active", "Regionen")
+      refute has_element?(lv, "#allocation nav a", "Anlageklassen")
+
+      lv |> element("#portfolio-menu a", "Gesamt") |> render_click()
+
+      assert_patch(lv, ~p"/holdings?allocation=#{ctx.taxonomy.id}")
+      assert has_element?(lv, "#allocation nav a.active", "Anlageklassen")
+    end
+
+    test "gives no tab to a taxonomy with nothing held, nor to another user's", ctx do
+      {empty, root} = taxonomy_fixture(ctx.scope, "Branchen")
+      assignment_fixture(classification_fixture(root, "Technologie", 10_000), security(1))
+
+      {foreign, foreign_root} =
+        taxonomy_fixture(Zipfelfolio.UsersFixtures.user_scope_fixture(), "Fremd")
+
+      assignment_fixture(classification_fixture(foreign_root, "Alles", 10_000), ctx.world)
+
+      for id <- [empty.id, foreign.id, "x"] do
+        {:ok, lv, _html} = live(ctx.conn, ~p"/holdings?allocation=#{id}")
+
+        assert has_element?(lv, "#allocation nav a.active", "Regionen")
+        assert has_element?(lv, "#allocation nav a", "Anlageklassen")
+        refute has_element?(lv, "#allocation nav a", "Branchen")
+        refute has_element?(lv, "#allocation nav a", "Fremd")
       end
     end
   end

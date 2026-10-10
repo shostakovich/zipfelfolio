@@ -12,10 +12,15 @@
 .app-swatch { display: inline-block; width: .75rem; height: .75rem; border-radius: .2rem; vertical-align: -.05rem; }
 .app-swatch-primary { background: var(--felt-primary); }
 .app-swatch-secondary { background: var(--felt-secondary); }
-/* Allocation: one bar per region or sector, the largest at full width; „Ohne Angabe“ muted. */
-.app-allocation-bar { height: .6rem; }
+/* Allocation: one bar per region, sector or classification, the largest at full width; „Ohne Angabe“
+ * muted; a classification's target as a line across its bar. */
+.app-allocation-bar { position: relative; height: .6rem; }
 .app-allocation-bar > div { height: 100%; border-radius: 1rem; background: var(--felt-primary); }
 .app-allocation-bar > .app-allocation-unknown { background: var(--felt-secondary); }
+.app-allocation-bar > .app-allocation-target {
+  position: absolute; top: -.2rem; bottom: -.2rem; height: auto; width: 2px; margin-left: -1px;
+  border-radius: 0; background: var(--felt-emphasis-color);
+}
 /* Two stat cards side by side on a phone: values up to „+135,94 %“ still fit. */
 @media (max-width: 575.98px) { .app-stats .stat-value { font-size: 1.5rem; } }
 

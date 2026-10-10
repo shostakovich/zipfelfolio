@@ -4,7 +4,8 @@ defmodule ZipfelfolioWeb.HoldingsLive do
   alias Zipfelfolio.{LocalTime, MarketData, Portfolios}
   alias ZipfelfolioWeb.Format
 
-  # Allocation tab, also its URL parameter, and label; the first is the default.
+  # Allocation tab, also its URL parameter, and label; the first is the default. A taxonomy's tab
+  # is its id.
   @allocation_tabs [regions: "Regionen", sectors: "Sektoren"]
   @allocation_params Map.new(@allocation_tabs, fn {tab, _label} -> {Atom.to_string(tab), tab} end)
   @default_tab @allocation_tabs |> hd() |> elem(0)
@@ -173,7 +174,7 @@ defmodule ZipfelfolioWeb.HoldingsLive do
         <div class="col-xxl-7">
           <.allocation
             allocation={@holdings.allocation}
-            tab={@allocation_tab}
+            tab={shown_tab(assigns)}
             tabs={allocation_tabs(assigns)}
             available={@compositions_available}
           />
@@ -187,19 +188,11 @@ defmodule ZipfelfolioWeb.HoldingsLive do
   end
 
   attr :allocation, :map, required: true
-  attr :tab, :atom, required: true
+  attr :tab, :any, required: true, doc: "`:regions`, `:sectors` or the id of a taxonomy"
   attr :tabs, :list, required: true, doc: "each with its `label`, `path` and whether `active`"
   attr :available, :boolean, required: true, doc: "whether DivvyDiary has its API key"
 
   defp allocation(assigns) do
-    rows = Map.fetch!(assigns.allocation, assigns.tab)
-
-    assigns =
-      assign(assigns,
-        rows: rows,
-        largest: rows |> Enum.map(& &1.share) |> Enum.max(Decimal, fn -> nil end)
-      )
-
     ~H"""
     <section id="allocation" class="card h-100" aria-label="Aufteilung">
       <div class="card-header">
@@ -217,35 +210,97 @@ defmodule ZipfelfolioWeb.HoldingsLive do
           </ul>
         </nav>
       </div>
-      <div class="card-body">
-        <p :if={!@available} class="text-body-secondary mb-0">
-          Für Regionen und Sektoren braucht zipfelfolio einen API-Key von DivvyDiary in der
-          Umgebungsvariable <code>DIVVYDIARY_API_KEY</code>. Damit holt der tägliche Abruf um 18:00
-          die Länder und Sektoren der Fonds.
-        </p>
-        <ul :if={@available} id="allocation-rows" class="list-unstyled d-flex flex-column gap-3 mb-0">
-          <li :for={row <- @rows}>
-            <div class="d-flex justify-content-between gap-3 small mb-1">
-              <span class="fw-semibold">{label(row.key)}</span>
-              <span class="tabular-nums text-nowrap">{in_percent(row.share)}</span>
-            </div>
-            <div class="app-allocation-bar bg-body-tertiary rounded-pill" aria-hidden="true">
-              <div
-                class={is_nil(row.key) && "app-allocation-unknown"}
-                style={"width: #{width(row.share, @largest)}%"}
-              >
-              </div>
-            </div>
-          </li>
-        </ul>
-      </div>
-      <div :if={@available} class="card-footer small text-body-secondary">
-        {source(@allocation.as_of)} Konten zählen nicht mit.
-        <span :if={Enum.any?(@rows, &is_nil(&1.key))}>
-          „Ohne Angabe“: Wertpapiere ohne Länder- oder Sektordaten von DivvyDiary.
-        </span>
-      </div>
+      <.composition :if={is_atom(@tab)} allocation={@allocation} tab={@tab} available={@available} />
+      <.classifications
+        :if={is_integer(@tab)}
+        allocation={taxonomy_allocation(@allocation, @tab)}
+      />
     </section>
+    """
+  end
+
+  attr :allocation, :map, required: true
+  attr :tab, :atom, required: true
+  attr :available, :boolean, required: true
+
+  # Regions or sectors from the compositions of the funds.
+  defp composition(assigns) do
+    rows = Map.fetch!(assigns.allocation, assigns.tab)
+
+    assigns =
+      assign(assigns,
+        rows: rows,
+        largest: rows |> Enum.map(& &1.share) |> Enum.max(Decimal, fn -> nil end)
+      )
+
+    ~H"""
+    <div class="card-body">
+      <p :if={!@available} class="text-body-secondary mb-0">
+        Für Regionen und Sektoren braucht zipfelfolio einen API-Key von DivvyDiary in der
+        Umgebungsvariable <code>DIVVYDIARY_API_KEY</code>. Damit holt der tägliche Abruf um 18:00
+        die Länder und Sektoren der Fonds.
+      </p>
+      <ul :if={@available} id="allocation-rows" class="list-unstyled d-flex flex-column gap-3 mb-0">
+        <li :for={row <- @rows}>
+          <div class="d-flex justify-content-between gap-3 small mb-1">
+            <span class="fw-semibold">{label(row.key)}</span>
+            <span class="tabular-nums text-nowrap">{in_percent(row.share)}</span>
+          </div>
+          <div class="app-allocation-bar bg-body-tertiary rounded-pill" aria-hidden="true">
+            <div
+              class={is_nil(row.key) && "app-allocation-unknown"}
+              style={"width: #{bar_position(row.share, @largest)}%"}
+            >
+            </div>
+          </div>
+        </li>
+      </ul>
+    </div>
+    <div :if={@available} class="card-footer small text-body-secondary">
+      {source(@allocation.as_of)} Konten zählen nicht mit.
+      <span :if={Enum.any?(@rows, &is_nil(&1.key))}>
+        „Ohne Angabe“: Wertpapiere ohne Länder- oder Sektordaten von DivvyDiary.
+      </span>
+    </div>
+    """
+  end
+
+  attr :allocation, :map, required: true, doc: "into a taxonomy, see `Classifications.of/3`"
+
+  # The top-level classifications of a taxonomy against their targets.
+  defp classifications(assigns) do
+    rows = assigns.allocation.classifications
+    assigns = assign(assigns, rows: rows, scale: scale(rows))
+
+    ~H"""
+    <div class="card-body">
+      <ul id="allocation-rows" class="list-unstyled d-flex flex-column gap-3 mb-0">
+        <li :for={row <- @rows} id={"classification-#{row.classification.id}"}>
+          <div class="d-flex justify-content-between gap-3 small mb-1">
+            <span class="fw-semibold">{row.classification.name}</span>
+            <span class="tabular-nums text-nowrap">
+              <span class={deviation_tone(row.deviation)}>{in_percent(row.share)}</span>
+              <span class="text-body-secondary">/ Ziel {in_percent(row.target)}</span>
+            </span>
+          </div>
+          <div class="app-allocation-bar bg-body-tertiary rounded-pill" aria-hidden="true">
+            <div style={"width: #{bar_position(row.share, @scale)}%"}></div>
+            <div
+              class="app-allocation-target"
+              style={"left: #{bar_position(row.target, @scale)}%"}
+            >
+            </div>
+          </div>
+        </li>
+      </ul>
+      <p :if={@allocation.unassigned} class="small text-body-secondary mt-3 mb-0">
+        Ohne Kategorie: {unassigned(@allocation.unassigned)}. Die Anteile beziehen sich wie die
+        Ziele auf den zugeordneten Wert.
+      </p>
+    </div>
+    <div class="card-footer small text-body-secondary">
+      Balken: Ist · Strich: dein Ziel · Zuordnungen und Ziele aus Portfolio Performance
+    </div>
     """
   end
 
@@ -322,7 +377,7 @@ defmodule ZipfelfolioWeb.HoldingsLive do
   end
 
   attr :holdings, :map, required: true
-  attr :allocation_tab, :atom, required: true
+  attr :allocation_tab, :any, required: true
 
   # A Bootstrap dropdown without Bootstrap's JS: LiveView's JS commands toggle it.
   defp portfolio_switcher(assigns) do
@@ -399,11 +454,19 @@ defmodule ZipfelfolioWeb.HoldingsLive do
   end
 
   defp allocation_param(@default_tab), do: nil
-  defp allocation_param(tab), do: Atom.to_string(tab)
+  defp allocation_param(tab) when is_atom(tab), do: Atom.to_string(tab)
+  defp allocation_param(taxonomy_id), do: Integer.to_string(taxonomy_id)
 
-  # A tab keeps the portfolio and the account marked.
+  # Regions, sectors, then each taxonomy with value shown in it. A tab keeps the portfolio and the
+  # account marked.
   defp allocation_tabs(assigns) do
-    for {tab, label} <- @allocation_tabs do
+    shown = shown_tab(assigns)
+
+    taxonomies =
+      for %{taxonomy: taxonomy} <- assigns.holdings.allocation.taxonomies,
+          do: {taxonomy.id, taxonomy.name}
+
+    for {tab, label} <- @allocation_tabs ++ taxonomies do
       path =
         holdings_path(
           portfolio: shown_portfolio_id(assigns),
@@ -411,9 +474,19 @@ defmodule ZipfelfolioWeb.HoldingsLive do
           allocation: tab
         )
 
-      %{label: label, path: path, active: tab == assigns.allocation_tab}
+      %{label: label, path: path, active: tab == shown}
     end
   end
+
+  # The tab in the URL; the first for a taxonomy without value shown in it.
+  defp shown_tab(%{allocation_tab: id, holdings: holdings}) when is_integer(id) do
+    if taxonomy_allocation(holdings.allocation, id), do: id, else: @default_tab
+  end
+
+  defp shown_tab(%{allocation_tab: tab}), do: tab
+
+  defp taxonomy_allocation(allocation, id),
+    do: Enum.find(allocation.taxonomies, &(&1.taxonomy.id == id))
 
   # The portfolio shown, nil for all, which the sidebar marks.
   defp shown_portfolio_id(%{holdings: %{portfolio: %{id: id}}}), do: id
@@ -462,14 +535,39 @@ defmodule ZipfelfolioWeb.HoldingsLive do
 
   defp in_percent(fraction), do: fraction |> Decimal.mult(100) |> Format.percent()
 
-  # The largest share fills the bar.
-  defp width(share, largest) do
-    share
-    |> Decimal.mult(100)
-    |> Decimal.div(largest)
-    |> Decimal.round(1)
-    |> Decimal.to_string(:normal)
+  # A share or a target in percent of the bar, where `scale` fills it; kept within the bar.
+  defp bar_position(fraction, scale) do
+    if Decimal.gt?(scale, 0) do
+      fraction
+      |> Decimal.div(scale)
+      |> within_bar()
+      |> Decimal.mult(100)
+      |> Decimal.round(1)
+      |> Decimal.normalize()
+      |> Decimal.to_string(:normal)
+    else
+      "0"
+    end
   end
+
+  # The largest share or target fills the bar, odd targets such as −300 % or 400 % kept within it.
+  defp scale(rows) do
+    rows
+    |> Enum.flat_map(&[&1.share, &1.target])
+    |> Enum.map(&within_bar/1)
+    |> Enum.max(Decimal, fn -> Decimal.new(0) end)
+  end
+
+  defp within_bar(fraction), do: fraction |> Decimal.max(0) |> Decimal.min(1)
+
+  defp deviation_tone(:above), do: "text-warning-emphasis"
+  defp deviation_tone(:below), do: "text-danger"
+  defp deviation_tone(nil), do: "text-success"
+
+  defp unassigned(%{value: value, share: nil}), do: Format.euros(value, 2)
+
+  defp unassigned(%{value: value, share: share}),
+    do: "#{Format.euros(value, 2)} (#{in_percent(share)} des Werts)"
 
   defp source(nil), do: @source <> "."
 
@@ -506,20 +604,18 @@ defmodule ZipfelfolioWeb.HoldingsLive do
   @impl true
   def handle_params(params, _uri, socket) do
     socket
-    |> assign(portfolio_id: id(params["portfolio"]), account_id: id(params["account"]))
-    |> assign(allocation_tab: Map.get(@allocation_params, params["allocation"], @default_tab))
+    |> assign(
+      portfolio_id: parse_id(params["portfolio"]),
+      account_id: parse_id(params["account"])
+    )
+    |> assign(allocation_tab: allocation_tab(params["allocation"]))
     |> load_holdings()
     |> then(&{:noreply, &1})
   end
 
-  defp id(param) when is_binary(param) do
-    case Integer.parse(param) do
-      {id, ""} -> id
-      _invalid -> nil
-    end
-  end
-
-  defp id(_missing), do: nil
+  # Regions, sectors or the id of a taxonomy.
+  defp allocation_tab(param),
+    do: Map.get(@allocation_params, param) || parse_id(param) || @default_tab
 
   @impl true
   def handle_info(:market_data_updated, socket), do: {:noreply, load_holdings(socket)}

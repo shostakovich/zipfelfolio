@@ -1,7 +1,7 @@
 defmodule Zipfelfolio.PortfoliosTest do
   use Zipfelfolio.DataCase
 
-  import Zipfelfolio.{PortfoliosFixtures, SecuritiesFixtures, UsersFixtures}
+  import Zipfelfolio.{PortfoliosFixtures, SecuritiesFixtures, TaxonomiesFixtures, UsersFixtures}
 
   alias Zipfelfolio.{ExchangeRates, Portfolios}
   alias Zipfelfolio.Performance.IRR
@@ -340,6 +340,47 @@ defmodule Zipfelfolio.PortfoliosTest do
 
       assert regions.(Portfolios.holdings(ctx.scope, plan.id, @saturday)) ==
                [emerging_markets: 1.0]
+    end
+
+    test "gives the allocation into each taxonomy of the user with value shown in it", ctx do
+      account = account_fixture(ctx.scope)
+      deposit_on_friday(ctx.scope, account, 1_000)
+      plan = portfolio_fixture(ctx.scope, %{name: "Sparplan", reference_account_id: account.id})
+      world = security_at(100, "Welt")
+      buy(ctx.scope, ctx.portfolio, world, 30, 3_000)
+      buy(ctx.scope, plan, world, 10, 1_000)
+
+      {taxonomy, root} = taxonomy_fixture(ctx.scope, "Anlageklassen")
+      equity = classification_fixture(root, "Aktien", 8_000, 0)
+      assignment_fixture(equity, world)
+      cash = classification_fixture(root, "Cash", 2_000, 1)
+      assignment_fixture(cash, account)
+      {_held_by_none, nobody} = taxonomy_fixture(ctx.scope, "Branchen")
+
+      assignment_fixture(
+        classification_fixture(nobody, "Technologie", 10_000),
+        security_at(1, "X")
+      )
+
+      {_foreign, foreign} = taxonomy_fixture(user_scope_fixture(), "Fremd")
+      assignment_fixture(classification_fixture(foreign, "Alles", 10_000), world)
+
+      shares = fn holdings ->
+        for %{taxonomy: %{name: name}, classifications: rows} <- holdings.allocation.taxonomies,
+            do: {name, Enum.map(rows, &{&1.classification.name, Decimal.to_float(&1.share)})}
+      end
+
+      all = Portfolios.holdings(ctx.scope, nil, @saturday)
+
+      assert shares.(all) == [{"Anlageklassen", [{"Aktien", 0.8}, {"Cash", 0.2}]}]
+      assert [%{taxonomy: %{id: id}}] = all.allocation.taxonomies
+      assert id == taxonomy.id
+
+      assert shares.(Portfolios.holdings(ctx.scope, plan.id, @saturday)) ==
+               [{"Anlageklassen", [{"Aktien", 0.5}, {"Cash", 0.5}]}]
+
+      assert shares.(Portfolios.holdings(ctx.scope, ctx.portfolio.id, @saturday)) ==
+               [{"Anlageklassen", [{"Aktien", 1.0}, {"Cash", 0.0}]}]
     end
 
     test "shows all portfolios for one of another user", ctx do

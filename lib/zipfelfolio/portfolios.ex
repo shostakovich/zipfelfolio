@@ -4,7 +4,9 @@ defmodule Zipfelfolio.Portfolios do
   import Ecto.Query, warn: false
 
   alias Zipfelfolio.{Allocation, Costs, ExchangeRates, Performance, Period, Repo, Securities}
+  alias Zipfelfolio.Allocation.Classifications
   alias Zipfelfolio.Portfolios.{Account, Portfolio, SavingsPlan, Transaction}
+  alias Zipfelfolio.Taxonomies
   alias Zipfelfolio.Users.Scope
   alias Zipfelfolio.Valuation
   alias Zipfelfolio.Valuation.{Filter, Market, PurchaseValue}
@@ -154,7 +156,9 @@ defmodule Zipfelfolio.Portfolios do
   - `total`: `value`, `purchase_value` and `gain` of the groups shown
   - `net_worth`: the value of all holdings and accounts, of which each row shows its share
   - `costs`: what the securities shown cost a year, see `Costs.of/1`; accounts hold no funds
-  - `allocation`: the regions and sectors of the securities shown, see `Allocation.of/2`
+  - `allocation`: the regions and sectors of the securities shown, see `Allocation.of/2`, and in
+    `taxonomies` the allocation of the securities and accounts shown into each of the user's
+    taxonomies by name, see `Classifications.of/3`, those without value shown in them left out
 
   A holding has its `security`, `shares`, `price`, `value`, `purchase_value` and `gain`, an
   account its `value`. Retired accounts are left out once they are empty.
@@ -175,6 +179,7 @@ defmodule Zipfelfolio.Portfolios do
 
     groups = portfolios |> holding_groups(portfolio, rows) |> Enum.map(&with_gains/1)
     shown = Enum.flat_map(groups, & &1.holdings)
+    shown_accounts = Enum.flat_map(groups, & &1.accounts)
 
     %{
       portfolios: portfolios,
@@ -183,15 +188,21 @@ defmodule Zipfelfolio.Portfolios do
       total: totals(groups, groups),
       net_worth: Enum.sum_by(rows.holdings ++ rows.accounts, & &1.value),
       costs: Costs.of(shown),
-      allocation: allocation(shown)
+      allocation: allocation(scope, shown, shown_accounts)
     }
   end
 
-  defp allocation(holdings) do
+  defp allocation(scope, holdings, accounts) do
     compositions =
       holdings |> Enum.map(& &1.security.id) |> Enum.uniq() |> Securities.list_compositions()
 
-    Allocation.of(holdings, compositions)
+    taxonomies =
+      for taxonomy <- Taxonomies.list_taxonomies(scope),
+          allocation = Classifications.of(taxonomy, holdings, accounts),
+          allocation.classifications != [],
+          do: allocation
+
+    holdings |> Allocation.of(compositions) |> Map.put(:taxonomies, taxonomies)
   end
 
   @doc """
