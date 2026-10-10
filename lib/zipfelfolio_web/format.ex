@@ -113,6 +113,14 @@ defmodule ZipfelfolioWeb.Format do
   def signed_percent(%Decimal{} = percent, places \\ 2),
     do: signed_number(percent, places) <> "\u00A0%"
 
+  @doc """
+  A rate, a fraction such as 0.0038, as a change in percent with its sign, e.g. `+0,38 %`; `–`
+  for none.
+  """
+  def signed_rate(rate, places \\ 2)
+  def signed_rate(nil, _places), do: "–"
+  def signed_rate(rate, places), do: Decimal.from_float(rate * 100) |> signed_percent(places)
+
   @doc "A number with its sign and `places` decimal places, e.g. `+1,2` or `−0,38`."
   def signed_number(%Decimal{} = number, places), do: number(number, places, "+")
 

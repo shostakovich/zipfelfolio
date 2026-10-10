@@ -69,8 +69,8 @@ defmodule ZipfelfolioWeb.OverviewLive do
           <.stat
             id="ttwror"
             label={"TTWROR · #{period_label(@period)}"}
-            value={percent_text(@overview.ttwror, 2)}
-            value_class={tone(percent_text(@overview.ttwror, 2))}
+            value={Format.signed_rate(@overview.ttwror, 2)}
+            value_class={tone(Format.signed_rate(@overview.ttwror, 2))}
           >
             <:note class="text-body-secondary">
               <Benchmark.note
@@ -85,8 +85,8 @@ defmodule ZipfelfolioWeb.OverviewLive do
           <.stat
             id="irr"
             label={"IZF · #{period_label(@period)}"}
-            value={percent_text(@overview.irr, 2)}
-            value_class={tone(percent_text(@overview.irr, 2))}
+            value={Format.signed_rate(@overview.irr, 2)}
+            value_class={tone(Format.signed_rate(@overview.irr, 2))}
           >
             <:note class="text-body-secondary">{"p.\u00A0a."} · geldgewichtet</:note>
           </.stat>
@@ -168,9 +168,9 @@ defmodule ZipfelfolioWeb.OverviewLive do
               <span class="d-block fw-bold tabular-nums">{Format.euros(row.value, 2)}</span>
               <span
                 :if={row.securities > 0}
-                class={["small tabular-nums", tone(percent_text(row.ttwror, 1))]}
+                class={["small tabular-nums", tone(Format.signed_rate(row.ttwror, 1))]}
               >
-                {percent_text(row.ttwror, 1)} YTD
+                {Format.signed_rate(row.ttwror, 1)} YTD
               </span>
               <span :if={row.securities == 0} class="small text-body-secondary">nur Cash</span>
             </span>
@@ -249,10 +249,6 @@ defmodule ZipfelfolioWeb.OverviewLive do
     do: Enum.find_value(@periods, fn {_param, p, label} -> p == period && label end)
 
   # A rate of return as a fraction, in percent; nil where there is none.
-  defp percent_text(nil, _places), do: "–"
-  defp percent_text(rate, places), do: rate |> in_percent() |> Format.signed_percent(places)
-
-  defp in_percent(rate), do: Decimal.from_float(rate * 100)
 
   # Each part stays on one line.
   defp portfolio_note(%{securities: count, account: account, balance: balance}) do

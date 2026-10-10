@@ -56,7 +56,7 @@ defmodule ZipfelfolioWeb.Benchmark do
   fit.
   """
   def note(assigns) do
-    assigns = assign(assigns, :figure, ttwror(assigns.benchmark.ttwror))
+    assigns = assign(assigns, :figure, Format.signed_rate(assigns.benchmark.ttwror))
 
     ~H"""
     <span id="benchmark-ttwror" class="app-benchmark-note">
@@ -98,7 +98,4 @@ defmodule ZipfelfolioWeb.Benchmark do
       short -> short
     end
   end
-
-  defp ttwror(nil), do: "–"
-  defp ttwror(rate), do: rate |> Kernel.*(100) |> Decimal.from_float() |> Format.signed_percent(2)
 end

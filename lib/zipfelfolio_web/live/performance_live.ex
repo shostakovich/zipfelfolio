@@ -84,8 +84,8 @@ defmodule ZipfelfolioWeb.PerformanceLive do
           <.stat
             id="ttwror"
             label="TTWROR"
-            value={percent_text(@performance.ttwror, 2)}
-            value_class={tone(percent_text(@performance.ttwror, 2))}
+            value={Format.signed_rate(@performance.ttwror, 2)}
+            value_class={tone(Format.signed_rate(@performance.ttwror, 2))}
           >
             <:note class="text-body-secondary">
               <Benchmark.note
@@ -93,7 +93,7 @@ defmodule ZipfelfolioWeb.PerformanceLive do
                 benchmark={@performance.benchmark}
               />
               <span :if={!(@benchmark_shown and @performance.benchmark)}>
-                {percent_text(@performance.ttwror_per_year, 2)} {@per_year}
+                {Format.signed_rate(@performance.ttwror_per_year, 2)} {@per_year}
               </span>
             </:note>
           </.stat>
@@ -102,8 +102,8 @@ defmodule ZipfelfolioWeb.PerformanceLive do
           <.stat
             id="irr"
             label="IZF"
-            value={percent_text(@performance.irr, 2)}
-            value_class={tone(percent_text(@performance.irr, 2))}
+            value={Format.signed_rate(@performance.irr, 2)}
+            value_class={tone(Format.signed_rate(@performance.irr, 2))}
           >
             <:note class="text-body-secondary">
               {@per_year} · geldgewichtet
@@ -114,8 +114,8 @@ defmodule ZipfelfolioWeb.PerformanceLive do
           <.stat
             id="drawdown"
             label="Max. Drawdown"
-            value={percent_text(-@performance.drawdown.max, 2)}
-            value_class={tone(percent_text(-@performance.drawdown.max, 2))}
+            value={Format.signed_rate(-@performance.drawdown.max, 2)}
+            value_class={tone(Format.signed_rate(-@performance.drawdown.max, 2))}
           >
             <:note class="text-body-secondary">
               <.drawdown_days {@performance.drawdown} year={@performance.interval.last.year} />
@@ -353,9 +353,6 @@ defmodule ZipfelfolioWeb.PerformanceLive do
   defp days_count(days), do: "#{days} Tage"
 
   # A rate as a fraction, in percent with its sign; nil where there is none.
-  defp percent_text(nil, _places), do: "–"
-  defp percent_text(rate, places), do: rate |> in_percent() |> Format.signed_percent(places)
-
   defp in_percent(rate), do: Decimal.from_float(rate * 100)
 
   defp performance_path(period_param, portfolio) do

@@ -26,6 +26,13 @@ defmodule ZipfelfolioWeb.FormatTest do
     assert Format.price(nil, "EUR", places) == "–"
   end
 
+  test "rates are changes in percent with their sign, none a dash" do
+    assert Format.signed_rate(0.0038) == "+0,38\u00A0%"
+    assert Format.signed_rate(-0.123456, 1) == "−12,3\u00A0%"
+    assert Format.signed_rate(-0.0) == "0,00\u00A0%"
+    assert Format.signed_rate(nil) == "–"
+  end
+
   test "changes in prices carry their sign and a real minus" do
     assert Format.signed_price(106_000_000, "EUR") == "+1,06\u00A0€"
     assert Format.signed_price(-106_000_000, "USD") == "−1,06\u00A0USD"
