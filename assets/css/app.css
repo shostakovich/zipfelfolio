@@ -215,6 +215,14 @@
 .app-rail .app-side-top .dropdown-menu[data-bs-popper] { left: .5rem; }
 .app-side .dropdown-item { display: flex; align-items: center; gap: .625rem; font-size: .875rem; }
 .app-side .dropdown-item .app-icon { width: 1rem; height: 1rem; color: var(--side-muted); }
+/* „+ Buchung“, the one action: an outline, so the open screen stays the only strong shape. */
+.app-side-book {
+  position: relative; display: flex; align-items: center; justify-content: center; gap: .375rem; width: 100%; height: 2.25rem; margin-bottom: .75rem;
+  border: 1px solid rgb(255 255 255 / .3); border-radius: var(--felt-radius); background: rgb(255 255 255 / .04); color: var(--side-ink);
+  font-size: .875rem; font-weight: 600;
+}
+.app-side-book:hover { background: var(--side-hover); border-color: rgb(255 255 255 / .45); }
+.app-side-book .app-icon { width: 1rem; height: 1rem; }
 .app-side .nav { flex-wrap: nowrap; gap: 2px; }
 .app-side .nav-link {
   position: relative; display: flex; align-items: center; gap: .75rem; min-width: 0; height: 2.125rem; padding: 0 .625rem;
@@ -263,6 +271,8 @@
 @media (pointer: coarse) {
   :root { --rail-w: 4.75rem; }
   .app-side .nav-link, .app-side .app-acc { height: 2.75rem; }
+  .app-side .app-side-book { height: 2.75rem; margin-bottom: .5rem; }
+  .app-rail .app-side .app-side-book { width: 2.75rem; }
   .app-side .app-side-toggle { width: 2.75rem; height: 2.75rem; }
   .app-side .dropdown-item { min-height: 2.75rem; }
   .app-side-h { margin-top: .75rem; }
@@ -277,11 +287,12 @@
 .app-rail .app-side-foot { flex-direction: column; margin-inline: .5rem; }
 .app-rail .app-side-me { justify-content: center; padding-inline: 0; }
 .app-rail .app-side .nav-link { justify-content: center; padding-inline: 0; }
+.app-rail .app-side-book { width: 2.25rem; margin-inline: auto; padding: 0; }
 .app-rail .app-side-foot .nav-link { width: 100%; }
 .app-rail .app-side-h { height: 0; margin: .75rem .5rem; padding: 0; border-top: 1px solid var(--side-line); }
 .app-rail .app-side-h > * { display: none; }
 .app-rail .app-side-toggle svg { transform: scaleX(-1); }
-.app-rail .app-side :is(.nav-link, .app-side-me:not([aria-expanded="true"]), .app-side-toggle):is(:hover, :focus-visible) > .app-fly {
+.app-rail .app-side :is(.nav-link, .app-side-book, .app-side-me:not([aria-expanded="true"]), .app-side-toggle):is(:hover, :focus-visible) > .app-fly {
   display: flex; gap: .75rem; position: absolute; z-index: 1; left: calc(100% + .75rem); top: 50%; translate: 0 -50%;
   padding: .375rem .625rem; border-radius: var(--felt-radius-sm); background: var(--side-fly); color: #fff; box-shadow: 0 4px 14px rgb(0 0 0 / .35);
   font-size: .8125rem; font-weight: 500; line-height: 1.25rem; white-space: nowrap; pointer-events: none;
@@ -290,6 +301,14 @@
 /* Phone: the header, the tab bar and the „Depots“ screen. */
 .app-head-logo { width: 1.75rem; height: 1.75rem; }
 .app-avatar-hit { display: inline-flex; align-items: center; justify-content: center; width: 2.75rem; height: 2.75rem; margin: -.25rem; border-radius: 50%; }
+/* „+ Buchung“ on the phone, above the tab bar. */
+.app-fab {
+  position: fixed; inset: auto 0 calc(4rem + max(.5rem, env(safe-area-inset-bottom)) + .75rem); z-index: 1030;
+  display: flex; justify-content: flex-end; padding-inline: 1rem; pointer-events: none;
+}
+.app-fab > * { pointer-events: auto; }
+/* The dialog „Buchung erfassen“ lies over the sidebar and the tab bar. */
+#transaction-modal { z-index: 1055; }
 .app-tabbar .nav-pills { --felt-nav-pills-link-active-bg: light-dark(var(--felt-primary), #5a82c2); }
 .app-tabbar .nav-link { padding-inline: .125rem; }
 .app-tabbar .app-icon { stroke-width: 1.75; }
@@ -303,6 +322,14 @@
 .app-tree .app-sub > .app-icon:first-child { width: .875rem; height: .875rem; margin-right: -.25rem; }
 .app-tree .list-group-item:has(+ .app-sub) { border-bottom-width: 0; }
 .app-tree .app-chev { width: 1rem; height: 1rem; color: var(--felt-tertiary-color); }
+/* „Buchungen“: a row the user booked opens the dialog through its title, which covers the row. */
+.app-tx-text { flex: 1; min-width: 0; hyphens: auto; overflow-wrap: break-word; }
+.app-tx-edit { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; }
+.app-tx-edit:focus-visible { outline: none; }
+.list-group-item:has(.app-tx-edit:focus-visible) { outline: 2px solid var(--felt-primary); outline-offset: -2px; z-index: 2; }
+.app-tx-receipt { position: relative; z-index: 2; }
+.app-filter { scrollbar-width: none; }
+@media (max-width: 575.98px) { .app-filter { gap: .75rem; } }
 /* Period buttons and the benchmark toggle: neutral outlines, the chosen or pressed one in the primary colour;
  * on a phone the periods across the width. */
 :is(.app-periods .btn, .app-benchmark-toggle) {

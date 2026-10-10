@@ -31,10 +31,15 @@ defmodule ZipfelfolioWeb.Router do
     pipe_through [:browser, :require_authenticated_user]
 
     live_session :require_authenticated_user,
-      on_mount: [{ZipfelfolioWeb.UserAuth, :require_authenticated}, ZipfelfolioWeb.Sidebar] do
+      on_mount: [
+        {ZipfelfolioWeb.UserAuth, :require_authenticated},
+        ZipfelfolioWeb.Sidebar,
+        ZipfelfolioWeb.TransactionDialog
+      ] do
       live "/", OverviewLive
       live "/holdings", HoldingsLive
       live "/dividends", DividendsLive
+      live "/transactions", TransactionsLive
       live "/portfolios", PortfoliosLive
       live "/performance", PerformanceLive
       live "/securities/:id", SecurityLive
@@ -43,6 +48,8 @@ defmodule ZipfelfolioWeb.Router do
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
     end
+
+    get "/receipts/:id", ReceiptController, :show
   end
 
   scope "/", ZipfelfolioWeb do

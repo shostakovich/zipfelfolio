@@ -32,17 +32,16 @@ defmodule ZipfelfolioWeb.Format do
   defp price_amount(close),
     do: close |> Decimal.new() |> Decimal.div(100_000_000) |> Decimal.round(4)
 
-  @month_abbrs ~w(Jan Feb Mär Apr Mai Jun Jul Aug Sep Okt Nov Dez)
-
-  @doc "The abbreviation of a month, by its number or a date in it, e.g. `Mär`."
-  def month_abbr(%{month: month}), do: month_abbr(month)
-  def month_abbr(month) when month in 1..12, do: Enum.at(@month_abbrs, month - 1)
-
   @month_names ~w(Januar Februar März April Mai Juni Juli August September Oktober November Dezember)
+  @month_abbrs ~w(Jan Feb Mär Apr Mai Jun Jul Aug Sep Okt Nov Dez)
 
   @doc "The name of a month, by its number or a date in it, e.g. `März`."
   def month_name(%{month: month}), do: month_name(month)
   def month_name(month) when month in 1..12, do: Enum.at(@month_names, month - 1)
+
+  @doc "The abbreviation of a month, by its number or a date in it, e.g. `Mär`."
+  def month_abbr(%{month: month}), do: month_abbr(month)
+  def month_abbr(month) when month in 1..12, do: Enum.at(@month_abbrs, month - 1)
 
   @doc "A currency as prices name it: `€` for euros, otherwise its code."
   def currency("EUR"), do: "€"

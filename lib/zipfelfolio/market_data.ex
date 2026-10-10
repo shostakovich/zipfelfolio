@@ -69,6 +69,48 @@ defmodule Zipfelfolio.MarketData do
     :exit, _reason -> exited("the exchange rates", "Die Wechselkurse")
   end
 
+  # Exchanges that quote in euros, Xetra first.
+  @euro_exchanges ~w(GER FRA STU MUN DUS HAM BER AMS PAR MIL BRU MCE VIE)
+
+  @doc """
+  The name and Yahoo symbol of the security with `isin`, from the price feed's search. A search by
+  ISIN often finds one listing only, often in London, so a search by its name adds the listings
+  of the same name; the first on an exchange in euros wins, Xetra first, else the first found.
+  `:not_found` when the search has none.
+  """
+  def lookup_isin(isin) do
+    case symbol_search().search(isin) do
+      {:ok, []} ->
+        {:error, :not_found}
+
+      {:ok, [first | _] = listings} ->
+        listing = preferred_listing(listings ++ same_name_listings(first.name))
+        {:ok, Map.take(listing, [:name, :symbol])}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  catch
+    :exit, _reason -> {:error, :unreachable}
+  end
+
+  defp same_name_listings(name) do
+    case symbol_search().search(name) do
+      {:ok, listings} -> Enum.filter(listings, &(&1.name == name))
+      {:error, _reason} -> []
+    end
+  end
+
+  defp preferred_listing([first | _] = listings) do
+    Enum.find_value(@euro_exchanges, first, fn exchange ->
+      Enum.find(listings, &(&1.exchange == exchange))
+    end)
+  end
+
+  @doc "A sentence on why `lookup_isin/1` found nothing."
+  def lookup_error(:not_found), do: "Yahoo kennt diese ISIN nicht."
+  def lookup_error(reason), do: source_error("Yahoo", reason)
+
   @doc """
   The security that takes its prices from the Yahoo symbol in `attrs`: an existing one, or one
   created with the name, currency and price history Yahoo gives. Returns the form with the error
@@ -241,6 +283,7 @@ defmodule Zipfelfolio.MarketData do
   defp source_error(source, :invalid_response), do: "#{source} liefert eine unerwartete Antwort."
 
   defp price_feed, do: config(:price_feed)
+  defp symbol_search, do: config(:symbol_search)
   defp rate_source, do: config(:rate_source)
   defp symbol_source, do: config(:symbol_source)
   defp config(key), do: Application.fetch_env!(:zipfelfolio, __MODULE__)[key]

@@ -3,10 +3,14 @@ defmodule Zipfelfolio.Securities.Security do
   A security, shared by all users. `quote_feed` and `symbol` say where prices come from; once a
   user sets them, a PP import leaves them alone. `latest_*` is the latest quote, `fetched_at` and
   `fetch_error` the last successful and the last failed fetch, `checked_at` the last attempt.
+  `source` says where it came from: one created in zipfelfolio belongs to no PP file, so no import
+  takes it over.
   """
   use Zipfelfolio.Schema
 
   import Ecto.Changeset
+
+  alias Zipfelfolio.Securities.ISIN
 
   schema "securities" do
     field :name, :string
@@ -27,6 +31,7 @@ defmodule Zipfelfolio.Securities.Security do
     field :fetched_at, :utc_datetime_usec
     field :checked_at, :utc_datetime_usec
     field :fetch_error, :string
+    field :source, Ecto.Enum, values: [:pp_import, :manual], default: :pp_import
 
     timestamps()
   end
@@ -67,6 +72,26 @@ defmodule Zipfelfolio.Securities.Security do
     |> then(fn cs ->
       if get_field(cs, :quote_feed) == :yahoo, do: validate_required(cs, [:symbol]), else: cs
     end)
+    |> put_change(:quote_feed_set_by_user, true)
+  end
+
+  @doc """
+  A security the user creates by its ISIN, with its name and, for prices from Yahoo, its symbol;
+  without a symbol its prices are entered by hand.
+  """
+  def create_changeset(security, attrs) do
+    security
+    |> cast(attrs, [:isin, :name, :symbol])
+    |> update_change(:isin, &(&1 |> String.replace(" ", "") |> String.upcase()))
+    |> update_change(:name, &String.trim/1)
+    |> update_change(:symbol, &String.trim/1)
+    |> validate_required([:isin, :name])
+    |> validate_change(:isin, fn :isin, isin ->
+      if ISIN.valid?(isin), do: [], else: [isin: "ist keine gültige ISIN"]
+    end)
+    |> then(&put_change(&1, :quote_feed, if(get_field(&1, :symbol), do: :yahoo, else: :manual)))
+    |> put_change(:currency, "EUR")
+    |> put_change(:source, :manual)
     |> put_change(:quote_feed_set_by_user, true)
   end
 end

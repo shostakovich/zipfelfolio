@@ -133,14 +133,17 @@ defmodule Zipfelfolio.PPImport do
     {ctx, security}
   end
 
-  # Another user's import may have created the security already.
+  # Another user's import may have created the security already; one created in zipfelfolio
+  # belongs to no PP file.
   defp unlinked_security(_user_id, isin) when isin in [nil, ""], do: nil
 
   defp unlinked_security(user_id, isin) do
     linked = from l in PPSecurityLink, where: l.user_id == ^user_id, select: l.security_id
 
     Repo.one(
-      from s in Security, where: s.isin == ^isin and s.id not in subquery(linked), limit: 1
+      from s in Security,
+        where: s.isin == ^isin and s.source == :pp_import and s.id not in subquery(linked),
+        limit: 1
     )
   end
 

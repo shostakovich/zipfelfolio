@@ -42,6 +42,7 @@ config :phoenix_live_view, root_tag_attribute: "phx-r"
 
 config :zipfelfolio, Zipfelfolio.MarketData,
   price_feed: Zipfelfolio.MarketData.Yahoo,
+  symbol_search: Zipfelfolio.MarketData.Yahoo,
   rate_source: Zipfelfolio.MarketData.ECB,
   symbol_source: Zipfelfolio.MarketData.DivvyDiary,
   daily_job: true

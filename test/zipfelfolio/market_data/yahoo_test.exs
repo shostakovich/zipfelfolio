@@ -108,4 +108,21 @@ defmodule Zipfelfolio.MarketData.YahooTest do
     assert Yahoo.parse(~s({"chart": {"result": null}}), @after_close) ==
              {:error, :invalid_response}
   end
+
+  describe "parse_search/1" do
+    test "reads the listings in Yahoo's order with the long name, else the short one" do
+      assert {:ok, listings} = Yahoo.parse_search(File.read!("test/fixtures/yahoo/search.json"))
+
+      assert listings == [
+               %{symbol: "VWRL.L", name: "Vanguard FTSE All-World UCITS ETF", exchange: "LSE"},
+               %{symbol: "VGWL.DE", name: "Vanguard FTSE All-World UCITS ETF", exchange: "GER"},
+               %{symbol: "VWRL.AS", name: "VANGUARD FTSE AW", exchange: "AMS"}
+             ]
+    end
+
+    test "refuses an unexpected body" do
+      assert Yahoo.parse_search("<html>") == {:error, :invalid_response}
+      assert Yahoo.parse_search(~s({"finance": {}})) == {:error, :invalid_response}
+    end
+  end
 end

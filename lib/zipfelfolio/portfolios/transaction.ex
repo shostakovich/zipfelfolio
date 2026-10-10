@@ -2,7 +2,8 @@ defmodule Zipfelfolio.Portfolios.Transaction do
   @moduledoc """
   One business event with a portfolio side, an account side or both (ADR 0001). A buy has a
   portfolio and an account; a security transfer goes from `portfolio` to `other_portfolio`, a cash
-  transfer from `account` to `other_account`. Amounts in cents, shares × 10⁸.
+  transfer from `account` to `other_account`. Amounts in cents, shares × 10⁸. `source` says where
+  it came from: a PP import replaces only its own transactions.
   """
   use Zipfelfolio.Schema
 
@@ -44,6 +45,7 @@ defmodule Zipfelfolio.Portfolios.Transaction do
     field :pp_uuid, :string
     field :pp_other_uuid, :string
     field :pp_source, :string
+    belongs_to :receipt, Zipfelfolio.Portfolios.Receipt
 
     has_many :units, TransactionUnit
 
@@ -51,4 +53,21 @@ defmodule Zipfelfolio.Portfolios.Transaction do
   end
 
   def types, do: @types
+
+  @doc """
+  Whether the user may edit or delete the transaction: one booked in zipfelfolio, of a type the
+  transaction form knows. The PP import's are read-only.
+  """
+  def editable?(%__MODULE__{source: source, type: type}),
+    do:
+      source != :pp_import and
+        type in [
+          :buy,
+          :sell,
+          :inbound_delivery,
+          :outbound_delivery,
+          :dividend,
+          :deposit,
+          :removal
+        ]
 end

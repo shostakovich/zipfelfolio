@@ -3,13 +3,15 @@ defmodule Zipfelfolio.MarketData.Yahoo do
   Prices from Yahoo's chart API. An explicit range keeps daily data (`range=max` thins it out).
   Stores the plain close, not the adjusted one, which would count distributions twice. The name
   is Yahoo's long name, else its short one. Closes of 0 are gaps, not prices. Pence and cents are named as ISO 4217 lists them,
-  `GBX` for Yahoo's `GBp` and `ZAC` for its `ZAc`.
+  `GBX` for Yahoo's `GBp` and `ZAC` for its `ZAc`. Yahoo's search finds the listings of an ISIN.
   """
   @behaviour Zipfelfolio.MarketData.PriceFeed
+  @behaviour Zipfelfolio.MarketData.SymbolSearch
 
   alias Zipfelfolio.MarketData.HTTP
 
   @url "https://query1.finance.yahoo.com/v8/finance/chart/"
+  @search_url "https://query1.finance.yahoo.com/v1/finance/search"
 
   # Daily candles start at the open or at local midnight. Older ones use today's UTC offset, which
   # may be an hour off across daylight saving time, so their day is read a few hours in.
@@ -91,5 +93,33 @@ defmodule Zipfelfolio.MarketData.Yahoo do
     |> Decimal.round(4)
     |> Decimal.mult(100_000_000)
     |> Decimal.to_integer()
+  end
+
+  @impl Zipfelfolio.MarketData.SymbolSearch
+  def search(query) do
+    case HTTP.get(@search_url, q: query, quotesCount: 20, newsCount: 0, listsCount: 0) do
+      {:ok, 200, body} -> parse_search(body)
+      {:ok, status, _body} -> {:error, {:http_status, status}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "Reads a search response: the listings with a symbol, in Yahoo's order."
+  def parse_search(body) do
+    case JSON.decode(body) do
+      {:ok, %{"quotes" => quotes}} when is_list(quotes) ->
+        {:ok, for(%{"symbol" => symbol} = quote <- quotes, do: listing(symbol, quote))}
+
+      _invalid ->
+        {:error, :invalid_response}
+    end
+  end
+
+  defp listing(symbol, quote) do
+    %{
+      symbol: symbol,
+      name: quote["longname"] || quote["shortname"] || symbol,
+      exchange: quote["exchange"]
+    }
   end
 end
