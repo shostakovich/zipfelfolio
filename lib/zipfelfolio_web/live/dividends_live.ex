@@ -13,8 +13,6 @@ defmodule ZipfelfolioWeb.DividendsLive do
     {"received", :received, "Erhalten"}
   ]
   @amounts [{"net", :net, "Netto"}, {"gross", :gross, "Brutto"}]
-  @month_names ~w(Januar Februar März April Mai Juni Juli August September Oktober November Dezember)
-
   @year_colours ~w(taupe mustard now)
   @recent_years 2
 
@@ -187,7 +185,7 @@ defmodule ZipfelfolioWeb.DividendsLive do
             class="mb-4"
           >
             <h2 class="app-calendar-month">
-              <span>{month_name(first)} {first.year}</span>
+              <span>{Format.month_name(first)} {first.year}</span>
               <span class="app-calendar-total">
                 <.partly_gross :if={partly_gross?(dividends, @amount)} class="fw-normal" />
                 <span class="tabular-nums">{expected_total(dividends, @amount, 2)}</span>
@@ -534,13 +532,11 @@ defmodule ZipfelfolioWeb.DividendsLive do
   defp yield(_cents, 0), do: "–"
   defp yield(cents, whole), do: cents |> Format.percent_of(whole) |> Format.percent()
 
-  defp month_name(date), do: Enum.at(@month_names, date.month - 1)
-
   defp coming_months_label(months, amount) do
     "Erwartete Dividenden " <>
       Enum.map_join(months, ", ", fn month ->
         cents = month.announced[amount] + month.forecast[amount]
-        "#{month_name(month.month)} #{month.month.year} #{Format.euros(cents)}"
+        "#{Format.month_name(month.month)} #{month.month.year} #{Format.euros(cents)}"
       end)
   end
 
@@ -644,7 +640,7 @@ defmodule ZipfelfolioWeb.DividendsLive do
             %{
               label: Format.month_abbr(month.month),
               year: if(month.month.month == 1, do: month.month.year),
-              title: "#{month_name(month.month)} #{month.month.year}",
+              title: "#{Format.month_name(month.month)} #{month.month.year}",
               announced: month.announced[assigns.amount],
               forecast: month.forecast[assigns.amount]
             }
