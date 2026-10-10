@@ -94,16 +94,19 @@ defmodule Zipfelfolio.Securities do
   `date` on, so that every day from `date` on finds its price; all of them when none is that old.
   """
   def list_closes_since(security_ids, date) do
+    last_on_or_before =
+      from q in Price,
+        where: q.security_id == parent_as(:security).id and q.date <= ^date,
+        select: max(q.date)
+
+    # Per security a range of the index on security and date, instead of a check of every close.
     Repo.all(
-      from p in Price,
-        as: :price,
-        where: p.security_id in ^security_ids,
-        where:
-          not exists(
-            from q in Price,
-              where: q.security_id == parent_as(:price).security_id,
-              where: q.date > parent_as(:price).date and q.date <= ^date
-          ),
+      from s in Security,
+        as: :security,
+        join: p in Price,
+        on: p.security_id == s.id,
+        where: s.id in ^security_ids,
+        where: p.date >= coalesce(subquery(last_on_or_before), ^~D[0001-01-01]),
         select: {p.security_id, p.date, p.close}
     )
   end
