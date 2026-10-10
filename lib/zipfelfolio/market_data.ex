@@ -16,7 +16,8 @@ defmodule Zipfelfolio.MarketData do
 
   def subscribe, do: Phoenix.PubSub.subscribe(Zipfelfolio.PubSub, @topic)
 
-  defp broadcast, do: Phoenix.PubSub.broadcast(Zipfelfolio.PubSub, @topic, :market_data_updated)
+  @doc "Tells every page that prices or holdings changed, so that it loads them again."
+  def broadcast, do: Phoenix.PubSub.broadcast(Zipfelfolio.PubSub, @topic, :market_data_updated)
 
   @doc """
   Fetches the exchange rates, the prices of every Yahoo security and, with an API key, the

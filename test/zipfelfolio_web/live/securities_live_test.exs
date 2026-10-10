@@ -2,9 +2,9 @@ defmodule ZipfelfolioWeb.SecuritiesLiveTest do
   use ZipfelfolioWeb.ConnCase
 
   import Phoenix.LiveViewTest
-  import Zipfelfolio.SecuritiesFixtures
+  import Zipfelfolio.{PortfoliosFixtures, SecuritiesFixtures}
 
-  alias Zipfelfolio.{ExchangeRates, FakePriceFeed, MarketData, Repo}
+  alias Zipfelfolio.{ExchangeRates, FakePriceFeed, LocalTime, MarketData, Repo}
 
   setup :register_and_log_in_user
 
@@ -162,6 +162,33 @@ defmodule ZipfelfolioWeb.SecuritiesLiveTest do
     lv |> element("#security-#{security.id} button", "Löschen") |> render_click()
 
     assert prices_of(security) == []
+  end
+
+  test "entering or deleting a manual price updates the sidebar", %{conn: conn, scope: scope} do
+    security = security_fixture(quote_feed: :manual, symbol: nil)
+    today = LocalTime.today()
+    price_fixture(security, Date.add(today, -1), price(100), :pp)
+    portfolio = portfolio_fixture(scope)
+
+    transaction_fixture(scope, Date.add(today, -1),
+      type: :inbound_delivery,
+      portfolio_id: portfolio.id,
+      security_id: security.id,
+      shares: shares(10)
+    )
+
+    {:ok, lv, _html} = live(conn, ~p"/settings/securities")
+    assert lv |> element("#side-portfolio-#{portfolio.id}") |> render() =~ "1.000,00"
+
+    lv
+    |> form("#manual-price-#{security.id}", price: %{date: Date.to_iso8601(today), close: "120"})
+    |> render_submit()
+
+    assert lv |> element("#side-portfolio-#{portfolio.id}") |> render() =~ "1.200,00"
+
+    lv |> element("#security-#{security.id} button", "Löschen") |> render_click()
+
+    assert lv |> element("#side-portfolio-#{portfolio.id}") |> render() =~ "1.000,00"
   end
 
   test "deleting a manual price lets Yahoo fill that day again", %{conn: conn} do

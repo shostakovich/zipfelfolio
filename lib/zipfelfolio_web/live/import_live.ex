@@ -1,7 +1,7 @@
 defmodule ZipfelfolioWeb.ImportLive do
   use ZipfelfolioWeb, :live_view
 
-  alias Zipfelfolio.{Portfolios, PPImport}
+  alias Zipfelfolio.{MarketData, Portfolios, PPImport}
 
   @labels [
     securities: "Wertpapiere",
@@ -125,6 +125,8 @@ defmodule ZipfelfolioWeb.ImportLive do
 
     case result do
       {:ok, summary} ->
+        MarketData.broadcast()
+
         {:noreply,
          socket
          |> assign(:summary, summary)
