@@ -278,7 +278,9 @@ defmodule Zipfelfolio.MarketData do
 
   defp fetch_error(reason, _security), do: source_error("Yahoo", reason)
 
-  defp source_error(source, :unreachable), do: "#{source} ist nicht erreichbar."
+  defp source_error(source, reason) when reason in [:unreachable, :timeout],
+    do: "#{source} ist nicht erreichbar."
+
   defp source_error(source, {:http_status, status}), do: "#{source} antwortet mit HTTP #{status}."
   defp source_error(source, :invalid_response), do: "#{source} liefert eine unerwartete Antwort."
 

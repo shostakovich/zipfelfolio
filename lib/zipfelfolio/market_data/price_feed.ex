@@ -12,7 +12,8 @@ defmodule Zipfelfolio.MarketData.PriceFeed do
           closes: [{Date.t(), integer}],
           quote: quote_
         }
-  @type reason :: :not_found | :unreachable | :invalid_response | {:http_status, pos_integer}
+  @type reason ::
+          :not_found | :unreachable | :timeout | :invalid_response | {:http_status, pos_integer}
 
   @callback chart(symbol :: String.t(), from :: Date.t() | nil, now :: DateTime.t()) ::
               {:ok, chart} | {:error, reason}

@@ -435,6 +435,7 @@ defmodule Zipfelfolio.MarketDataTest do
       FakeSymbolSearch.stub(fn _query -> {:error, :unreachable} end)
       assert {:error, :unreachable} = MarketData.lookup_isin("IE00BKM4GZ66")
       assert MarketData.lookup_error(:unreachable) == "Yahoo ist nicht erreichbar."
+      assert MarketData.lookup_error(:timeout) == "Yahoo ist nicht erreichbar."
     end
   end
 
