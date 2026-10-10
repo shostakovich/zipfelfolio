@@ -1,8 +1,8 @@
 defmodule Zipfelfolio.MarketData do
   @moduledoc """
-  Fetches prices and exchange rates and stores them. The daily job calls `run_daily/1`; pages
-  refresh stale quotes in the background and hear about every update over PubSub. Screens never
-  call a source themselves.
+  Fetches prices, exchange rates and the compositions of the funds and stores them. The daily job
+  calls `run_daily/1`; pages refresh stale quotes in the background and hear about every update
+  over PubSub. Screens never call a source themselves.
   """
 
   require Logger
@@ -16,11 +16,13 @@ defmodule Zipfelfolio.MarketData do
 
   def subscribe, do: Phoenix.PubSub.subscribe(Zipfelfolio.PubSub, @topic)
 
-  defp broadcast, do: Phoenix.PubSub.broadcast(Zipfelfolio.PubSub, @topic, :market_data_updated)
+  @doc "Tells every page that prices or holdings changed, so that it loads them again."
+  def broadcast, do: Phoenix.PubSub.broadcast(Zipfelfolio.PubSub, @topic, :market_data_updated)
 
   @doc """
-  Fetches the exchange rates and the prices of every Yahoo security, then records the run. A
-  step that fails, even with an exception, is recorded and does not stop the others.
+  Fetches the exchange rates, the prices of every Yahoo security and, with an API key, the
+  composition of every security with an ISIN, then records the run. A step that fails, even with
+  an exception or an exit, is recorded or logged and does not stop the others.
   """
   def run_daily(now \\ DateTime.utc_now()) do
     rates_error = update_rates()
@@ -29,9 +31,16 @@ defmodule Zipfelfolio.MarketData do
       update_prices_safely(security, Securities.last_price_date(security), now)
     end
 
+    if compositions_available?() do
+      Enum.each(Securities.list_securities_with_isin(), &update_composition(&1, now))
+    end
+
     record_run(now, rates_error)
     broadcast()
   end
+
+  @doc "Whether compositions can be fetched, i.e. their source has its API key."
+  def compositions_available?, do: composition_source().available?()
 
   def last_run, do: Repo.get_by(JobRun, name: "daily")
 
@@ -54,6 +63,8 @@ defmodule Zipfelfolio.MarketData do
     end
   rescue
     exception -> log_and_describe(exception, __STACKTRACE__, "Die Wechselkurse")
+  catch
+    :exit, _reason -> exited("the exchange rates", "Die Wechselkurse")
   end
 
   @doc """
@@ -92,6 +103,9 @@ defmodule Zipfelfolio.MarketData do
     exception ->
       message = log_and_describe(exception, __STACKTRACE__, "Die Kurse")
       record_failure(security, message, now)
+  catch
+    :exit, _reason ->
+      record_failure(security, exited("the prices of #{security.symbol}", "Die Kurse"), now)
   end
 
   # Recording fails too when the database is the problem; the log has it then.
@@ -108,6 +122,25 @@ defmodule Zipfelfolio.MarketData do
         Securities.record_quote(current, chart.quote, now)
       end)
     end
+  end
+
+  # A failed fetch keeps the stored composition; one DivvyDiary does not know is no error.
+  defp update_composition(security, now) do
+    case composition_source().composition(security.isin) do
+      {:ok, composition} ->
+        Securities.replace_composition(security, composition, now)
+
+      {:error, :not_found} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("No composition for #{security.isin}: #{inspect(reason)}")
+    end
+  rescue
+    exception -> Logger.error(Exception.format(:error, exception, __STACKTRACE__))
+  catch
+    # The reason of an exit from `:httpc` holds the request, the API key with it.
+    :exit, _reason -> Logger.error("No composition for #{security.isin}: the request exited")
   end
 
   # Yahoo refuses a start after the end.
@@ -144,6 +177,12 @@ defmodule Zipfelfolio.MarketData do
     "#{what} ließen sich nicht speichern: #{Exception.message(exception)}"
   end
 
+  # The reason of an exit, e.g. from `:httpc`, may hold the request with its credentials.
+  defp exited(logged, what) do
+    Logger.error("The request for #{logged} exited")
+    "#{what} ließen sich nicht abrufen."
+  end
+
   defp check_currency(%{currency: currency}, %{currency: expected})
        when expected in [nil, currency], do: :ok
 
@@ -164,5 +203,6 @@ defmodule Zipfelfolio.MarketData do
 
   defp price_feed, do: config(:price_feed)
   defp rate_source, do: config(:rate_source)
+  defp composition_source, do: config(:composition_source)
   defp config(key), do: Application.fetch_env!(:zipfelfolio, __MODULE__)[key]
 end

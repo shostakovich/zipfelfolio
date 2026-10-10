@@ -53,3 +53,37 @@ defmodule Zipfelfolio.FakeRateSource do
     end
   end
 end
+
+defmodule Zipfelfolio.FakeCompositionSource do
+  @moduledoc """
+  The composition source in tests, like `Zipfelfolio.FakePriceFeed`; reports `{:composition, isin}`.
+  Without a stub, or stubbed with `api_key: false`, it has no API key and is not available.
+  """
+  @behaviour Zipfelfolio.MarketData.CompositionSource
+
+  @doc "Answers with `fun`, by default as if DivvyDiary knew no ISIN."
+  def stub(fun \\ fn _isin -> {:error, :not_found} end, opts \\ []) do
+    Application.put_env(
+      :zipfelfolio,
+      __MODULE__,
+      {self(), fun, Keyword.get(opts, :api_key, true)}
+    )
+
+    ExUnit.Callbacks.on_exit(fn -> Application.delete_env(:zipfelfolio, __MODULE__) end)
+  end
+
+  @impl true
+  def available?, do: match?({_test, _fun, true}, Application.get_env(:zipfelfolio, __MODULE__))
+
+  @impl true
+  def composition(isin) do
+    case Application.get_env(:zipfelfolio, __MODULE__) do
+      {test, fun, _api_key} ->
+        send(test, {:composition, isin})
+        fun.(isin)
+
+      nil ->
+        {:error, :unreachable}
+    end
+  end
+end

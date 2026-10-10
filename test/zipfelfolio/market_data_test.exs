@@ -3,7 +3,14 @@ defmodule Zipfelfolio.MarketDataTest do
 
   import Zipfelfolio.SecuritiesFixtures
 
-  alias Zipfelfolio.{ExchangeRates, FakePriceFeed, FakeRateSource, MarketData}
+  alias Zipfelfolio.{
+    ExchangeRates,
+    FakeCompositionSource,
+    FakePriceFeed,
+    FakeRateSource,
+    MarketData
+  }
+
   alias Zipfelfolio.Securities.Security
 
   @now ~U[2026-10-09 16:00:00.000000Z]
@@ -23,7 +30,7 @@ defmodule Zipfelfolio.MarketDataTest do
 
       assert_received {:rates, ~D[1999-01-04]}
       assert_received {:chart, "VGWL.DE", nil}
-      assert ExchangeRates.rate_on("USD", ~D[2026-10-09]) == Decimal.new("1.1186")
+      assert ExchangeRates.latest("USD").rate == Decimal.new("1.1186")
       assert prices_of(security) == [{~D[2026-10-08], 100, :yahoo}]
 
       security = Repo.reload!(security)
@@ -124,6 +131,25 @@ defmodule Zipfelfolio.MarketDataTest do
       assert prices_of(fine) == [{~D[2026-10-08], 100, :yahoo}]
     end
 
+    test "an exit is recorded without its reason, which may hold the request" do
+      broken = security_fixture(symbol: "BROKEN.DE")
+      fine = security_fixture(symbol: "FINE.DE")
+      FakeRateSource.stub(fn _from -> exit({:noproc, [{"authorization", "SECRET"}]}) end)
+
+      FakePriceFeed.stub(fn
+        "BROKEN.DE", _from, _now -> exit({:noproc, [{"authorization", "SECRET"}]})
+        _symbol, _from, _now -> {:ok, FakePriceFeed.chart_result([{~D[2026-10-08], 100}])}
+      end)
+
+      log = ExUnit.CaptureLog.capture_log(fn -> MarketData.run_daily(@now) end)
+
+      assert MarketData.last_run().error == "Die Wechselkurse ließen sich nicht abrufen."
+      assert Repo.reload!(broken).fetch_error == "Die Kurse ließen sich nicht abrufen."
+      assert prices_of(fine) == [{~D[2026-10-08], 100, :yahoo}]
+      assert log =~ "BROKEN.DE"
+      refute log =~ "SECRET"
+    end
+
     test "never asks for prices after today" do
       security = security_fixture()
       price_fixture(security, ~D[2026-12-24], 100, :manual)
@@ -140,6 +166,115 @@ defmodule Zipfelfolio.MarketDataTest do
       MarketData.run_daily(@now)
 
       assert_received :market_data_updated
+    end
+  end
+
+  describe "run_daily/1 with DivvyDiary" do
+    defp composition(countries, sectors \\ %{}),
+      do: {:ok, %{countries: countries, sectors: sectors}}
+
+    test "stores the composition of each security with an ISIN; the next run replaces it" do
+      security = security_fixture(isin: "IE00B3RBWM25")
+      FakeCompositionSource.stub(fn _isin -> composition(%{"US" => 1}, %{"Energy" => 1}) end)
+
+      MarketData.run_daily(@now)
+
+      assert_received {:composition, "IE00B3RBWM25"}
+
+      assert %{countries: %{"US" => 1}, sectors: %{"Energy" => 1}, fetched_at: @now} =
+               composition_of(security)
+
+      later = DateTime.add(@now, 1, :day)
+      FakeCompositionSource.stub(fn _isin -> composition(%{"JP" => 0.4, "BR" => 0.6}) end)
+
+      MarketData.run_daily(later)
+
+      assert %{countries: countries, sectors: sectors, fetched_at: ^later} =
+               composition_of(security)
+
+      assert {countries, sectors} == {%{"JP" => 0.4, "BR" => 0.6}, %{}}
+    end
+
+    test "asks nothing without an API key" do
+      security_fixture(isin: "IE00B3RBWM25")
+      FakeCompositionSource.stub(fn _isin -> composition(%{"US" => 1}) end, api_key: false)
+
+      MarketData.run_daily(@now)
+
+      refute_received {:composition, _isin}
+    end
+
+    test "asks neither for securities without an ISIN nor for retired ones" do
+      security_fixture(isin: nil)
+      security_fixture(isin: "")
+      security_fixture(isin: "IE00B4L5Y983", retired: true)
+      FakeCompositionSource.stub()
+
+      MarketData.run_daily(@now)
+
+      refute_received {:composition, _isin}
+    end
+
+    test "a failed fetch keeps the stored composition and does not stop the others" do
+      failing = security_fixture(isin: "IE00B3RBWM25", name: "A")
+      unknown = security_fixture(isin: "IE00B4L5Y983", name: "B")
+      fine = security_fixture(isin: "IE00BKM4GZ66", name: "C")
+      composition_fixture(failing, %{"US" => 1})
+
+      FakeCompositionSource.stub(fn
+        "IE00B3RBWM25" -> {:error, {:http_status, 503}}
+        "IE00B4L5Y983" -> {:error, :not_found}
+        _isin -> composition(%{"BR" => 1})
+      end)
+
+      log = ExUnit.CaptureLog.capture_log(fn -> MarketData.run_daily(@now) end)
+
+      assert log =~ "IE00B3RBWM25"
+      refute log =~ "IE00B4L5Y983"
+      assert %{countries: %{"US" => 1}} = composition_of(failing)
+      assert composition_of(unknown) == nil
+      assert %{countries: %{"BR" => 1}} = composition_of(fine)
+    end
+
+    test "an exception is logged and does not stop the others" do
+      security_fixture(isin: "IE00B3RBWM25", name: "A")
+      fine = security_fixture(isin: "IE00BKM4GZ66", name: "B")
+
+      FakeCompositionSource.stub(fn
+        "IE00B3RBWM25" -> raise "composition exploded"
+        _isin -> composition(%{"BR" => 1})
+      end)
+
+      log = ExUnit.CaptureLog.capture_log(fn -> MarketData.run_daily(@now) end)
+
+      assert log =~ "composition exploded"
+      assert %{countries: %{"BR" => 1}} = composition_of(fine)
+    end
+
+    test "an exit is logged without its reason, which may hold the API key" do
+      security_fixture(isin: "IE00B3RBWM25", name: "A")
+      fine = security_fixture(isin: "IE00BKM4GZ66", name: "B")
+
+      FakeCompositionSource.stub(fn
+        "IE00B3RBWM25" -> exit({:noproc, [{"x-api-key", "SECRET"}]})
+        _isin -> composition(%{"BR" => 1})
+      end)
+
+      log = ExUnit.CaptureLog.capture_log(fn -> MarketData.run_daily(@now) end)
+
+      assert log =~ "IE00B3RBWM25"
+      refute log =~ "SECRET"
+      assert %{countries: %{"BR" => 1}} = composition_of(fine)
+    end
+  end
+
+  describe "compositions_available?/0" do
+    test "says whether the source has its API key" do
+      refute MarketData.compositions_available?()
+
+      FakeCompositionSource.stub()
+
+      assert MarketData.compositions_available?()
     end
   end
 

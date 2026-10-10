@@ -49,6 +49,12 @@ Self-hosted portfolio tracker for one household. Replaces Portfolio Performance 
 - _Example:_ "Bought 10 for 1,000 €, then 10 for 1,200 € plus 10 € fee, sold 15: the remaining 5 have a purchase
   value of 605 €"
 
+**Distribution** · _de:_ Ausschüttung
+- What a **Security** paid per share on a payment date, from the **User**'s dividend transactions: their gross
+  value before taxes and fees per share, in the security's currency where PP knows the gross value in it, else
+  in the payment's.
+- _Example:_ "0,50 USD per share on 30 September, for 40 shares"
+
 ## Bookings
 
 **Transaction** · _de:_ Buchung
@@ -83,5 +89,7 @@ Self-hosted portfolio tracker for one household. Replaces Portfolio Performance 
 - _Avoid:_ Look-through, weighting
 
 **Allocation** · _de:_ Aufteilung
-- The shares of **Net worth** per region, per sector or per **Classification**, compared with target weights. Regions
-  and sectors come from the **Compositions** of the held funds.
+- The shares of the shown securities' value per region or per sector, or of the assigned value per top-level
+  **Classification**, compared with its target weight. Regions and sectors come from the **Compositions** of the held
+  funds; accounts do not count, and securities without one are „Ohne Angabe“. The shares of the classifications
+  refer to the value assigned in their **Taxonomy**, as their target weights do; the rest is „Ohne Kategorie“.

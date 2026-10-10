@@ -1,18 +1,21 @@
 defmodule Zipfelfolio.Securities do
   @moduledoc """
-  Securities, their prices and attribute types. They are shared by all users, so every signed-in
-  user may read and change them; the scope only says who is asking.
+  Securities, their prices, compositions and attribute types. They are shared by all users, so
+  every signed-in user may read and change them; the scope only says who is asking.
   """
 
   import Ecto.Changeset
   import Ecto.Query, warn: false
 
-  alias Zipfelfolio.{LocalTime, Repo}
-  alias Zipfelfolio.Securities.{Price, Security}
+  alias Zipfelfolio.{Allocation, LocalTime, Repo}
+  alias Zipfelfolio.Securities.{AttributeType, Composition, Price, Security}
   alias Zipfelfolio.Users.Scope
 
   def list_securities(%Scope{}),
     do: Repo.all(from s in Security, order_by: [s.retired, fragment("? COLLATE NOCASE", s.name)])
+
+  @doc "The security with `id`, nil for an unknown one."
+  def get_security(%Scope{}, id), do: Repo.get(Security, id)
 
   def list_prices(%Scope{}, %Security{id: id}),
     do: Repo.all(from p in Price, where: p.security_id == ^id, order_by: p.date)
@@ -29,17 +32,20 @@ defmodule Zipfelfolio.Securities do
   statement, so that pages opened at the same time fetch each quote once.
   """
   def claim_unchecked_yahoo_securities(cutoff, now) do
-    {_count, securities} =
-      Repo.update_all(
-        from(s in Security,
-          where: s.quote_feed == :yahoo and not s.retired,
-          where: is_nil(s.checked_at) or s.checked_at < ^cutoff,
-          select: s
-        ),
-        set: [checked_at: now]
-      )
+    unchecked =
+      from s in Security,
+        where: s.quote_feed == :yahoo and not s.retired,
+        where: is_nil(s.checked_at) or s.checked_at < ^cutoff
 
-    securities
+    # Only a write waits for another, such as an import, so pages read first.
+    if Repo.exists?(unchecked) do
+      {_count, securities} =
+        Repo.update_all(select(unchecked, [s], s), set: [checked_at: now])
+
+      securities
+    else
+      []
+    end
   end
 
   @doc """
@@ -85,6 +91,30 @@ defmodule Zipfelfolio.Securities do
       end)
 
     result
+  end
+
+  def list_securities_by_id(ids), do: Repo.all(from s in Security, where: s.id in ^ids)
+
+  @doc """
+  The closes of the securities as `{security_id, date, close}` from the last one on or before
+  `date` on, so that every day from `date` on finds its price; all of them when none is that old.
+  """
+  def list_closes_since(security_ids, date) do
+    last_on_or_before =
+      from q in Price,
+        where: q.security_id == parent_as(:security).id and q.date <= ^date,
+        select: max(q.date)
+
+    # Per security a range of the index on security and date, instead of a check of every close.
+    Repo.all(
+      from s in Security,
+        as: :security,
+        join: p in Price,
+        on: p.security_id == s.id,
+        where: s.id in ^security_ids,
+        where: p.date >= coalesce(subquery(last_on_or_before), ^~D[0001-01-01]),
+        select: {p.security_id, p.date, p.close}
+    )
   end
 
   def last_price_date(%Security{id: id}),
@@ -162,7 +192,7 @@ defmodule Zipfelfolio.Securities do
   defp validate_not_in_future(changeset) do
     date = get_field(changeset, :date)
 
-    if date && Date.after?(date, NaiveDateTime.to_date(LocalTime.now())),
+    if date && Date.after?(date, LocalTime.today()),
       do: add_error(changeset, :date, "darf nicht in der Zukunft liegen"),
       else: changeset
   end
@@ -242,4 +272,58 @@ defmodule Zipfelfolio.Securities do
   end
 
   defp update_manual_quote(security), do: security
+
+  ## Compositions
+
+  @doc "The securities DivvyDiary may know: those with an ISIN, without retired ones."
+  def list_securities_with_isin do
+    Repo.all(
+      from s in Security,
+        where: not is_nil(s.isin) and s.isin != "" and not s.retired,
+        order_by: s.name
+    )
+  end
+
+  @doc "Stores the composition of a security, fetched at `now`, in place of the one before."
+  def replace_composition(%Security{id: id}, %{countries: countries, sectors: sectors}, now) do
+    Repo.insert!(
+      %Composition{security_id: id, countries: countries, sectors: sectors, fetched_at: now},
+      on_conflict: {:replace, [:countries, :sectors, :fetched_at]},
+      conflict_target: :security_id
+    )
+  end
+
+  @doc "The compositions of the securities with `ids` as `%{security_id => composition}`."
+  def list_compositions(ids) do
+    from(c in Composition, where: c.security_id in ^ids)
+    |> Repo.all()
+    |> Map.new(&{&1.security_id, &1})
+  end
+
+  ## Profile
+
+  @attributes_of_securities "name.abuchen.portfolio.model.Security"
+
+  @doc """
+  The profile of `security`:
+
+  - `ter` and `fund_size`, see `Security.ter/1` and `Security.fund_size/1`
+  - `attributes`: every other attribute set on it with its type, see `Security.attributes/2`
+  - `composition`: its regions and sectors, see `Allocation.of_composition/1`; nil without one
+  """
+  def profile(%Scope{}, %Security{} = security) do
+    types =
+      Repo.all(
+        from t in AttributeType, where: t.target == @attributes_of_securities, order_by: t.id
+      )
+
+    composition = Repo.get_by(Composition, security_id: security.id)
+
+    %{
+      ter: Security.ter(security),
+      fund_size: Security.fund_size(security),
+      attributes: Security.attributes(security, types),
+      composition: composition && Allocation.of_composition(composition)
+    }
+  end
 end

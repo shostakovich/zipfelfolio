@@ -6,7 +6,9 @@ and a [DivvyDiary](https://divvydiary.com/) subscription. **The user interface i
 
 ## Status
 
-Skeleton: sign-in with passkeys or a link by email, container and deploy. No portfolio features yet.
+Built so far: the import of a Portfolio Performance file, prices from Yahoo and ECB exchange rates fetched daily,
+the overview (net worth, its chart, TTWROR, IRR, dividends), the holdings with costs and allocation, and a page per
+security; sign-in with passkeys or a link by email, container and deploy.
 
 - [Issues](https://github.com/shostakovich/zipfelfolio/issues): scope and decisions per feature, milestones v1–v4
 - `mockup/`: click dummy with example data, built with [felt-css](https://felt-css.rocu.de/)
@@ -24,6 +26,9 @@ mix phx.server
 Open http://localhost:4000, ask for a sign-in link and find it at http://localhost:4000/dev/mailbox.
 In the settings you can then add a passkey. There is no sign-up and there are no passwords.
 
+The countries and sectors of the funds come from DivvyDiary's API, which needs a key in the environment variable
+`DIVVYDIARY_API_KEY`; without it the holdings and security pages show no regions and sectors.
+
 Click dummy:
 
 ```sh
@@ -37,7 +42,7 @@ python3 -m http.server 8077 --directory mockup
 
 ## Stack
 
-Elixir, Phoenix LiveView, SQLite, felt-css; one container behind a reverse proxy.
+Elixir, Phoenix LiveView, SQLite, felt-css, Chart.js; one container behind a reverse proxy.
 
 ## License
 

@@ -25,6 +25,17 @@ defmodule ZipfelfolioWeb.ImportLiveTest do
     assert length(Portfolios.list_portfolios(scope)) == 2
   end
 
+  test "shows the imported portfolios in the sidebar of every open page", %{conn: conn} do
+    {:ok, overview, _html} = live(conn, ~p"/")
+    {:ok, lv, _html} = live(conn, ~p"/settings/import")
+    refute has_element?(lv, "#side-portfolios")
+
+    upload(lv, "sample.portfolio", File.read!("test/fixtures/pp/sample.portfolio"))
+
+    assert has_element?(lv, "#side-portfolios")
+    assert has_element?(overview, "#side-portfolios")
+  end
+
   test "explains why a file cannot be imported", %{conn: conn} do
     {:ok, lv, _html} = live(conn, ~p"/settings/import")
 

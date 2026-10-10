@@ -11,7 +11,12 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} current={:settings}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      sidebar={@sidebar}
+      current={:settings}
+    >
       <.header>
         Wertpapiere
         <:actions>
@@ -184,11 +189,6 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      MarketData.subscribe()
-      MarketData.refresh_stale_quotes()
-    end
-
     {:ok, socket |> assign(:page_title, "Wertpapiere") |> load()}
   end
 
@@ -253,6 +253,7 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
 
     case Securities.add_manual_price(socket.assigns.current_scope, security, params) do
       {:ok, _price} ->
+        MarketData.broadcast()
         {:noreply, socket |> load() |> put_flash(:info, "Kurs eingetragen.")}
 
       {:error, changeset} ->
@@ -263,11 +264,12 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
   def handle_event("delete_price", %{"security_id" => id, "price-id" => price_id}, socket) do
     security = security!(socket, id)
 
-    # Yahoo fills the day again; the daily run only fetches from the last stored day on.
     with {:ok, price} <-
-           Securities.delete_manual_price(socket.assigns.current_scope, security, price_id),
-         :yahoo <- security.quote_feed do
-      MarketData.fetch_in_background(security, price.date)
+           Securities.delete_manual_price(socket.assigns.current_scope, security, price_id) do
+      MarketData.broadcast()
+
+      # Yahoo fills the day again; the daily run only fetches from the last stored day on.
+      if security.quote_feed == :yahoo, do: MarketData.fetch_in_background(security, price.date)
     end
 
     {:noreply, socket |> load() |> put_flash(:info, "Kurs gelöscht.")}

@@ -1,7 +1,7 @@
 defmodule ZipfelfolioWeb.ImportLive do
   use ZipfelfolioWeb, :live_view
 
-  alias Zipfelfolio.{Portfolios, PPImport}
+  alias Zipfelfolio.{MarketData, Portfolios, PPImport}
 
   @labels [
     securities: "Wertpapiere",
@@ -19,7 +19,12 @@ defmodule ZipfelfolioWeb.ImportLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} current={:settings}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      sidebar={@sidebar}
+      current={:settings}
+    >
       <.header>
         Import aus Portfolio Performance
         <:actions>
@@ -120,6 +125,8 @@ defmodule ZipfelfolioWeb.ImportLive do
 
     case result do
       {:ok, summary} ->
+        MarketData.broadcast()
+
         {:noreply,
          socket
          |> assign(:summary, summary)

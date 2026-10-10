@@ -22,16 +22,34 @@ defmodule Zipfelfolio.ExchangeRates do
     )
   end
 
-  @doc "The last rate on or before `date`, so weekends and holidays get the one before."
-  def rate_on("EUR", _date), do: Decimal.new(1)
+  @doc """
+  The rates of the currencies as `{currency, date, rate}` from the last one on or before `date`
+  on, so that every day from `date` on finds its rate; all of them when none is that old.
+  """
+  def list_rates_since(currencies, date) do
+    # Per currency a range of the index on currency and date, instead of a check of every rate.
+    Enum.flat_map(currencies, fn currency ->
+      last_on_or_before =
+        from q in ExchangeRate,
+          where: q.currency == ^currency and q.date <= ^date,
+          select: max(q.date)
 
-  def rate_on(currency, date) do
+      Repo.all(
+        from r in ExchangeRate,
+          where: r.currency == ^currency,
+          where: r.date >= coalesce(subquery(last_on_or_before), ^~D[0001-01-01]),
+          select: {r.currency, r.date, r.rate}
+      )
+    end)
+  end
+
+  @doc "The latest rate of `currency` with its date, nil without any."
+  def latest(currency) do
     Repo.one(
       from r in ExchangeRate,
-        where: r.currency == ^currency and r.date <= ^date,
+        where: r.currency == ^currency,
         order_by: [desc: r.date],
-        limit: 1,
-        select: r.rate
+        limit: 1
     )
   end
 

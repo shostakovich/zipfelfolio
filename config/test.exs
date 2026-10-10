@@ -17,6 +17,7 @@ config :zipfelfolio, Zipfelfolio.Mailer, adapter: Swoosh.Adapters.Test
 config :zipfelfolio, Zipfelfolio.MarketData,
   price_feed: Zipfelfolio.FakePriceFeed,
   rate_source: Zipfelfolio.FakeRateSource,
+  composition_source: Zipfelfolio.FakeCompositionSource,
   daily_job: false
 
 config :logger, level: :warning

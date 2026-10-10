@@ -15,7 +15,16 @@
   const rng = seed => () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
 
   // ------------------------------------------------------------ data
-  const portfolios = ["Alle Portfolios", "Langfristig", "Sparplan EM/Europa"];
+  // A depot's value includes its reference account, which is listed under it; accounts of no depot come last.
+  const depots = [
+    { id: "langfristig", name: "Langfristig", tone: "var(--felt-denim)", securities: 146377.4, konto: "konto-langfristig", sub: "2 Wertpapiere · Konto Langfristig" },
+    { id: "sparplan", name: "Sparplan EM/Europa", tone: "var(--felt-moss)", securities: 0, konto: "konto-sparplan", sub: "noch keine Wertpapiere · Konto Sparplan" },
+  ];
+  const konten = [
+    { id: "konto-langfristig", name: "Konto Langfristig", value: 240.18 },
+    { id: "konto-sparplan", name: "Konto Sparplan", value: 1500 },
+    { id: "tagesgeld", name: "Tagesgeld", value: 1000 },
+  ];
 
   const upcoming = [
     { pay: "23.10.2026", ex: "15.10.", name: "L&G Global Quality Dividends", per: "0,0353 USD", amount: 187.23, announced: true },
@@ -72,7 +81,7 @@
 
   const bookings = [
     ["Oktober 2026", [
-      { icon: "i-wallet", tone: "secondary", title: "Einlage", sub: "Sparplan EM/Europa · Verrechnungskonto …0816", amount: 1500, pdf: false },
+      { icon: "i-wallet", tone: "secondary", title: "Einlage", sub: "Sparplan EM/Europa · Konto Sparplan …0816", amount: 1500, pdf: false },
     ]],
     ["September 2026", [
       { icon: "i-coins", tone: "success", title: "Ausschüttung · Vanguard FTSE All-World", sub: "520 Stück · brutto 241,44 € · Steuern 44,58 €", amount: 196.86, pdf: true },
@@ -88,32 +97,158 @@
     ]],
   ];
 
-  // ------------------------------------------------------------ routing
+  // ------------------------------------------------------------ navigation: sidebar, tab bar, depots, depot switcher
+  const num = v => (v < 0 ? "−" : "") + Math.abs(v).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const money = v => num(v) + " €";
+  const sum = list => list.reduce((a, x) => a + x.value, 0);
+  const depot = id => depots.find(d => d.id === id);
+  const konto = id => konten.find(k => k.id === id);
+  // an account that several depots settle against belongs to the first
+  const ownerOf = k => depots.find(d => d.konto === k.id);
+  const tree = depots.map(d => {
+    const k = konto(d.konto), own = k && ownerOf(k) === d;
+    return { ...d, value: d.securities + (own ? k.value : 0), account: own ? k : null };
+  });
+  const orphans = konten.filter(k => !ownerOf(k));
+  const depotHref = d => `#bestand?depot=${d.id}`;
+  const kontoHref = k => (ownerOf(k) ? `#bestand?depot=${ownerOf(k).id}&konto=${k.id}` : `#bestand?konto=${k.id}`);
+  const tone = v => (v < 0 ? " is-neg" : v ? "" : " is-zero");
+  const chip = d => `<span class="app-chip" style="--chip:${d.tone}" aria-hidden="true">${d.name[0]}</span>`;
+  const walletChip = '<span class="app-chip app-chip-acc" aria-hidden="true"><svg class="app-icon"><use href="#i-wallet"/></svg></span>';
+  const wallet = '<svg class="app-icon" aria-hidden="true"><use href="#i-wallet"/></svg>';
+
+  // sidebar: one row per depot with its account indented below, then the accounts of no depot
+  const sideRow = (href, name, value, icon, cls = "") =>
+    `<a class="nav-link app-acc${cls}" href="${href}">${icon}<span class="app-acc-name">${name}</span><span class="app-bal${tone(value)}">${num(value)}</span>` +
+    `<span class="app-fly" aria-hidden="true">${name} <span>${money(value)}</span></span></a>`;
+  const sideHead = (label, value) => `<div class="app-side-h"><span>${label}</span><span>${num(value)}</span></div>`;
+  $("[data-side-groups]").innerHTML =
+    sideHead("Depots", sum(tree)) +
+    `<nav class="nav flex-column" data-nav aria-label="Depots">${tree.map(d =>
+      sideRow(depotHref(d), d.name, d.value, chip(d)) + (d.account ? sideRow(kontoHref(d.account), d.account.name, d.account.value, wallet, " app-sub") : "")).join("")}</nav>` +
+    (orphans.length ? sideHead("Konten", sum(orphans)) +
+      `<nav class="nav flex-column" data-nav aria-label="Konten">${orphans.map(k => sideRow(kontoHref(k), k.name, k.value, walletChip)).join("")}</nav>` : "");
+
+  // phone: the same tree as a screen, after the total of everything
+  const chev = '<svg class="app-icon app-chev" aria-hidden="true"><use href="#i-chevron"/></svg>';
+  const treeRow = (href, name, value, icon, cls = "") =>
+    `<a class="list-group-item list-group-item-action${cls}" href="${href}">${icon}<span class="me-auto text-truncate">${name}</span><span class="tabular-nums text-nowrap${value ? "" : " text-body-secondary"}">${money(value)}</span>${chev}</a>`;
+  const treeHead = (label, value) => `<h2 class="app-sheet-h"><span>${label}</span><span>${money(value)}</span></h2>`;
+  const worth = sum(tree) + sum(orphans);
+  $("[data-depots-tree]").innerHTML =
+    `<div class="list-group mb-4">${treeRow("#bestand", "Gesamt", worth, '<span class="app-chip app-chip-all" aria-hidden="true"><svg class="app-icon"><use href="#i-layers"/></svg></span>')}</div>` +
+    treeHead("Depots", sum(tree)) +
+    `<div class="list-group mb-4">${tree.map(d =>
+      treeRow(depotHref(d), d.name, d.value, chip(d)) + (d.account ? treeRow(kontoHref(d.account), d.account.name, d.account.value, wallet, " app-sub") : "")).join("")}</div>` +
+    (orphans.length ? treeHead("Konten", sum(orphans)) + `<div class="list-group">${orphans.map(k => treeRow(kontoHref(k), k.name, k.value, walletChip)).join("")}</div>` : "");
+
+  $("[data-sheet]").addEventListener("click", e => {
+    if (e.target.closest("a[href^='#']")) bootstrap.Offcanvas.getInstance($("#moreSheet"))?.hide();
+  });
+
+  $("[data-depot-menu]").innerHTML =
+    `<li><a class="dropdown-item" href="#bestand">Gesamt</a></li><li><hr class="dropdown-divider"></li>` +
+    tree.map(d => `<li><a class="dropdown-item d-flex align-items-center gap-2" href="${depotHref(d)}">${chip(d)}${d.name}</a></li>`).join("");
+
+  // hash routes: #screen or #bestand?depot=…&konto=…
+  const parse = hash => {
+    const [screen, query = ""] = hash.replace(/^#/, "").split("?");
+    const q = new URLSearchParams(query);
+    return { screen: screen || "uebersicht", depot: q.get("depot") || "", konto: q.get("konto") || "" };
+  };
   const screens = $$("[data-screen]");
-  const navFor = id => (id === "wertpapier" ? "bestand" : id);
+  const sideFor = id => (id === "wertpapier" ? "bestand" : id);
+  const tabFor = id => (["bestand", "wertpapier"].includes(id) ? "depots" : id);
+  const MORE = ["performance", "plan", "einstellungen"];
+
+  const showDepot = ({ depot: id, konto: k }) => {
+    const d = depot(id);
+    $("[data-depot-label]").textContent = d ? d.name : "Gesamt";
+    $("[data-depot-sub]").textContent = d ? d.sub : `${depots.length} Depots · 2 Wertpapiere · ${konten.length} Konten`;
+    $$("[data-depot-menu] .dropdown-item").forEach(a => a.classList.toggle("active", parse(a.getAttribute("href")).depot === (d ? id : "")));
+    $$("tbody[data-depot]").forEach(tb => (tb.hidden = !!d && tb.dataset.depot !== id));
+    $$("tfoot [data-foot]").forEach(tr => (tr.hidden = tr.dataset.foot !== (d ? id : "")));
+    $$("tr[data-konto]").forEach(tr => tr.classList.toggle("table-active", tr.dataset.konto === k));
+  };
+
+  const mark = (a, on) => {
+    a.classList.toggle("active", on);
+    if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+  };
   const show = () => {
-    const id = location.hash.slice(1) || "uebersicht";
-    const target = screens.find(s => s.dataset.screen === id) || screens[0];
+    const route = parse(location.hash);
+    const target = screens.find(s => s.dataset.screen === route.screen) || screens[0];
+    const screen = target.dataset.screen;
+    const here = { screen: sideFor(screen), depot: screen === "bestand" ? route.depot : "", konto: screen === "bestand" ? route.konto : "" };
     screens.forEach(s => (s.hidden = s !== target));
-    $$("[data-nav] .nav-link").forEach(a => {
-      const on = a.getAttribute("href") === "#" + navFor(target.dataset.screen);
-      a.classList.toggle("active", on);
-      if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+    // sidebar: the screen, or the depot or account that is open
+    $$("[data-nav] .nav-link[href]").forEach(a => {
+      const l = parse(a.getAttribute("href"));
+      mark(a, l.screen === here.screen && l.depot === here.depot && l.konto === here.konto);
     });
+    // tab bar: the screen (Depots also on the holdings); „Mehr“ for the screens in its sheet
+    $$("[data-tabs] .nav-link[href]").forEach(a => mark(a, parse(a.getAttribute("href")).screen === tabFor(screen)));
+    $("[data-more-tab]").classList.toggle("active", MORE.includes(screen));
+    if (screen === "bestand") showDepot(route);
     window.scrollTo({ top: 0 });
   };
   addEventListener("hashchange", show);
 
-  // ------------------------------------------------------------ portfolio switcher
-  $$("[data-portfolio-menu]").forEach(menu => {
-    menu.innerHTML = portfolios.map((p, i) =>
-      `${i === 1 ? '<li><hr class="dropdown-divider"></li>' : ""}<li><button class="dropdown-item${i === 0 ? " active" : ""}" type="button" data-portfolio="${p}">${p}</button></li>`).join("");
+  // sidebar width: from 1280 px open or collapsed as stored on this device; below it a rail that opens over the content
+  const root = document.documentElement;
+  const store = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+  const stored = k => { try { return localStorage.getItem(k); } catch { return null; } };
+  const wide = matchMedia("(min-width: 1280px)");
+  const toggle = $("[data-side-toggle]"), scrim = $("[data-side-scrim]");
+  let peek = false;
+  const layout = () => {
+    if (wide.matches) peek = false;
+    const rail = wide.matches ? stored("side") === "mini" : !peek;
+    root.classList.toggle("app-rail", rail);
+    root.classList.toggle("app-side-peek", peek);
+    scrim.hidden = !peek;
+    // while it lies over the page, the rest of the page is out of reach
+    $$("main, body > header, .app-fab, .app-tabbar").forEach(el => (el.inert = peek));
+    toggle.setAttribute("aria-label", rail ? "Seitenleiste ausklappen" : "Seitenleiste einklappen");
+    toggle.setAttribute("aria-expanded", String(!rail));
+  };
+  const openPeek = () => {
+    peek = true;
+    layout();
+    ($(".app-side .nav-link.active") || $(".app-side .nav-link")).focus();
+  };
+  // back to the toggle, unless a link in the sidebar was followed
+  const closePeek = (refocus = true) => {
+    if (!peek) return;
+    peek = false;
+    layout();
+    if (refocus) toggle.focus();
+  };
+  wide.addEventListener("change", layout);
+  toggle.addEventListener("click", () => {
+    if (wide.matches) { store("side", root.classList.contains("app-rail") ? "full" : "mini"); layout(); }
+    else if (peek) closePeek();
+    else openPeek();
   });
+  scrim.addEventListener("click", () => closePeek());
+  document.addEventListener("click", e => { if (e.target.closest(".app-side a[href^='#']")) closePeek(false); });
+  document.addEventListener("keydown", e => {
+    if (!peek) return;
+    if (e.key === "Escape" && !$(".app-side .dropdown-menu.show")) closePeek();
+    if (e.key !== "Tab") return;
+    // Tab and Shift+Tab go round inside the sidebar
+    const stops = $$(".app-side :is(a[href], button):not([disabled])").filter(el => el.getClientRects().length);
+    const first = stops[0], last = stops[stops.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+  layout();
+
   document.addEventListener("click", e => {
-    const btn = e.target.closest("[data-portfolio]");
-    if (!btn) return;
-    $$("[data-portfolio-label]").forEach(l => (l.textContent = btn.dataset.portfolio));
-    $$("[data-portfolio]").forEach(b => b.classList.toggle("active", b.dataset.portfolio === btn.dataset.portfolio));
+    const b = e.target.closest("[data-toast-msg]");
+    if (!b) return;
+    $("#toast .toast-body").textContent = b.dataset.toastMsg;
+    bootstrap.Toast.getOrCreateInstance($("#toast"), { delay: 2500 }).show();
   });
 
   // ------------------------------------------------------------ charts
@@ -392,11 +527,10 @@
   $$("form[data-close-on-submit]").forEach(f => f.addEventListener("submit", e => {
     e.preventDefault();
     bootstrap.Modal.getInstance(f.closest(".modal"))?.hide();
+    $("#toast .toast-body").textContent = "Gebucht.";
     bootstrap.Toast.getOrCreateInstance($("#toast"), { delay: 2000 }).show();
   }));
 
-  const root = document.documentElement;
-  const store = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
   $(`#look-${root.dataset.look}`).checked = true;
   $(`#theme-${root.dataset.bsTheme || "auto"}`).checked = true;
   $$('input[name="look"]').forEach(i => i.addEventListener("change", () => { root.dataset.look = i.value; store("look", i.value); }));

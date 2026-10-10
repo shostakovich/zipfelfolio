@@ -256,15 +256,53 @@ defmodule ZipfelfolioWeb.CoreComponents do
   attr :title_class, :any, default: nil
   slot :inner_block, required: true
   slot :leading
+  slot :subtitle
   slot :actions
 
   def header(assigns) do
     ~H"""
     <header class={["d-flex align-items-center gap-2 mb-3", @class]}>
       {render_slot(@leading)}
-      <h1 class={["h2 mb-0 me-auto", @title_class]}>{render_slot(@inner_block)}</h1>
+      <div class="me-auto">
+        <h1 class={["h2 mb-0", @title_class]}>{render_slot(@inner_block)}</h1>
+        <p :if={@subtitle != []} class="small text-body-secondary mb-0">{render_slot(@subtitle)}</p>
+      </div>
       {render_slot(@actions)}
     </header>
+    """
+  end
+
+  # The click dummy's line icons on a 24 px grid, each as the paths it draws.
+  @icons %{
+    "back" => ["m15 6-6 6 6 6"],
+    "chevron" => ["m9 6 6 6-6 6"],
+    "down" => ["m6 9 6 6 6-6"],
+    "gear" => [
+      "M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0",
+      "M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"
+    ],
+    "home" => ["M3 11 12 4l9 7M5 10v10h14V10M10 20v-6h4v6"],
+    "key" => ["M12 15a4 4 0 1 1-8 0 4 4 0 0 1 8 0", "m11 12 9-9M16 7l3 3M14 9l2 2"],
+    "layers" => ["m12 3 9 5-9 5-9-5zM3 13l9 5 9-5M3 17.5l9 5 9-5"],
+    "logout" => ["M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"],
+    "sidebar" => [
+      "M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
+      "M9 4v16M16 9l-3 3 3 3"
+    ],
+    "wallet" => ["M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 7l13-4v4M17 13.5h.01"]
+  }
+
+  attr :name, :string, required: true, values: Map.keys(@icons)
+  attr :class, :any, default: nil
+
+  @doc "A line icon in the current text colour, hidden from screen readers."
+  def icon(assigns) do
+    assigns = assign(assigns, :paths, Map.fetch!(@icons, assigns.name))
+
+    ~H"""
+    <svg class={["app-icon", @class]} viewBox="0 0 24 24" aria-hidden="true">
+      <path :for={d <- @paths} d={d} />
+    </svg>
     """
   end
 
@@ -320,6 +358,24 @@ defmodule ZipfelfolioWeb.CoreComponents do
       nil -> fallback
     end
   end
+
+  @doc """
+  The colour of a signed figure as `ZipfelfolioWeb.Format` shows it: green with a plus, red with a
+  minus, muted for one that rounds to zero.
+  """
+  def tone("+" <> _rest), do: "text-success"
+  def tone("−" <> _rest), do: "text-danger"
+  def tone(_unsigned), do: "text-body-secondary"
+
+  @doc "A database id from a URL parameter; nil for anything else, beyond SQLite's integers too."
+  def parse_id(param) when is_binary(param) do
+    case Integer.parse(param) do
+      {id, ""} when id in 1..9_223_372_036_854_775_807 -> id
+      _invalid -> nil
+    end
+  end
+
+  def parse_id(_missing), do: nil
 
   def show(js \\ %JS{}, selector) do
     JS.show(js, to: selector, time: 200, transition: {"fade", "opacity-0", "opacity-100"})
