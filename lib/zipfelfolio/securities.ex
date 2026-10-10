@@ -1,14 +1,14 @@
 defmodule Zipfelfolio.Securities do
   @moduledoc """
-  Securities, their prices and attribute types. They are shared by all users, so every signed-in
-  user may read and change them; the scope only says who is asking.
+  Securities, their prices, compositions and attribute types. They are shared by all users, so
+  every signed-in user may read and change them; the scope only says who is asking.
   """
 
   import Ecto.Changeset
   import Ecto.Query, warn: false
 
   alias Zipfelfolio.{LocalTime, Repo}
-  alias Zipfelfolio.Securities.{Price, Security}
+  alias Zipfelfolio.Securities.{Composition, Price, Security}
   alias Zipfelfolio.Users.Scope
 
   def list_securities(%Scope{}),
@@ -266,4 +266,31 @@ defmodule Zipfelfolio.Securities do
   end
 
   defp update_manual_quote(security), do: security
+
+  ## Compositions
+
+  @doc "The securities DivvyDiary may know: those with an ISIN, without retired ones."
+  def list_securities_with_isin do
+    Repo.all(
+      from s in Security,
+        where: not is_nil(s.isin) and s.isin != "" and not s.retired,
+        order_by: s.name
+    )
+  end
+
+  @doc "Stores the composition of a security, fetched at `now`, in place of the one before."
+  def replace_composition(%Security{id: id}, %{countries: countries, sectors: sectors}, now) do
+    Repo.insert!(
+      %Composition{security_id: id, countries: countries, sectors: sectors, fetched_at: now},
+      on_conflict: {:replace, [:countries, :sectors, :fetched_at]},
+      conflict_target: :security_id
+    )
+  end
+
+  @doc "The compositions of the securities with `ids` as `%{security_id => composition}`."
+  def list_compositions(ids) do
+    from(c in Composition, where: c.security_id in ^ids)
+    |> Repo.all()
+    |> Map.new(&{&1.security_id, &1})
+  end
 end

@@ -317,6 +317,31 @@ defmodule Zipfelfolio.PortfoliosTest do
       assert selected.costs.per_year == money(14)
     end
 
+    test "gives the allocation of the securities shown, without accounts", ctx do
+      account = account_fixture(ctx.scope)
+      deposit_on_friday(ctx.scope, account, 1_000)
+      plan = portfolio_fixture(ctx.scope, %{name: "Sparplan", reference_account_id: account.id})
+      world = security_at(100, "Welt")
+      brazil = security_at(10, "Brasilien")
+      composition_fixture(world, %{"US" => 0.6, "JP" => 0.4}, %{"Energy" => 1})
+      composition_fixture(brazil, %{"BR" => 1})
+      buy(ctx.scope, ctx.portfolio, world, 60, 6_000)
+      buy(ctx.scope, plan, brazil, 400, 4_000)
+
+      regions = fn holdings ->
+        Enum.map(holdings.allocation.regions, &{&1.key, Decimal.to_float(&1.share)})
+      end
+
+      all = Portfolios.holdings(ctx.scope, nil, @saturday)
+
+      assert regions.(all) == [emerging_markets: 0.4, usa: 0.36, japan: 0.24]
+      assert [%{key: "Energy"}, %{key: nil}] = all.allocation.sectors
+      assert all.allocation.as_of == ~U[2026-10-08 12:00:00.000000Z]
+
+      assert regions.(Portfolios.holdings(ctx.scope, plan.id, @saturday)) ==
+               [emerging_markets: 1.0]
+    end
+
     test "shows all portfolios for one of another user", ctx do
       other = portfolio_fixture(user_scope_fixture(), %{name: "Fremd"})
 

@@ -249,4 +249,37 @@ defmodule Zipfelfolio.SecuritiesTest do
       assert prices_of(security) == [{~D[2026-10-07], 300, :yahoo}]
     end
   end
+
+  describe "compositions" do
+    test "replace_composition/3 stores one per security, and list_compositions/1 finds them" do
+      [world, em, other] = for isin <- ~w(A B C), do: security_fixture(isin: isin)
+      now = ~U[2026-10-09 16:00:00.000000Z]
+      Securities.replace_composition(world, %{countries: %{"US" => 1}, sectors: %{}}, now)
+      composition_fixture(em, %{"BR" => 1})
+      composition_fixture(other, %{"JP" => 1})
+      later = DateTime.add(now, 1, :day)
+
+      Securities.replace_composition(
+        world,
+        %{countries: %{"JP" => 1}, sectors: %{"E" => 1}},
+        later
+      )
+
+      compositions = Securities.list_compositions([world.id, em.id])
+
+      assert compositions |> Map.keys() |> Enum.sort() == [world.id, em.id]
+      assert %{countries: %{"JP" => 1}, sectors: %{"E" => 1}} = compositions[world.id]
+      assert compositions[world.id].fetched_at == later
+      assert %{countries: %{"BR" => 1}} = compositions[em.id]
+    end
+
+    test "list_securities_with_isin/0 leaves out securities without an ISIN and retired ones" do
+      with_isin = security_fixture(isin: "IE00B3RBWM25")
+      security_fixture(isin: nil)
+      security_fixture(isin: "")
+      security_fixture(isin: "IE00B4L5Y983", retired: true)
+
+      assert Securities.list_securities_with_isin() == [with_isin]
+    end
+  end
 end

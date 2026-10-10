@@ -7,6 +7,10 @@ end
 port = String.to_integer(System.get_env("PORT", "4000"))
 config :zipfelfolio, ZipfelfolioWeb.Endpoint, http: [port: port]
 
+# Countries and sectors of the funds; without a key DivvyDiary is never asked.
+config :zipfelfolio, Zipfelfolio.MarketData.DivvyDiary,
+  api_key: System.get_env("DIVVYDIARY_API_KEY")
+
 # Passkeys check the origin, which carries the port in development.
 if config_env() == :dev do
   config :zipfelfolio, ZipfelfolioWeb.Endpoint, url: [port: port]

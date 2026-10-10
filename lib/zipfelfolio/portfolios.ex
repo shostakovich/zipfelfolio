@@ -3,9 +3,10 @@ defmodule Zipfelfolio.Portfolios do
 
   import Ecto.Query, warn: false
 
-  alias Zipfelfolio.{Costs, ExchangeRates, Performance, Period, Repo, Securities, Valuation}
+  alias Zipfelfolio.{Allocation, Costs, ExchangeRates, Performance, Period, Repo, Securities}
   alias Zipfelfolio.Portfolios.{Account, Portfolio, SavingsPlan, Transaction}
   alias Zipfelfolio.Users.Scope
+  alias Zipfelfolio.Valuation
   alias Zipfelfolio.Valuation.{Filter, Market, PurchaseValue}
 
   def list_portfolios(%Scope{} = scope),
@@ -153,6 +154,7 @@ defmodule Zipfelfolio.Portfolios do
   - `total`: `value`, `purchase_value` and `gain` of the groups shown
   - `net_worth`: the value of all holdings and accounts, of which each row shows its share
   - `costs`: what the securities shown cost a year, see `Costs.of/1`; accounts hold no funds
+  - `allocation`: the regions and sectors of the securities shown, see `Allocation.of/2`
 
   A holding has its `security`, `shares`, `price`, `value`, `purchase_value` and `gain`, an
   account its `value`. Retired accounts are left out once they are empty.
@@ -172,6 +174,7 @@ defmodule Zipfelfolio.Portfolios do
     }
 
     groups = portfolios |> holding_groups(portfolio, rows) |> Enum.map(&with_gains/1)
+    shown = Enum.flat_map(groups, & &1.holdings)
 
     %{
       portfolios: portfolios,
@@ -179,8 +182,16 @@ defmodule Zipfelfolio.Portfolios do
       groups: groups,
       total: totals(groups, groups),
       net_worth: Enum.sum_by(rows.holdings ++ rows.accounts, & &1.value),
-      costs: groups |> Enum.flat_map(& &1.holdings) |> Costs.of()
+      costs: Costs.of(shown),
+      allocation: allocation(shown)
     }
+  end
+
+  defp allocation(holdings) do
+    compositions =
+      holdings |> Enum.map(& &1.security.id) |> Enum.uniq() |> Securities.list_compositions()
+
+    Allocation.of(holdings, compositions)
   end
 
   @doc """

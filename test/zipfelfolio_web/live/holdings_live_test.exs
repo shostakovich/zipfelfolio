@@ -4,7 +4,7 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
   import Phoenix.LiveViewTest
   import Zipfelfolio.{PortfoliosFixtures, SecuritiesFixtures}
 
-  alias Zipfelfolio.{LocalTime, Repo}
+  alias Zipfelfolio.{FakeCompositionSource, LocalTime, Repo}
   alias Zipfelfolio.Portfolios.TransactionUnit
 
   setup :register_and_log_in_user
@@ -118,12 +118,112 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
   end
 
   # The text of each cell of the row at `selector`, with its whitespace collapsed.
-  defp cells(lv, selector) do
+  defp cells(lv, selector), do: texts(lv, "#{selector} > :is(th, td)")
+
+  defp texts(lv, selector) do
     lv
     |> render()
     |> LazyHTML.from_fragment()
-    |> LazyHTML.query("#{selector} > :is(th, td)")
+    |> LazyHTML.query(selector)
     |> Enum.map(&(&1 |> LazyHTML.text() |> String.split() |> Enum.join(" ")))
+  end
+
+  # Each row of the allocation as "label share".
+  defp allocation(lv) do
+    lv
+    |> texts("#allocation-rows > li > div > span")
+    |> Enum.chunk_every(2)
+    |> Enum.map(&Enum.join(&1, " "))
+  end
+
+  describe "allocation" do
+    setup do
+      FakeCompositionSource.stub()
+    end
+
+    test "gives the regions from the composition of the funds; accounts do not count", ctx do
+      portfolio = portfolio_fixture(ctx.scope)
+      world = security(60, name: "Welt")
+      brazil = security(40, name: "Brasilien")
+      composition_fixture(world, %{"US" => 0.6, "JP" => 0.4})
+      composition_fixture(brazil, %{"BR" => 1})
+      deliver(ctx.scope, portfolio, world, 100, 6_000)
+      deliver(ctx.scope, portfolio, brazil, 100, 4_000)
+      deposit(ctx.scope, account_fixture(ctx.scope), 1_000)
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/holdings")
+
+      assert has_element?(lv, "#allocation nav a.active[aria-current]", "Regionen")
+
+      assert allocation(lv) == [
+               "Schwellenländer 40,0 %",
+               "USA 36,0 %",
+               "Japan 24,0 %"
+             ]
+
+      assert has_element?(lv, "#allocation", "Stand 08.10.2026")
+      assert has_element?(lv, "#allocation", "Konten zählen nicht mit")
+    end
+
+    test "counts a fund without composition as „Ohne Angabe“", ctx do
+      portfolio = portfolio_fixture(ctx.scope)
+      us = security(90, name: "USA")
+      composition_fixture(us, %{"US" => 1})
+      deliver(ctx.scope, portfolio, us, 100, 9_000)
+      deliver(ctx.scope, portfolio, security(10, name: "Unbekannt"), 100, 1_000)
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/holdings")
+
+      assert allocation(lv) == ["USA 90,0 %", "Ohne Angabe 10,0 %"]
+      assert has_element?(lv, "#allocation", "ohne Länder- oder Sektordaten")
+    end
+
+    test "keeps the tab in the URL, so that it survives a reload", ctx do
+      portfolio = portfolio_fixture(ctx.scope)
+      fund = security(100, name: "Welt")
+
+      composition_fixture(fund, %{"US" => 1}, %{
+        "Information Technology" => 0.75,
+        "Energy" => 0.25
+      })
+
+      deliver(ctx.scope, portfolio, fund, 10, 1_000)
+      {:ok, lv, _html} = live(ctx.conn, ~p"/holdings")
+
+      lv |> element("#allocation nav a", "Sektoren") |> render_click()
+      url = assert_patch(lv, ~p"/holdings?allocation=sectors")
+
+      {:ok, lv, _html} = live(ctx.conn, url)
+
+      assert has_element?(lv, "#allocation nav a.active[aria-current]", "Sektoren")
+      assert allocation(lv) == ["Technologie 75,0 %", "Energie 25,0 %"]
+
+      lv |> element("#portfolio-menu a", "Langfristig") |> render_click()
+
+      assert_patch(lv, ~p"/holdings?allocation=sectors&portfolio=#{portfolio.id}")
+      assert has_element?(lv, "#allocation nav a.active", "Sektoren")
+
+      lv |> element("#allocation nav a", "Regionen") |> render_click()
+
+      assert_patch(lv, ~p"/holdings?portfolio=#{portfolio.id}")
+      assert allocation(lv) == ["USA 100,0 %"]
+    end
+
+    test "shows a hint instead of regions and sectors without an API key", ctx do
+      Application.delete_env(:zipfelfolio, FakeCompositionSource)
+      portfolio = portfolio_fixture(ctx.scope)
+      fund = security(100)
+      composition_fixture(fund, %{"US" => 1})
+      deliver(ctx.scope, portfolio, fund, 10, 1_000)
+
+      for tab <- ["regions", "sectors"] do
+        {:ok, lv, _html} = live(ctx.conn, ~p"/holdings?allocation=#{tab}")
+
+        assert allocation(lv) == []
+        assert has_element?(lv, "#allocation", "DIVVYDIARY_API_KEY")
+        refute has_element?(lv, "#allocation", "Stand")
+      end
+    end
   end
 
   describe "an account two portfolios settle against" do
