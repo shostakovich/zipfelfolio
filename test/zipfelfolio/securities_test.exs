@@ -55,7 +55,31 @@ defmodule Zipfelfolio.SecuritiesTest do
       assert Securities.claim_unchecked_yahoo_securities(~U[2026-10-09 15:45:00.000000Z], now) ==
                []
     end
+
+    test "only reads while every Yahoo security is checked, so it waits for no other write" do
+      security_fixture(checked_at: ~U[2026-10-09 15:50:00.000000Z])
+      handler = make_ref()
+
+      :telemetry.attach(
+        handler,
+        [:zipfelfolio, :repo, :query],
+        &__MODULE__.report_query/4,
+        self()
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+
+      Securities.claim_unchecked_yahoo_securities(
+        ~U[2026-10-09 15:45:00.000000Z],
+        ~U[2026-10-09 16:00:00.000000Z]
+      )
+
+      assert_received {:query, "SELECT" <> _query}
+      refute_received {:query, "UPDATE" <> _query}
+    end
   end
+
+  def report_query(_event, _measurements, %{query: query}, test), do: send(test, {:query, query})
 
   describe "with_same_yahoo_symbol/2" do
     test "skips a security whose symbol or feed changed" do

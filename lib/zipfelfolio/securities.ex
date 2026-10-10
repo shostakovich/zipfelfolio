@@ -32,17 +32,20 @@ defmodule Zipfelfolio.Securities do
   statement, so that pages opened at the same time fetch each quote once.
   """
   def claim_unchecked_yahoo_securities(cutoff, now) do
-    {_count, securities} =
-      Repo.update_all(
-        from(s in Security,
-          where: s.quote_feed == :yahoo and not s.retired,
-          where: is_nil(s.checked_at) or s.checked_at < ^cutoff,
-          select: s
-        ),
-        set: [checked_at: now]
-      )
+    unchecked =
+      from s in Security,
+        where: s.quote_feed == :yahoo and not s.retired,
+        where: is_nil(s.checked_at) or s.checked_at < ^cutoff
 
-    securities
+    # Only a write waits for another, such as an import, so pages read first.
+    if Repo.exists?(unchecked) do
+      {_count, securities} =
+        Repo.update_all(select(unchecked, [s], s), set: [checked_at: now])
+
+      securities
+    else
+      []
+    end
   end
 
   @doc """
