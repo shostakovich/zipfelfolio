@@ -39,7 +39,7 @@ defmodule Zipfelfolio.Portfolios do
   def net_worth(%Scope{} = scope, dates) do
     transactions = list_transactions(scope)
     accounts = list_accounts(scope)
-    market = load_market(transactions, accounts, Enum.min(dates, Date))
+    market = load_market(transactions, accounts, Enum.min(dates, Date), :since_first_transaction)
 
     transactions
     |> Valuation.history(accounts, market, dates)
@@ -55,9 +55,9 @@ defmodule Zipfelfolio.Portfolios do
   - `ttwror` and `irr` of all portfolios and accounts over the period, see `Performance`
   - `dividends`: this year's up to `today`, before taxes and fees
   - `portfolios`: the portfolios by name, retired ones only while they hold shares, each with
-    `account`, its reference account unless an earlier one settles against it too (as in the
-    sidebar), its `balance` in euros, the number of `securities` held, the `value` of the
-    securities and the account, and the `ttwror` of both since 1 January
+    `account`, its reference account as in the sidebar (nil when an earlier one settles against
+    it too, or once it is retired and empty), its `balance` in euros, the number of `securities`
+    held, the `value` of the securities and the account, and the `ttwror` of both since 1 January
   """
   def overview(%Scope{} = scope, period, today) do
     transactions = list_transactions(scope)
@@ -65,7 +65,8 @@ defmodule Zipfelfolio.Portfolios do
     first_day = first_transaction_day(transactions)
     interval = Period.interval(period, today, first_day)
     year = Period.interval(:year_to_date, today, first_day)
-    market = load_market(transactions, accounts, Enum.min([interval.first, year.first], Date))
+    first = Enum.min([interval.first, year.first], Date)
+    market = load_market(transactions, accounts, first, :since_first_transaction)
     index = Performance.index(transactions, accounts, market, Filter.all(), interval)
     [yesterday, today_point] = Enum.take(index.days, -2)
 
@@ -95,31 +96,31 @@ defmodule Zipfelfolio.Portfolios do
 
   defp portfolios_overview(scope, transactions, accounts, market, %Date.Range{last: today} = year) do
     holdings = Valuation.holdings(transactions, today)
-    securities = Enum.frequencies_by(holdings, & &1.portfolio_id)
     portfolios = shown_portfolios(scope, holdings)
     owners = reference_account_owners(portfolios)
-    balances = Valuation.balances(transactions, today)
 
-    for portfolio <- portfolios do
-      account = Enum.find(accounts, &(owners[&1.id] == portfolio.id))
-      filter = Filter.new([portfolio], List.wrap(account && account.id), transactions)
+    rows = %{
+      holdings: value_rows(holdings, market, today),
+      accounts: account_rows(accounts, Valuation.balances(transactions, today), market, today)
+    }
+
+    for %{portfolio: %Portfolio{} = portfolio} = group <- holding_groups(portfolios, nil, rows) do
+      # Its reference account counts towards the returns even once it is retired and empty.
+      account_ids = for {account_id, owner_id} <- owners, owner_id == portfolio.id, do: account_id
+      filter = Filter.new([portfolio], account_ids, transactions)
       index = Performance.index(transactions, accounts, market, filter, year)
+      account_row = List.first(group.accounts)
 
       %{
         portfolio: portfolio,
-        account: account,
-        balance: balance(account, balances, market, today),
-        securities: Map.get(securities, portfolio.id, 0),
+        account: account_row && account_row.account,
+        balance: account_row && account_row.value,
+        securities: length(group.holdings),
         value: List.last(index.days).value,
         ttwror: Performance.ttwror(index)
       }
     end
   end
-
-  defp balance(nil, _balances, _market, _today), do: nil
-
-  defp balance(account, balances, market, today),
-    do: Market.to_euros(market, Map.get(balances, account.id, 0), account.currency, today)
 
   # Retired portfolios only while they hold shares.
   defp shown_portfolios(scope, holdings) do
@@ -127,8 +128,12 @@ defmodule Zipfelfolio.Portfolios do
     Enum.filter(list_portfolios(scope), &(not &1.retired or MapSet.member?(held, &1.id)))
   end
 
-  # An account several portfolios settle against belongs to the first of them.
-  defp reference_account_owners(portfolios) do
+  @doc """
+  The portfolio each reference account of `portfolios` belongs to, as `%{account_id =>
+  portfolio_id}`: an account several of them settle against belongs to the first. The screens
+  list the portfolios by name, so it is the first by name.
+  """
+  def reference_account_owners(portfolios) do
     for %{reference_account_id: account_id, id: id} <- Enum.reverse(portfolios),
         account_id != nil,
         into: %{},
@@ -154,7 +159,8 @@ defmodule Zipfelfolio.Portfolios do
   def holdings(%Scope{} = scope, portfolio_id, today) do
     transactions = list_transactions(scope)
     accounts = list_accounts(scope)
-    market = load_market(transactions, accounts, today)
+    # Purchase values convert each purchase at the rate of its day.
+    market = load_market(transactions, accounts, today, :since_first_transaction)
     holdings = Valuation.holdings(transactions, today)
     portfolios = shown_portfolios(scope, holdings)
     portfolio = Enum.find(portfolios, &(&1.id == portfolio_id))
@@ -164,7 +170,7 @@ defmodule Zipfelfolio.Portfolios do
       accounts: account_rows(accounts, Valuation.balances(transactions, today), market, today)
     }
 
-    groups = holding_groups(portfolios, portfolio, rows)
+    groups = portfolios |> holding_groups(portfolio, rows) |> Enum.map(&with_gains/1)
 
     %{
       portfolios: portfolios,
@@ -173,6 +179,49 @@ defmodule Zipfelfolio.Portfolios do
       total: totals(groups, groups),
       net_worth: Enum.sum_by(rows.holdings ++ rows.accounts, & &1.value)
     }
+  end
+
+  @doc """
+  What the sidebar shows on `today`, valued as the holdings screen values all portfolios, amounts
+  in euro cents:
+
+  - `portfolios`: the portfolios by name, retired ones only while they hold shares, each with its
+    `value` (its securities and its reference account) and its reference `account` as
+    `%{account: account, value: cents}`, nil when it has none or an earlier one settles against
+    it too
+  - `accounts`: the accounts of no portfolio as `%{account: account, value: cents}`, retired ones
+    only while they hold money
+  """
+  def sidebar(%Scope{} = scope, today) do
+    transactions = list_transactions(scope)
+    accounts = list_accounts(scope)
+    market = load_market(transactions, accounts, today, :since_date)
+    holdings = Valuation.holdings(transactions, today)
+
+    rows = %{
+      holdings: value_rows(holdings, market, today),
+      accounts: account_rows(accounts, Valuation.balances(transactions, today), market, today)
+    }
+
+    {portfolio_groups, account_groups} =
+      scope
+      |> shown_portfolios(holdings)
+      |> holding_groups(nil, rows)
+      |> Enum.split_with(& &1.portfolio)
+
+    %{
+      portfolios:
+        Enum.map(portfolio_groups, fn group ->
+          %{portfolio: group.portfolio, value: group.value, account: List.first(group.accounts)}
+        end),
+      accounts: Enum.flat_map(account_groups, & &1.accounts)
+    }
+  end
+
+  # The value of each holding, without the price and purchase value the holdings screen shows.
+  defp value_rows(holdings, market, today) do
+    for holding <- holdings,
+        do: %{portfolio_id: holding.portfolio_id, value: Valuation.value(holding, market, today)}
   end
 
   defp holding_rows(holdings, transactions, market, today) do
@@ -201,7 +250,9 @@ defmodule Zipfelfolio.Portfolios do
         do: %{account: account, value: Market.to_euros(market, balance, account.currency, today)}
   end
 
-  # One portfolio with its reference account, even if an earlier one settles against it too.
+  # Each portfolio with its holdings and its reference account, then the accounts of no portfolio
+  # in a group without portfolio; or the one `portfolio` with its reference account, even if an
+  # earlier one settles against it too. Each group has the `value` of its rows.
   defp holding_groups(_portfolios, %Portfolio{} = portfolio, rows),
     do: [holding_group(portfolio, rows, &(&1.id == portfolio.reference_account_id))]
 
@@ -215,23 +266,35 @@ defmodule Zipfelfolio.Portfolios do
 
     case Enum.reject(rows.accounts, &Map.has_key?(owners, &1.account.id)) do
       [] -> groups
-      accounts -> groups ++ [with_totals(%{portfolio: nil, holdings: [], accounts: accounts})]
+      accounts -> groups ++ [group(nil, [], accounts)]
     end
   end
 
   defp holding_group(portfolio, rows, account?) do
-    with_totals(%{
-      portfolio: portfolio,
-      holdings:
-        rows.holdings
-        |> Enum.filter(&(&1.portfolio_id == portfolio.id))
-        |> Enum.sort_by(&{-&1.value, &1.security.name}),
-      accounts: Enum.filter(rows.accounts, &account?.(&1.account))
-    })
+    group(
+      portfolio,
+      Enum.filter(rows.holdings, &(&1.portfolio_id == portfolio.id)),
+      Enum.filter(rows.accounts, &account?.(&1.account))
+    )
   end
 
-  defp with_totals(%{holdings: holdings, accounts: accounts} = group),
-    do: Map.merge(group, totals(holdings ++ accounts, holdings))
+  defp group(portfolio, holdings, accounts) do
+    %{
+      portfolio: portfolio,
+      holdings: holdings,
+      accounts: accounts,
+      value: Enum.sum_by(holdings ++ accounts, & &1.value)
+    }
+  end
+
+  # The holdings by value, and the purchase value and gain of the group.
+  defp with_gains(%{holdings: holdings} = group) do
+    Map.merge(group, %{
+      holdings: Enum.sort_by(holdings, &{-&1.value, &1.security.name}),
+      purchase_value: Enum.sum_by(holdings, & &1.purchase_value),
+      gain: Enum.sum_by(holdings, & &1.gain)
+    })
+  end
 
   # The value of `rows`, and the purchase value and gain of `holdings`.
   defp totals(rows, holdings) do
@@ -243,8 +306,9 @@ defmodule Zipfelfolio.Portfolios do
   end
 
   # The securities of the transactions with their closes from `date` on, and the rates of every
-  # currency involved from the first transaction on, at which invested capital converts.
-  defp load_market(transactions, accounts, date) do
+  # currency involved from `date` on, or from the first transaction on, at which invested capital
+  # and purchase values convert.
+  defp load_market(transactions, accounts, date, rates) do
     security_ids =
       transactions |> Enum.map(& &1.security_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
 
@@ -255,10 +319,16 @@ defmodule Zipfelfolio.Portfolios do
       |> Enum.map(& &1.currency)
       |> Market.rate_currencies()
 
+    rates_from =
+      case rates do
+        :since_date -> date
+        :since_first_transaction -> first_day(transactions, date)
+      end
+
     Market.new(
       securities,
       Securities.list_closes_since(security_ids, date),
-      ExchangeRates.list_rates_since(currencies, first_day(transactions, date))
+      ExchangeRates.list_rates_since(currencies, rates_from)
     )
   end
 

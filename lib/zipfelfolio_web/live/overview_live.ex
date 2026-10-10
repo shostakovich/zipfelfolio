@@ -1,8 +1,8 @@
 defmodule ZipfelfolioWeb.OverviewLive do
   use ZipfelfolioWeb, :live_view
 
-  alias Zipfelfolio.{LocalTime, MarketData, Portfolios}
-  alias ZipfelfolioWeb.Format
+  alias Zipfelfolio.{LocalTime, Portfolios}
+  alias ZipfelfolioWeb.{Format, Sidebar}
 
   # URL parameter, period and button label; the first is the default.
   @periods [
@@ -18,7 +18,12 @@ defmodule ZipfelfolioWeb.OverviewLive do
     assigns = assign(assigns, :periods, @periods)
 
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} current={:overview}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      sidebar={@sidebar}
+      current={:overview}
+    >
       <.header class="flex-wrap">
         Übersicht
         <:actions :if={!@empty}>
@@ -112,13 +117,11 @@ defmodule ZipfelfolioWeb.OverviewLive do
           <.link
             :for={row <- @overview.portfolios}
             id={"portfolio-#{row.portfolio.id}"}
-            navigate={~p"/holdings?#{[portfolio: row.portfolio.id]}"}
+            navigate={Sidebar.portfolio_path(row.portfolio)}
             class="list-group-item list-group-item-action d-flex align-items-center gap-3"
           >
             <span class="app-avatar rounded-circle bg-primary-subtle text-primary-emphasis d-flex align-items-center justify-content-center">
-              <svg class="app-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m12 3 9 5-9 5-9-5zM3 13l9 5 9-5M3 17.5l9 5 9-5" />
-              </svg>
+              <.icon name="layers" />
             </span>
             <span class="me-auto overflow-hidden">
               <span class="d-block fw-semibold">{row.portfolio.name}</span>
@@ -198,11 +201,6 @@ defmodule ZipfelfolioWeb.OverviewLive do
   @impl true
   def mount(_params, _session, socket) do
     scope = socket.assigns.current_scope
-
-    if connected?(socket) do
-      MarketData.subscribe()
-      MarketData.refresh_stale_quotes()
-    end
 
     empty = Portfolios.list_portfolios(scope) == [] and Portfolios.list_accounts(scope) == []
 

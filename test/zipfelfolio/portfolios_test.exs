@@ -5,7 +5,7 @@ defmodule Zipfelfolio.PortfoliosTest do
 
   alias Zipfelfolio.{ExchangeRates, Portfolios}
   alias Zipfelfolio.Performance.IRR
-  alias Zipfelfolio.Portfolios.TransactionUnit
+  alias Zipfelfolio.Portfolios.{Portfolio, TransactionUnit}
 
   @friday ~D[2026-10-02]
   @saturday ~D[2026-10-03]
@@ -297,6 +297,102 @@ defmodule Zipfelfolio.PortfoliosTest do
 
       assert holdings.portfolio == nil
       assert group_names(holdings) == ["Langfristig"]
+    end
+  end
+
+  describe "reference_account_owners/1" do
+    test "gives an account several portfolios settle against to the first of them" do
+      portfolios = [
+        %Portfolio{id: 1, reference_account_id: 10},
+        %Portfolio{id: 2, reference_account_id: 10},
+        %Portfolio{id: 3, reference_account_id: nil},
+        %Portfolio{id: 4, reference_account_id: 11}
+      ]
+
+      assert Portfolios.reference_account_owners(portfolios) == %{10 => 1, 11 => 4}
+    end
+  end
+
+  describe "sidebar/2" do
+    defp held(scope, portfolio, count, close) do
+      security = security_fixture(quote_feed: :manual)
+      price_fixture(security, @friday, price(close), :pp)
+      deliver(scope, portfolio, security, @friday, count)
+      security
+    end
+
+    defp deposit_into(scope, account, amount) do
+      transaction_fixture(scope, @friday,
+        type: :deposit,
+        account_id: account.id,
+        amount: money(amount)
+      )
+    end
+
+    test "gives each portfolio with its reference account, then the accounts of no portfolio",
+         ctx do
+      account = account_fixture(ctx.scope, %{name: "Konto Langfristig"})
+      deposit_into(ctx.scope, account, 2_000)
+      portfolio = Repo.update!(change(ctx.portfolio, reference_account_id: account.id))
+      held(ctx.scope, portfolio, 10, 100)
+      savings = account_fixture(ctx.scope, %{name: "Tagesgeld"})
+      deposit_into(ctx.scope, savings, 1_000)
+      portfolio_fixture(ctx.scope, %{name: "Sparplan"})
+
+      sidebar = Portfolios.sidebar(ctx.scope, @saturday)
+
+      assert [
+               %{portfolio: %{name: "Langfristig"}, value: 300_000} = langfristig,
+               %{portfolio: %{name: "Sparplan"}, value: 0, account: nil}
+             ] = sidebar.portfolios
+
+      assert langfristig.account == %{account: account, value: 200_000}
+      assert sidebar.accounts == [%{account: savings, value: 100_000}]
+
+      holdings = Portfolios.holdings(ctx.scope, nil, @saturday)
+
+      assert Enum.map(holdings.groups, & &1.value) ==
+               Enum.map(sidebar.portfolios, & &1.value) ++ [money(1_000)]
+    end
+
+    test "lists an account two portfolios settle against under the first of them", ctx do
+      account = account_fixture(ctx.scope, %{name: "K"})
+      deposit_into(ctx.scope, account, 50)
+
+      for name <- ["A", "B"],
+          do: portfolio_fixture(ctx.scope, %{name: name, reference_account_id: account.id})
+
+      assert [%{account: %{account: ^account}}, %{account: nil}, %{account: nil}] =
+               Portfolios.sidebar(ctx.scope, @saturday).portfolios
+    end
+
+    test "keeps a retired portfolio while it holds shares", ctx do
+      retired = portfolio_fixture(ctx.scope, %{name: "Alt", retired: true})
+      security = held(ctx.scope, retired, 5, 100)
+
+      assert [%{portfolio: %{name: "Alt"}, value: 50_000}, %{portfolio: %{name: "Langfristig"}}] =
+               Portfolios.sidebar(ctx.scope, @saturday).portfolios
+
+      transaction_fixture(ctx.scope, @saturday,
+        type: :outbound_delivery,
+        portfolio_id: retired.id,
+        security_id: security.id,
+        shares: shares(5)
+      )
+
+      assert [%{portfolio: %{name: "Langfristig"}}] =
+               Portfolios.sidebar(ctx.scope, @saturday).portfolios
+    end
+
+    test "leaves out retired accounts once empty and other users' portfolios and accounts",
+         ctx do
+      account_fixture(ctx.scope, %{name: "Geschlossen", retired: true})
+      other = user_scope_fixture()
+      deposit_into(other, account_fixture(other, %{name: "Fremdes Konto"}), 1)
+      held(other, portfolio_fixture(other, %{name: "Fremd"}), 1, 100)
+
+      assert %{portfolios: [%{portfolio: %{name: "Langfristig"}, value: 0}], accounts: []} =
+               Portfolios.sidebar(ctx.scope, @saturday)
     end
   end
 

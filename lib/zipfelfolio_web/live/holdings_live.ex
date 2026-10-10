@@ -1,13 +1,18 @@
 defmodule ZipfelfolioWeb.HoldingsLive do
   use ZipfelfolioWeb, :live_view
 
-  alias Zipfelfolio.{LocalTime, MarketData, Portfolios}
+  alias Zipfelfolio.{LocalTime, Portfolios}
   alias ZipfelfolioWeb.Format
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} current={:holdings}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      sidebar={@sidebar}
+      current={{:holdings, shown_portfolio_id(assigns), @account_id}}
+    >
       <.header class="flex-wrap">
         Bestand
         <:subtitle :if={!@empty}>{subtitle(@holdings)}</:subtitle>
@@ -91,13 +96,7 @@ defmodule ZipfelfolioWeb.HoldingsLive do
               >
                 <td>
                   <span class="d-inline-flex align-items-center gap-2 fw-semibold">
-                    <svg
-                      class="app-icon app-icon-sm text-body-secondary"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                    >
-                      <path d="M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 7l13-4v4M17 13.5h.01" />
-                    </svg>
+                    <.icon name="wallet" class="app-icon-sm text-body-secondary" />
                     {row.account.name}
                   </span>
                   <div class="small text-body-secondary">{account_note(group, row.account)}</div>
@@ -192,7 +191,7 @@ defmodule ZipfelfolioWeb.HoldingsLive do
             patch={~p"/holdings?#{[portfolio: portfolio.id]}"}
             active={@holdings.portfolio && @holdings.portfolio.id == portfolio.id}
           >
-            {portfolio.name}
+            <Layouts.chip portfolio={portfolio} />{portfolio.name}
           </.menu_item>
         </li>
       </ul>
@@ -208,7 +207,7 @@ defmodule ZipfelfolioWeb.HoldingsLive do
     ~H"""
     <.link
       patch={@patch}
-      class={["dropdown-item", @active && "active"]}
+      class={["dropdown-item d-flex align-items-center gap-2", @active && "active"]}
       aria-current={@active && "page"}
       phx-click={hide_menu()}
     >
@@ -221,6 +220,10 @@ defmodule ZipfelfolioWeb.HoldingsLive do
     JS.remove_class("show", to: "#portfolio-menu")
     |> JS.set_attribute({"aria-expanded", "false"}, to: "#portfolio-menu-toggle")
   end
+
+  # The portfolio shown, nil for all, which the sidebar marks.
+  defp shown_portfolio_id(%{holdings: %{portfolio: %{id: id}}}), do: id
+  defp shown_portfolio_id(_assigns), do: nil
 
   defp group_id(%{portfolio: nil}), do: "accounts"
   defp group_id(%{portfolio: portfolio}), do: "portfolio-#{portfolio.id}"
@@ -263,11 +266,6 @@ defmodule ZipfelfolioWeb.HoldingsLive do
   @impl true
   def mount(_params, _session, socket) do
     scope = socket.assigns.current_scope
-
-    if connected?(socket) do
-      MarketData.subscribe()
-      MarketData.refresh_stale_quotes()
-    end
 
     empty = Portfolios.list_portfolios(scope) == [] and Portfolios.list_accounts(scope) == []
 

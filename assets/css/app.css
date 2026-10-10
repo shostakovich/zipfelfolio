@@ -14,3 +14,163 @@
 .app-swatch-secondary { background: var(--felt-secondary); }
 /* Two stat cards side by side on a phone: values up to „+135,94 %“ still fit. */
 @media (max-width: 575.98px) { .app-stats .stat-value { font-size: 1.5rem; } }
+
+/* Shell: a dark sidebar from 768 px, an icon rail below 1280 px and from 1280 px when collapsed on this
+ * device (sidebar.js); a header and a tab bar below 768 px. */
+.app { max-width: 1200px; padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+@media (min-width: 768px) { .app { padding-top: 1.75rem; padding-bottom: 3rem; } }
+/* The sidebar's colours follow the page's theme, so they are computed on :root as registered colours;
+ * a look other than clean overrides these tokens. */
+@property --side-bg { syntax: "<color>"; inherits: true; initial-value: #1e2b45; }
+@property --side-edge { syntax: "<color>"; inherits: true; initial-value: transparent; }
+@property --side-ink { syntax: "<color>"; inherits: true; initial-value: #f4f6fa; }
+@property --side-muted { syntax: "<color>"; inherits: true; initial-value: #b4bdcc; }
+@property --side-fly { syntax: "<color>"; inherits: true; initial-value: #2d3a59; }
+:root {
+  --side-bg: light-dark(#1e2b45, #151b28); --side-edge: light-dark(transparent, rgb(255 255 255 / .07));
+  --side-ink: #f4f6fa; --side-muted: #b4bdcc; --side-fly: light-dark(#2d3a59, #283247);
+  --rail-w: 4.25rem;
+}
+@media (min-width: 768px) {
+  body:has(.app-side) { padding-left: 18.5rem; }
+  :root:is(.app-rail, .app-side-peek) body:has(.app-side) { padding-left: var(--rail-w); }
+  :root.app-rail .app { max-width: calc(1200px + 18.5rem - var(--rail-w)); }
+}
+.app-side {
+  --side-hover: rgb(255 255 255 / .06); --side-line: rgb(255 255 255 / .24);
+  --side-mark: #8fb2e8; --side-neg: #ff9d8c; --side-pad-r: .625rem;
+  position: fixed; inset: 0 auto 0 0; z-index: 1030; width: 18.5rem;
+  background-color: var(--side-bg); color: var(--side-ink); box-shadow: 1px 0 0 var(--side-edge);
+  font-size: .9375rem; line-height: 1.25;
+}
+.app-rail .app-side { width: var(--rail-w); }
+.app-side-peek .app-side { box-shadow: 1px 0 0 var(--side-edge), 12px 0 32px rgb(0 0 0 / .35); }
+/* Below 1280 px the opened sidebar lies over the page, which a scrim dims. */
+.app-side-scrim { display: none; position: fixed; inset: 0; z-index: 1029; background: light-dark(rgb(0 0 0 / .28), rgb(0 0 0 / .4)); }
+@media (min-width: 768px) { .app-side-peek .app-side-scrim { display: block; } }
+.app-side .app-icon { stroke-width: 1.75; }
+.app-side-top { padding: .75rem var(--side-pad-r) .5rem .625rem; }
+.app-side-scroll {
+  flex: 1 1 auto; min-height: 0; overflow: hidden auto; padding: 0 var(--side-pad-r) .75rem .625rem;
+  scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / .2) transparent;
+}
+/* A list longer than the sidebar fades out at the bottom until scrolled to its end. */
+@property --side-fade { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@keyframes app-side-fade { from, 99% { --side-fade: 2.5rem; } to { --side-fade: 0px; } }
+@supports (animation-timeline: scroll()) {
+  :root:not(.app-rail) .app-side-scroll {
+    mask-image: linear-gradient(to bottom, #000 calc(100% - var(--side-fade)), transparent);
+    animation: app-side-fade auto linear both; animation-timeline: scroll(self);
+  }
+}
+.app-side-foot { display: flex; align-items: center; gap: .25rem; margin: 0 var(--side-pad-r) 0 .625rem; padding: .5rem 0 .75rem; border-top: 1px solid var(--side-line); }
+.app-side-foot .nav-link { flex: 1 1 auto; }
+/* The account menu: the logo on the icon column, the name on the text column. */
+.app-side-me {
+  position: relative; display: flex; align-items: center; gap: .625rem; width: 100%; min-height: 2.75rem; padding: .25rem .5rem; border: 0;
+  border-radius: var(--felt-radius); background: none; color: inherit; text-align: left;
+}
+.app-side-me:hover, .app-side-me[aria-expanded="true"] { background-color: var(--side-hover); }
+.app-side-logo { width: 1.5rem; height: 1.5rem; flex-shrink: 0; fill: none; stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; }
+.app-side-me .app-side-text { min-width: 0; }
+.app-side-me b { display: block; font-size: .9375rem; font-weight: 700; }
+.app-side-me small { display: block; overflow: hidden; color: var(--side-muted); font-size: .8125rem; text-overflow: ellipsis; white-space: nowrap; }
+.app-side-me .app-chev { width: 1rem; height: 1rem; margin-left: auto; color: var(--side-muted); }
+.app-side .dropdown-menu {
+  --felt-dropdown-min-width: 13rem; --felt-dropdown-bg: var(--side-fly); --felt-dropdown-border-color: rgb(255 255 255 / .12);
+  --felt-dropdown-link-color: var(--side-ink); --felt-dropdown-link-hover-color: #fff; --felt-dropdown-link-hover-bg: rgb(255 255 255 / .08);
+  box-shadow: 0 8px 24px rgb(0 0 0 / .4);
+}
+/* 2 px under the button, as Bootstrap's Popper places it. */
+.app-side-top .dropdown-menu[data-bs-popper] { top: calc(100% - .5rem + 2px); left: .625rem; margin-top: 0; }
+.app-rail .app-side-top .dropdown-menu[data-bs-popper] { left: .5rem; }
+.app-side .dropdown-item { display: flex; align-items: center; gap: .625rem; font-size: .875rem; }
+.app-side .dropdown-item .app-icon { width: 1rem; height: 1rem; color: var(--side-muted); }
+.app-side .nav { flex-wrap: nowrap; gap: 2px; }
+.app-side .nav-link {
+  position: relative; display: flex; align-items: center; gap: .75rem; min-width: 0; height: 2.125rem; padding: 0 .625rem;
+  border-radius: var(--felt-radius); color: var(--side-ink); font-size: .9375rem; font-weight: 500; line-height: 1.25; text-decoration: none;
+}
+.app-side .nav-link:hover { background-color: var(--side-hover); color: #fff; }
+.app-side .nav-link.active { background-color: rgb(255 255 255 / .10); color: #fff; font-weight: 600; }
+.app-side .nav-link.active::before {
+  content: ""; position: absolute; left: 4px; top: 50%; width: 3px; height: 1.125rem; translate: 0 -50%; border-radius: 2px; background: var(--side-mark);
+}
+/* Money: the portfolios with their reference account, then the accounts of no portfolio; the totals add up
+ * to net worth. */
+.app-side-h {
+  display: flex; justify-content: space-between; gap: .5rem; margin: 1.25rem 0 .25rem; padding: 0 .625rem;
+  color: var(--side-muted); font-size: .6875rem; font-weight: 700; letter-spacing: .07em; line-height: 1rem; text-transform: uppercase;
+}
+.app-side-h > :last-child { letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.app-side .app-acc { height: 1.875rem; font-size: .875rem; }
+.app-side .app-sub { gap: .5rem; padding-left: 2.625rem; font-size: .8125rem; color: var(--side-muted); }
+.app-side .app-sub .app-icon { width: .875rem; height: .875rem; }
+.app-side .app-sub .app-bal { font-size: .8125rem; color: var(--side-muted); }
+.app-side .app-sub.active .app-bal { color: inherit; }
+.app-acc-name { min-width: 0; margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-bal { flex-shrink: 0; font-size: .875rem; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.app-bal.is-zero { color: var(--side-muted); }
+.app-bal.is-neg { color: var(--side-neg); }
+/* Chips: a portfolio is a filled square with its initial, an account of no portfolio an outlined square
+ * with a wallet. */
+.app-chip {
+  --chip: var(--felt-denim);
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 1.25rem; height: 1.25rem;
+  border-radius: .3125rem; background: var(--chip); color: #fff; font-size: .6875rem; font-weight: 700; line-height: 1;
+}
+.app-chip-acc { background: none; color: inherit; box-shadow: inset 0 0 0 1.5px currentColor; }
+.app-side .app-chip-acc { color: var(--side-muted); }
+.app-chip-acc .app-icon { width: .8125rem; height: .8125rem; stroke-width: 2; }
+.app-chip-all { background: var(--felt-taupe); }
+.app-chip-all .app-icon { width: .875rem; height: .875rem; stroke-width: 2; }
+.app-side-toggle {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 2.125rem; height: 2.125rem;
+  border: 0; border-radius: var(--felt-radius); background: none; color: var(--side-muted);
+}
+.app-side-toggle:hover { background: var(--side-hover); color: #fff; }
+.app-fly { display: none; }
+/* Touch: 44 px targets; the rail widens to keep them clear of its edge. */
+@media (pointer: coarse) {
+  :root { --rail-w: 4.75rem; }
+  .app-side .nav-link, .app-side .app-acc { height: 2.75rem; }
+  .app-side .app-side-toggle { width: 2.75rem; height: 2.75rem; }
+  .app-side .dropdown-item { min-height: 2.75rem; }
+  .app-side-h { margin-top: .75rem; }
+}
+/* The rail: icons and chips only; names and values stay for screen readers and show in a flyout. */
+.app-rail .app-side :is(.app-side-text, .app-acc-name, .app-bal) {
+  position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+.app-rail .app-side :is(.app-sub, .app-side-me .app-chev) { display: none; }
+.app-rail .app-side-scroll { overflow: visible; padding-inline: .5rem; }
+.app-rail .app-side-top { padding-inline: .5rem; }
+.app-rail .app-side-foot { flex-direction: column; margin-inline: .5rem; }
+.app-rail .app-side-me { justify-content: center; padding-inline: 0; }
+.app-rail .app-side .nav-link { justify-content: center; padding-inline: 0; }
+.app-rail .app-side-foot .nav-link { width: 100%; }
+.app-rail .app-side-h { height: 0; margin: .75rem .5rem; padding: 0; border-top: 1px solid var(--side-line); }
+.app-rail .app-side-h > * { display: none; }
+.app-rail .app-side-toggle svg { transform: scaleX(-1); }
+.app-rail .app-side :is(.nav-link, .app-side-me:not([aria-expanded="true"]), .app-side-toggle):is(:hover, :focus-visible) > .app-fly {
+  display: flex; gap: .75rem; position: absolute; z-index: 1; left: calc(100% + .75rem); top: 50%; translate: 0 -50%;
+  padding: .375rem .625rem; border-radius: var(--felt-radius-sm); background: var(--side-fly); color: #fff; box-shadow: 0 4px 14px rgb(0 0 0 / .35);
+  font-size: .8125rem; font-weight: 500; line-height: 1.25rem; white-space: nowrap; pointer-events: none;
+}
+.app-fly > span { color: var(--side-muted); font-variant-numeric: tabular-nums; }
+/* Phone: the header, the tab bar and the „Depots“ screen. */
+.app-head-logo { width: 1.75rem; height: 1.75rem; }
+.app-avatar-hit { display: inline-flex; align-items: center; justify-content: center; width: 2.75rem; height: 2.75rem; margin: -.25rem; border-radius: 50%; }
+.app-tabbar .nav-pills { --felt-nav-pills-link-active-bg: light-dark(var(--felt-primary), #5a82c2); }
+.app-tabbar .nav-link { padding-inline: .125rem; }
+.app-tabbar .app-icon { stroke-width: 1.75; }
+.app-tabbar small { font-size: .6875rem; }
+.app-sheet-h { display: flex; justify-content: space-between; gap: .5rem; margin: 0 .25rem .5rem; color: var(--felt-secondary-color); font-size: .75rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.app-sheet-h > :last-child { letter-spacing: 0; font-variant-numeric: tabular-nums; }
+/* A portfolio and its account read as one: no divider between them, the account's glyph on the portfolio's
+ * text column. */
+.app-tree .list-group-item { display: flex; align-items: center; gap: .75rem; min-height: 3rem; }
+.app-tree .app-sub { min-height: 2.75rem; padding-left: 3rem; color: var(--felt-secondary-color); font-size: .875rem; }
+.app-tree .app-sub > .app-icon:first-child { width: .875rem; height: .875rem; margin-right: -.25rem; }
+.app-tree .list-group-item:has(+ .app-sub) { border-bottom-width: 0; }
+.app-tree .app-chev { width: 1rem; height: 1rem; color: var(--felt-tertiary-color); }

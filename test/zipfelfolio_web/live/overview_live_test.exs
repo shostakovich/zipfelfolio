@@ -271,6 +271,22 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
       assert has_element?(lv, "#portfolio-#{retired.id}", "102,00\u00A0€")
       refute has_element?(lv, "#portfolio-#{empty.id}")
     end
+
+    test "leaves out a retired reference account once it is empty, as the sidebar does", ctx do
+      account = account_fixture(ctx.scope, %{name: "Konto Alt", retired: true})
+
+      portfolio =
+        portfolio_fixture(ctx.scope, %{name: "Alt", reference_account_id: account.id})
+
+      deliver(ctx.scope, portfolio, 1, money(100))
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/")
+
+      row = lv |> element("#portfolio-#{portfolio.id}") |> render()
+
+      assert row =~ "1\u00A0Wertpapier"
+      refute row =~ "Konto"
+    end
   end
 
   test "points to the import while there are no portfolios", %{conn: conn} do

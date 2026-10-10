@@ -8,6 +8,15 @@
     <.live_title default="zipfelfolio" suffix=" · zipfelfolio">
       {assigns[:page_title]}
     </.live_title>
+    <script>
+      // The sidebar's width before the first paint, on the root element, which live navigation
+      // keeps: from 1280 px open unless collapsed on this device, below it the rail (sidebar.js).
+      (() => {
+        let stored = null;
+        try { stored = localStorage.getItem("sidebar"); } catch {}
+        if (!matchMedia("(min-width: 1280px)").matches || stored === "rail") document.documentElement.classList.add("app-rail");
+      })();
+    </script>
     <link rel="icon" href={~p"/images/icon.svg"} type="image/svg+xml" />
     <link rel="preconnect" href="https://felt-css.rocu.de" />
     <link rel="stylesheet" href="https://felt-css.rocu.de/felt.css" />

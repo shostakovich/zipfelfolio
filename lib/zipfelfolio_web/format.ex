@@ -28,6 +28,9 @@ defmodule ZipfelfolioWeb.Format do
   """
   def euros(cents, places \\ 0), do: number(Decimal.div(cents, 100), places, "") <> "\u00A0€"
 
+  @doc "Cents as euros with two decimal places and without the € sign, e.g. `146.617,58`."
+  def amount(cents), do: number(Decimal.div(cents, 100), 2, "")
+
   @doc "A change in cents as whole euros with its sign, e.g. `+562 €`, or with `places`."
   def signed_euros(cents, places \\ 0),
     do: number(Decimal.div(cents, 100), places, "+") <> "\u00A0€"

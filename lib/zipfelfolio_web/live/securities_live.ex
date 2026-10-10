@@ -11,7 +11,12 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} current={:settings}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      sidebar={@sidebar}
+      current={:settings}
+    >
       <.header>
         Wertpapiere
         <:actions>
@@ -184,11 +189,6 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      MarketData.subscribe()
-      MarketData.refresh_stale_quotes()
-    end
-
     {:ok, socket |> assign(:page_title, "Wertpapiere") |> load()}
   end
 

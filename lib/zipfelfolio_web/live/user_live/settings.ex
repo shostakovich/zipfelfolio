@@ -8,7 +8,12 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} current={:settings}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      sidebar={@sidebar}
+      current={:settings}
+    >
       <.header>
         Einstellungen
         <:actions>

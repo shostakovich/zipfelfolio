@@ -19,7 +19,12 @@ defmodule ZipfelfolioWeb.ImportLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} current={:settings}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      sidebar={@sidebar}
+      current={:settings}
+    >
       <.header>
         Import aus Portfolio Performance
         <:actions>

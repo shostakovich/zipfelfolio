@@ -96,6 +96,7 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
       {:ok, lv, _html} = live(ctx.conn, ~p"/holdings")
 
       assert has_element?(lv, "#portfolio-menu-toggle", "Gesamt")
+      assert has_element?(lv, "#portfolio-menu a[href$='=#{ctx.b.id}'] .app-chip", "B")
       assert has_element?(lv, "#portfolio-#{ctx.a.id} #account-#{ctx.account.id}", "K")
       refute has_element?(lv, "#portfolio-#{ctx.b.id} #account-#{ctx.account.id}")
       refute has_element?(lv, "#accounts")

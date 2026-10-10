@@ -24,6 +24,12 @@ defmodule ZipfelfolioWeb.FormatTest do
     assert Format.euros(-5, 2) == "−0,05\u00A0€"
   end
 
+  test "amounts have cents and no € sign, as the sidebar lists them" do
+    assert Format.amount(14_661_758) == "146.617,58"
+    assert Format.amount(-1_230) == "−12,30"
+    assert Format.amount(0) == "0,00"
+  end
+
   test "changes in euros carry their sign" do
     assert Format.signed_euros(56_200) == "+562\u00A0€"
     assert Format.signed_euros(-123_450) == "−1.235\u00A0€"
