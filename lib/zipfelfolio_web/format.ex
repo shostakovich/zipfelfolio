@@ -8,24 +8,35 @@ defmodule ZipfelfolioWeb.Format do
   `1.234,5678 USD` or `166,66 €`; the currency never wraps onto a line of its own.
   """
   def price(nil, _currency), do: "–"
+  def price(close, currency), do: price(close, currency, price_places(close))
 
-  def price(close, currency) do
-    amount =
-      close
-      |> Decimal.new()
-      |> Decimal.div(100_000_000)
-      |> Decimal.round(4)
-      |> Decimal.normalize()
+  @doc "A price × 10⁸ with `places` decimal places."
+  def price(nil, _currency, _places), do: "–"
 
-    places = -amount.exp |> max(2) |> min(4)
-
+  def price(close, currency, places) do
     [whole, fraction] =
-      amount |> Decimal.round(places) |> Decimal.to_string(:normal) |> String.split(".")
+      close
+      |> price_amount()
+      |> Decimal.round(places)
+      |> Decimal.to_string(:normal)
+      |> String.split(".")
 
     [group_thousands(whole) <> "," <> fraction, currency(currency)]
     |> Enum.reject(&(&1 in [nil, ""]))
     |> Enum.join("\u00A0")
   end
+
+  @doc "The decimal places a price × 10⁸ shows: those it has, from two to four."
+  def price_places(close), do: -Decimal.normalize(price_amount(close)).exp |> max(2) |> min(4)
+
+  defp price_amount(close),
+    do: close |> Decimal.new() |> Decimal.div(100_000_000) |> Decimal.round(4)
+
+  @month_abbrs ~w(Jan Feb Mär Apr Mai Jun Jul Aug Sep Okt Nov Dez)
+
+  @doc "The abbreviation of a month, by its number or a date in it, e.g. `Mär`."
+  def month_abbr(%{month: month}), do: month_abbr(month)
+  def month_abbr(month) when month in 1..12, do: Enum.at(@month_abbrs, month - 1)
 
   @doc "A currency as prices name it: `€` for euros, otherwise its code."
   def currency("EUR"), do: "€"

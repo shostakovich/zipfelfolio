@@ -192,6 +192,13 @@ defmodule Zipfelfolio.PortfoliosTest do
 
     defp account_names(group), do: Enum.map(group.accounts, & &1.account.name)
 
+    defp dividends_by_name(holdings) do
+      for group <- holdings.groups, row <- group.holdings do
+        {group.portfolio.name, row.security.name, row.dividends}
+      end
+      |> Enum.sort()
+    end
+
     test "gives each portfolio's holdings by value, then its reference account", ctx do
       account = account_fixture(ctx.scope, %{name: "Konto Langfristig"})
       deposit_on_friday(ctx.scope, account, 2_000)
@@ -240,7 +247,7 @@ defmodule Zipfelfolio.PortfoliosTest do
       assert selected.portfolio == b
       assert group_names(selected) == ["B"]
       assert Enum.map(selected.groups, &account_names/1) == [["K"]]
-      assert selected.total == %{value: money(50), purchase_value: 0, gain: 0}
+      assert %{value: 5_000, purchase_value: 0, gain: 0} = selected.total
       assert selected.net_worth == money(50)
       assert Portfolios.holdings(ctx.scope, a.id, @saturday).portfolio == a
     end
@@ -258,11 +265,7 @@ defmodule Zipfelfolio.PortfoliosTest do
       assert group_names(holdings) == ["Langfristig", nil]
       assert account_names(List.last(holdings.groups)) == ["Noch offen", "Tagesgeld"]
 
-      assert holdings.total == %{
-               value: money(2_001),
-               purchase_value: money(1_000),
-               gain: 0
-             }
+      assert %{value: 200_100, purchase_value: 100_000, gain: 0} = holdings.total
 
       assert group_names(Portfolios.holdings(ctx.scope, ctx.portfolio.id, @saturday)) ==
                ["Langfristig"]
@@ -381,6 +384,29 @@ defmodule Zipfelfolio.PortfoliosTest do
 
       assert shares.(Portfolios.holdings(ctx.scope, ctx.portfolio.id, @saturday)) ==
                [{"Anlageklassen", [{"Aktien", 1.0}, {"Cash", 0.0}]}]
+    end
+
+    test "gives each holding its part of its security's dividends of the next 12 months", ctx do
+      paying = security_at(100, "Ausschüttend")
+      accumulating = security_at(50, "Thesaurierend")
+      pension = portfolio_fixture(ctx.scope, %{name: "Altersvorsorge"})
+      buy(ctx.scope, ctx.portfolio, paying, 30, 3_000)
+      buy(ctx.scope, pension, paying, 10, 1_000)
+      buy(ctx.scope, ctx.portfolio, accumulating, 10, 500)
+      divvy_diary_dividend_fixture(paying, nil, ~D[2026-10-20], 2)
+
+      holdings = Portfolios.holdings(ctx.scope, nil, @saturday)
+
+      assert dividends_by_name(holdings) == [
+               {"Altersvorsorge", "Ausschüttend", money(20)},
+               {"Langfristig", "Ausschüttend", money(60)},
+               {"Langfristig", "Thesaurierend", 0}
+             ]
+
+      assert holdings.total.dividends == money(80)
+      assert holdings.total.securities_value == money(4_500)
+
+      assert Portfolios.holdings(ctx.scope, pension.id, @saturday).total.dividends == money(20)
     end
 
     test "shows all portfolios for one of another user", ctx do
@@ -581,6 +607,19 @@ defmodule Zipfelfolio.PortfoliosTest do
       assert result.costs_per_year == money(20)
     end
 
+    test "gives the dividends expected of the security, at the latest ECB rate", ctx do
+      security = security_fixture(quote_feed: :manual)
+      price_fixture(security, @friday, price(100), :pp)
+      trade(ctx.scope, :buy, ctx.portfolio, security, ~D[2026-03-02], 100, 9_000)
+      divvy_diary_dividend_fixture(security, ~D[2026-10-10], ~D[2026-10-20], 0.5, "USD")
+      ExchangeRates.store([{"USD", @friday, Decimal.new("1.25")}])
+
+      assert [%{kind: :announced, pay_date: ~D[2026-10-20], gross: gross}] =
+               Portfolios.security(ctx.scope, security, :one_year, @saturday).upcoming
+
+      assert gross == money(40)
+    end
+
     test "starts Max at the first trade before the first price", ctx do
       security = security_fixture(quote_feed: :manual)
       price_fixture(security, @friday, price(100), :pp)
@@ -590,6 +629,29 @@ defmodule Zipfelfolio.PortfoliosTest do
 
       assert [%{date: ~D[2024-05-02], price: 8_000_000_000}] = chart.trades
       assert Enum.map(chart.prices, & &1.date) == [@friday]
+    end
+  end
+
+  describe "upcoming_dividends/2" do
+    test "gives the dividends expected, those of the rest of the year and of three months", ctx do
+      security = security_fixture(quote_feed: :manual)
+      deliver(ctx.scope, ctx.portfolio, security, ~D[2025-01-02], 100)
+      divvy_diary_dividend_fixture(security, ~D[2026-10-10], ~D[2026-10-20], 0.5)
+      divvy_diary_dividend_fixture(security, nil, ~D[2025-12-15], 1)
+      divvy_diary_dividend_fixture(security, nil, ~D[2026-01-15], 1)
+      other = user_scope_fixture()
+      deliver(other, portfolio_fixture(other), security, ~D[2025-01-02], 1_000)
+
+      result = Portfolios.upcoming_dividends(ctx.scope, @saturday)
+
+      assert Enum.map(result.upcoming, &{&1.pay_date, &1.gross}) == [
+               {~D[2026-10-20], money(50)},
+               {~D[2026-12-15], money(100)},
+               {~D[2027-01-15], money(100)}
+             ]
+
+      assert result.rest_of_year == money(150)
+      assert Enum.map(result.next_three_months, & &1.pay_date) == [~D[2026-10-20], ~D[2026-12-15]]
     end
   end
 

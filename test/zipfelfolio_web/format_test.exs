@@ -18,6 +18,14 @@ defmodule ZipfelfolioWeb.FormatTest do
     assert Format.currency("USD") == "USD"
   end
 
+  test "prices in a column share the places of the most precise" do
+    places = Enum.max(Enum.map([21_400_000, 19_000_000, 37_410_000], &Format.price_places/1))
+
+    assert places == 4
+    assert Format.price(19_000_000, "EUR", places) == "0,1900\u00A0€"
+    assert Format.price(nil, "EUR", places) == "–"
+  end
+
   test "changes in prices carry their sign and a real minus" do
     assert Format.signed_price(106_000_000, "EUR") == "+1,06\u00A0€"
     assert Format.signed_price(-106_000_000, "USD") == "−1,06\u00A0USD"
@@ -105,6 +113,11 @@ defmodule ZipfelfolioWeb.FormatTest do
   test "changes in percent can have one decimal place" do
     assert Format.signed_percent(Decimal.new("12.64"), 1) == "+12,6\u00A0%"
     assert Format.signed_percent(Decimal.new("-0.04"), 1) == "0,0\u00A0%"
+  end
+
+  test "months are abbreviated in German, by number or date" do
+    assert Format.month_abbr(3) == "Mär"
+    assert Format.month_abbr(~D[2026-12-24]) == "Dez"
   end
 
   test "dates are German" do

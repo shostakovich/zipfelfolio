@@ -168,27 +168,31 @@ defmodule Zipfelfolio.Portfolios do
     `accounts`. For all portfolios, an account several settle against appears under the first
     (as in the overview), and the accounts of no portfolio follow in a group without portfolio.
     Each group has the `value` of its rows and the `purchase_value` and `gain` of its holdings.
-  - `total`: `value`, `purchase_value` and `gain` of the groups shown
+  - `total`: `value`, `purchase_value` and `gain` of the groups shown, the `dividends` of their
+    holdings and the `securities_value` they make up
   - `net_worth`: the value of all holdings and accounts, of which each row shows its share
   - `costs`: what the securities shown cost a year, see `Costs.of/1`; accounts hold no funds
   - `allocation`: the regions and sectors of the securities shown, see `Allocation.of/2`, and in
     `taxonomies` the allocation of the securities and accounts shown into each of the user's
     taxonomies by name, see `Classifications.of/3`, those without value shown in them left out
 
-  A holding has its `security`, `shares`, `price`, `value`, `purchase_value` and `gain`, an
-  account its `value`. Retired accounts are left out once they are empty.
+  A holding has its `security`, `shares`, `price`, `value`, `purchase_value`, `gain` and the gross
+  `dividends` of the next 12 months, its part of those of its security (see `Dividends.upcoming/4`)
+  by shares; an account has its `value`. Retired accounts are left out once they are empty.
   """
   def holdings(%Scope{} = scope, portfolio_id, today) do
     transactions = list_transactions(scope)
     accounts = list_accounts(scope)
+    stored = stored_dividends(transactions)
     # Purchase values convert each purchase at the rate of its day.
-    market = load_market(transactions, accounts, today, :since_first_transaction)
+    market = load_market(transactions, accounts, today, :since_first_transaction, stored)
     holdings = Valuation.holdings(transactions, today)
     portfolios = shown_portfolios(scope, holdings)
     portfolio = Enum.find(portfolios, &(&1.id == portfolio_id))
+    upcoming = Dividends.upcoming(transactions, stored, market, today)
 
     rows = %{
-      holdings: holding_rows(holdings, transactions, market, today),
+      holdings: holdings |> holding_rows(transactions, market, today) |> with_dividends(upcoming),
       accounts: account_rows(accounts, Valuation.balances(transactions, today), market, today)
     }
 
@@ -200,10 +204,34 @@ defmodule Zipfelfolio.Portfolios do
       portfolios: portfolios,
       portfolio: portfolio,
       groups: groups,
-      total: totals(groups),
+      total: groups |> totals() |> Map.merge(dividend_totals(shown)),
       net_worth: Enum.sum_by(rows.holdings ++ rows.accounts, & &1.value),
       costs: Costs.of(shown),
       allocation: allocation(scope, shown, shown_accounts)
+    }
+  end
+
+  defp with_dividends(rows, upcoming) do
+    gross = upcoming |> Enum.group_by(& &1.security.id, & &1.gross) |> Map.new(&sum_values/1)
+    shares = rows |> Enum.group_by(& &1.security.id, & &1.shares) |> Map.new(&sum_values/1)
+
+    Enum.map(rows, fn row ->
+      id = row.security.id
+      Map.put(row, :dividends, rounded_part(Map.get(gross, id, 0), row.shares, shares[id]))
+    end)
+  end
+
+  defp sum_values({key, values}), do: {key, Enum.sum(values)}
+
+  defp rounded_part(cents, part, whole) when whole > 0,
+    do: div(cents * part * 2 + whole, whole * 2)
+
+  defp rounded_part(_cents, _part, _whole), do: 0
+
+  defp dividend_totals(holdings) do
+    %{
+      dividends: Enum.sum_by(holdings, & &1.dividends),
+      securities_value: Enum.sum_by(holdings, & &1.value)
     }
   end
 
@@ -233,8 +261,7 @@ defmodule Zipfelfolio.Portfolios do
   """
   def dividends(%Scope{} = scope, %Date{} = today) do
     transactions = list_transactions(scope)
-    security_ids = transactions |> Enum.map(& &1.security_id) |> Enum.reject(&is_nil/1)
-    stored = Securities.list_divvy_diary_dividends(Enum.uniq(security_ids))
+    stored = stored_dividends(transactions)
 
     market =
       load_market(transactions, list_accounts(scope), today, :since_first_transaction, stored)
@@ -261,6 +288,39 @@ defmodule Zipfelfolio.Portfolios do
   end
 
   @doc """
+  The dividends the overview expects after `today`, gross, see `Dividends.upcoming/4`:
+
+  - `upcoming`: all of them, by pay date
+  - `rest_of_year`: the total of those paid this year
+  - `next_three_months`: those of today's month and the next two
+  """
+  def upcoming_dividends(%Scope{} = scope, %Date{} = today) do
+    transactions = list_transactions(scope)
+    stored = stored_dividends(transactions)
+
+    market =
+      load_market(transactions, list_accounts(scope), today, :since_first_transaction, stored)
+
+    upcoming = Dividends.upcoming(transactions, stored, market, today)
+    three_months = today |> Date.beginning_of_month() |> Date.shift(month: 3)
+
+    %{
+      upcoming: upcoming,
+      rest_of_year:
+        upcoming |> Enum.filter(&(&1.pay_date.year == today.year)) |> Enum.sum_by(& &1.gross),
+      next_three_months: Enum.filter(upcoming, &Date.before?(&1.pay_date, three_months))
+    }
+  end
+
+  defp stored_dividends(transactions) do
+    transactions
+    |> Enum.map(& &1.security_id)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+    |> Securities.list_divvy_diary_dividends()
+  end
+
+  @doc """
   What the security page shows of `security` on `today`; amounts in euro cents, prices × 10⁸ in
   the security's currency, shares × 10⁸. The security and its prices are shared by all users,
   the holdings and trades are the user's:
@@ -272,11 +332,13 @@ defmodule Zipfelfolio.Portfolios do
   - `total`: the `shares`, `value`, `purchase_value` and `gain` of all holdings
   - `costs_per_year` of the holdings, see `Costs.of/1`
   - `distributions`: from the user's dividends, see `Distributions.of/3`
+  - `upcoming`: the dividends expected of it, see `Dividends.upcoming/4`
   """
   def security(%Scope{} = scope, %Security{} = security, period, today) do
     transactions = list_transactions_of(scope, security)
     closes = scope |> Securities.list_prices(security) |> Enum.map(&{&1.date, &1.close})
-    market = security_market(security, closes, transactions, today)
+    stored = Securities.list_divvy_diary_dividends([security.id])
+    market = security_market(security, closes, transactions, stored, today)
     holdings = security_holdings(scope, transactions, market, today)
     range = Period.range(period, today, first_price_or_trade(security, closes, transactions))
 
@@ -287,7 +349,8 @@ defmodule Zipfelfolio.Portfolios do
       holdings: holdings,
       total: holdings |> totals() |> Map.put(:shares, Enum.sum_by(holdings, & &1.shares)),
       costs_per_year: Costs.of(holdings).per_year,
-      distributions: Distributions.of(security, transactions, market)
+      distributions: Distributions.of(security, transactions, market),
+      upcoming: Dividends.upcoming(transactions, stored, market, today)
     }
   end
 
@@ -301,8 +364,11 @@ defmodule Zipfelfolio.Portfolios do
   end
 
   # Purchase values convert each purchase at the rate of its day.
-  defp security_market(security, closes, transactions, today) do
-    currencies = [security | transactions] |> Enum.map(& &1.currency) |> Market.rate_currencies()
+  defp security_market(security, closes, transactions, dividends, today) do
+    currencies =
+      [security | transactions ++ dividends]
+      |> Enum.map(& &1.currency)
+      |> Market.rate_currencies()
 
     Market.new(
       [security],

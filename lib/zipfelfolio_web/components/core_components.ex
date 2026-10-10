@@ -304,6 +304,10 @@ defmodule ZipfelfolioWeb.CoreComponents do
     """
   end
 
+  @doc "The class that mutes an amount of zero in a column of amounts."
+  def muted(0), do: "text-body-tertiary"
+  def muted(_amount), do: nil
+
   # The click dummy's line icons on a 24 px grid, each as the paths it draws.
   @icons %{
     "back" => ["m15 6-6 6 6 6"],

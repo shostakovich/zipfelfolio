@@ -1,6 +1,8 @@
 defmodule ZipfelfolioWeb.DividendsLive do
   use ZipfelfolioWeb, :live_view
 
+  import ZipfelfolioWeb.DividendComponents
+
   alias Zipfelfolio.{LocalTime, Portfolios}
   alias ZipfelfolioWeb.Format
 
@@ -11,7 +13,6 @@ defmodule ZipfelfolioWeb.DividendsLive do
     {"received", :received, "Erhalten"}
   ]
   @amounts [{"net", :net, "Netto"}, {"gross", :gross, "Brutto"}]
-  @months ~w(Jan Feb Mär Apr Mai Jun Jul Aug Sep Okt Nov Dez)
   @month_names ~w(Januar Februar März April Mai Juni Juli August September Oktober November Dezember)
 
   @year_colours ~w(taupe mustard now)
@@ -189,7 +190,7 @@ defmodule ZipfelfolioWeb.DividendsLive do
               <span>{month_name(first)} {first.year}</span>
               <span class="app-calendar-total">
                 <.partly_gross :if={partly_gross?(dividends, @amount)} class="fw-normal" />
-                <span class="tabular-nums">{month_total(dividends, @amount)}</span>
+                <span class="tabular-nums">{expected_total(dividends, @amount, 2)}</span>
               </span>
             </h2>
             <ul class="list-group">
@@ -221,9 +222,7 @@ defmodule ZipfelfolioWeb.DividendsLive do
                     {Format.shares(dividend.shares)}&nbsp;Stück × {per_share(dividend)}
                   </span>
                 </span>
-                <span class={["badge app-upcoming-tag", "app-upcoming-#{dividend.kind}"]}>
-                  {kind_label(dividend.kind)}
-                </span>
+                <.kind_tag kind={dividend.kind} class="app-upcoming-tag" />
               </li>
             </ul>
           </div>
@@ -260,10 +259,7 @@ defmodule ZipfelfolioWeb.DividendsLive do
               </div>
             </div>
           </div>
-          <div class="card-footer small text-body-secondary">
-            Angekündigt sind Termine von DivvyDiary. Die Prognose nimmt die Zahlungen der letzten
-            12 Monate ein Jahr später, mal heutigem Bestand. Fremdwährungen zum letzten EZB‑Kurs.
-          </div>
+          <div class="card-footer small text-body-secondary"><.forecast_note /></div>
         </section>
       </div>
     </div>
@@ -292,7 +288,8 @@ defmodule ZipfelfolioWeb.DividendsLive do
 
   defp per_month(assigns) do
     colours = assigns.years |> chart_years() |> year_colours()
-    assigns = assign(assigns, months: @months, colours: colours, colour: Map.new(colours))
+    months = Enum.map(1..12, &Format.month_abbr/1)
+    assigns = assign(assigns, months: months, colours: colours, colour: Map.new(colours))
 
     ~H"""
     <section id="per-month" class="card mb-4" aria-labelledby="per-month-title">
@@ -507,27 +504,7 @@ defmodule ZipfelfolioWeb.DividendsLive do
 
   defp split_open(%{months: months}, _amount, _today), do: {months, 0}
 
-  defp so_far(today), do: "bis #{today.day}. #{Enum.at(@months, today.month - 1)}"
-
-  attr :security, :map, required: true, doc: "nil for a dividend booked without a security"
-  attr :class, :string, default: nil
-
-  defp security_link(%{security: nil} = assigns) do
-    ~H"""
-    <span class={["d-block fw-semibold text-body-secondary", @class]}>Ohne Wertpapier</span>
-    """
-  end
-
-  defp security_link(assigns) do
-    ~H"""
-    <.link
-      navigate={~p"/securities/#{@security}"}
-      class={["d-block fw-semibold text-body text-decoration-none", @class]}
-    >
-      {security_name(@security)}
-    </.link>
-    """
-  end
+  defp so_far(today), do: "bis #{today.day}. #{Format.month_abbr(today)}"
 
   attr :date, Date, required: true
 
@@ -537,9 +514,6 @@ defmodule ZipfelfolioWeb.DividendsLive do
     """
   end
 
-  # Names such as „All-World“ never break at their hyphen.
-  defp security_name(security), do: String.replace(security.name, "-", "\u2011")
-
   defp sum(rows, key), do: Enum.sum_by(rows, &Map.fetch!(&1, key))
 
   defp swatch(nil), do: "invisible"
@@ -548,27 +522,11 @@ defmodule ZipfelfolioWeb.DividendsLive do
   defp deduction(0), do: "–"
   defp deduction(cents), do: Format.euros(cents, 2)
 
-  defp muted(0), do: "text-body-tertiary"
-  defp muted(_cents), do: nil
-
   defp any?(%{empty: true}), do: false
   defp any?(%{dividends: dividends}), do: dividends.received != [] or dividends.upcoming != []
 
   defp subtitle(:calendar), do: "Termine von DivvyDiary, Prognose aus 12\u00A0Monaten"
   defp subtitle(_tab), do: "Gebucht, zum EZB\u2011Kurs des Zahltags"
-
-  defp kind_label(:announced), do: "angekündigt"
-  defp kind_label(:forecast), do: "Prognose"
-
-  defp expected(%{kind: :forecast} = dividend, amount, places),
-    do: "~" <> Format.euros(dividend[amount], places)
-
-  defp expected(dividend, amount, places), do: Format.euros(dividend[amount], places)
-
-  defp month_total(dividends, amount) do
-    total = Format.euros(sum(dividends, amount), 2)
-    if Enum.any?(dividends, &(&1.kind == :forecast)), do: "~" <> total, else: total
-  end
 
   defp per_share(dividend),
     do: Format.price(dividend.per_share, dividend.currency)
@@ -684,7 +642,7 @@ defmodule ZipfelfolioWeb.DividendsLive do
         months:
           for month <- assigns.dividends.months do
             %{
-              label: Enum.at(@months, month.month.month - 1),
+              label: Format.month_abbr(month.month),
               year: if(month.month.month == 1, do: month.month.year),
               title: "#{month_name(month.month)} #{month.month.year}",
               announced: month.announced[assigns.amount],

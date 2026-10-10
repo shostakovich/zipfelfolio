@@ -79,6 +79,48 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
     assert row =~ "+7,4\u00A0%"
   end
 
+  test "shows each holding's dividend yield and that of all, gross over the next 12 months",
+       ctx do
+    paying = security(100, name: "Ausschüttend")
+    accumulating = security(50, name: "Thesaurierend")
+    portfolio = portfolio_fixture(ctx.scope)
+    other = portfolio_fixture(ctx.scope, %{name: "Sparplan"})
+    deliver(ctx.scope, portfolio, paying, 30, 3_000)
+    deliver(ctx.scope, other, paying, 10, 1_000)
+    deliver(ctx.scope, portfolio, accumulating, 40, 2_000)
+    deposit(ctx.scope, account_fixture(ctx.scope), 500)
+    divvy_diary_dividend_fixture(paying, nil, Date.add(today(), 10), 2)
+    stranger = Zipfelfolio.UsersFixtures.user_scope_fixture()
+    deliver(stranger, portfolio_fixture(stranger), paying, 1_000, 100_000)
+
+    transaction_fixture(stranger, Date.add(today(), -100),
+      type: :dividend,
+      account_id: account_fixture(stranger).id,
+      security_id: paying.id,
+      shares: shares(1_000),
+      amount: money(500)
+    )
+
+    {:ok, lv, _html} = live(ctx.conn, ~p"/holdings")
+
+    assert has_element?(lv, "#holdings th", "Div.-Rendite")
+
+    assert lv |> element("#holding-#{portfolio.id}-#{paying.id} td:last-child") |> render() =~
+             "2,0\u00A0%"
+
+    assert lv |> element("#holding-#{other.id}-#{paying.id} td:last-child") |> render() =~
+             "2,0\u00A0%"
+
+    assert lv |> element("#holding-#{portfolio.id}-#{accumulating.id} td:last-child") |> render() =~
+             "–"
+
+    assert lv |> element("#total td:last-child") |> render() =~ "1,3\u00A0%"
+
+    {:ok, lv, _html} = live(ctx.conn, ~p"/holdings?portfolio=#{other.id}")
+
+    assert lv |> element("#total td:last-child") |> render() =~ "2,0\u00A0%"
+  end
+
   test "shows the costs of the held funds, weighted by value", ctx do
     portfolio = portfolio_fixture(ctx.scope)
 
