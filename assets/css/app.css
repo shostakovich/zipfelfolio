@@ -141,7 +141,7 @@
 
 /* Shell: a dark sidebar from 768 px, an icon rail below 1280 px and from 1280 px when collapsed on this
  * device (sidebar.js); a header and a tab bar below 768 px. */
-.app { max-width: 1200px; padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+.app { max-width: 1200px; padding-bottom: calc(6.25rem + env(safe-area-inset-bottom)); }
 @media (min-width: 768px) { .app { padding-top: 1.75rem; padding-bottom: 3rem; } }
 /* The sidebar's colours follow the page's theme, so they are computed on :root as registered colours;
  * a look other than clean overrides these tokens. */
@@ -298,3 +298,56 @@
 .app-tree .app-sub > .app-icon:first-child { width: .875rem; height: .875rem; margin-right: -.25rem; }
 .app-tree .list-group-item:has(+ .app-sub) { border-bottom-width: 0; }
 .app-tree .app-chev { width: 1rem; height: 1rem; color: var(--felt-tertiary-color); }
+/* Period buttons: neutral outlines, the chosen one in the primary colour; on a phone across the width. */
+.app-periods .btn {
+  --felt-btn-color: color-mix(in oklab, var(--felt-body-color) 85%, transparent);
+  --felt-btn-border-color: var(--felt-border-color);
+  --felt-btn-bg: var(--felt-surface-raised); font-variant-numeric: tabular-nums;
+  --felt-btn-active-bg: light-dark(var(--felt-primary), #3f66b0); --felt-btn-active-color: #fff;
+  --felt-btn-active-border-color: light-dark(var(--felt-primary), #3f66b0);
+  min-width: 3.5rem;
+}
+/* A page header with title and subtitle on the left, the controls on the right. */
+.app-head {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; column-gap: .75rem;
+  grid-template-areas: "title periods switcher" "subtitle subtitle subtitle"; margin-bottom: 1rem;
+}
+.app-head-title { grid-area: title; }
+.app-head-subtitle { grid-area: subtitle; }
+.app-head-periods { grid-area: periods; }
+.app-head-switcher { grid-area: switcher; }
+@media (max-width: 575.98px) {
+  .app-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "title switcher" "subtitle subtitle" "periods periods";
+  }
+  .app-head-periods { display: flex; margin-top: .75rem; }
+  .app-head-periods .btn { flex: 1 1 0; }
+  .app-head .btn { min-height: 44px; }
+  /* The switcher centres on the title without pushing the subtitle down. */
+  .app-head-switcher { margin-block: -.25rem; }
+  .app-head-switcher .btn { padding-inline: .75rem; }
+  .app-stats .card-body { padding: 1rem; }
+  .app-stats .stat-label { white-space: nowrap; letter-spacing: .02em; }
+}
+/* The breakdown's rows in line with its heading, the final value as the sum below a rule. */
+.app-breakdown .list-group-item { padding-inline: var(--felt-card-cap-padding-x); padding-block: .625rem; }
+.app-breakdown .app-breakdown-total { border-top: 2px solid color-mix(in oklab, var(--felt-border-color), var(--felt-emphasis-color) 25%); }
+.app-breakdown .list-group-item > :first-child { min-width: 0; }
+.app-breakdown .list-group-item:has(+ .app-breakdown-total) { border-bottom-width: 0; }
+.app-breakdown-date { font-variant-numeric: normal; }
+/* Its heading sits in the card like the labels of the key figures. */
+.app-breakdown .card-header { background: transparent; border-bottom: 0; padding-block: 1.25rem .75rem; }
+/* Wide rows: the row under the pointer is tinted, so that its value is easy to find from its label. */
+.app-breakdown .list-group-item:hover { background-color: color-mix(in oklab, var(--felt-body-color) 5%, transparent); }
+.app-stats .stat-value { font-variant-numeric: tabular-nums; }
+.app-stats .stat { gap: .25rem; }
+.app-stats .stat-label { margin-bottom: .125rem; }
+@media (min-width: 576px) { .app-stats .card-body { padding-block: 1.25rem; } }
+@media (max-width: 575.98px) {
+  .app-breakdown { --felt-card-cap-padding-x: 1rem; }
+  .app-head-subtitle { line-height: 1.35; }
+  .app-breakdown .list-group-item { font-size: .9375rem; }
+  .app-head { margin-top: .5rem; }
+  .app-stats .stat > :last-child { font-size: .8125rem; }
+}

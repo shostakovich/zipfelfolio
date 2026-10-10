@@ -1,8 +1,8 @@
 defmodule Zipfelfolio.Portfolios do
   @moduledoc """
   Portfolios, accounts, their transactions and savings plans, each of one user, and what the
-  screens show of them: net worth, the overview, the holdings, the dividends, the sidebar and the
-  user's holding of a security, computed from the transactions on every request.
+  screens show of them: net worth, the overview, the holdings, the dividends, the performance, the
+  sidebar and the user's holding of a security, computed from the transactions on every request.
   """
 
   import Ecto.Query, warn: false
@@ -20,6 +20,7 @@ defmodule Zipfelfolio.Portfolios do
   }
 
   alias Zipfelfolio.Allocation.Classifications
+  alias Zipfelfolio.Performance.Breakdown
   alias Zipfelfolio.Portfolios.{Account, Portfolio, SavingsPlan, Transaction}
   alias Zipfelfolio.Securities
   alias Zipfelfolio.Securities.Security
@@ -100,6 +101,44 @@ defmodule Zipfelfolio.Portfolios do
       portfolios: portfolios_overview(scope, transactions, accounts, market, year)
     }
   end
+
+  @doc """
+  What the performance screen shows for `period` up to `today`, of all portfolios and accounts or
+  of the portfolio with `portfolio_id` and its reference account:
+
+  - `portfolios`: the portfolios to choose from, as the holdings screen lists them
+  - `portfolio`: the chosen one of them, nil for all
+  - `interval`: the days of the period, the first the reference day, see `Period.interval/3`
+  - `ttwror`, `ttwror_per_year`, `irr`, `drawdown` and `volatility`, see `Performance`
+  - `breakdown`: where the change in value came from, see `Performance.Breakdown`
+  """
+  def performance(%Scope{} = scope, period, portfolio_id, today) do
+    transactions = list_transactions(scope)
+    accounts = list_accounts(scope)
+    portfolios = shown_portfolios(scope, Valuation.holdings(transactions, today))
+    portfolio = Enum.find(portfolios, &(&1.id == portfolio_id))
+    interval = Period.interval(period, today, first_transaction_day(transactions))
+    market = load_market(transactions, accounts, interval.first, :since_first_transaction)
+    filter = performance_filter(portfolio, transactions)
+    index = Performance.index(transactions, accounts, market, filter, interval)
+
+    %{
+      portfolios: portfolios,
+      portfolio: portfolio,
+      interval: interval,
+      ttwror: Performance.ttwror(index),
+      ttwror_per_year: Performance.ttwror_per_year(index),
+      irr: Performance.irr(index),
+      drawdown: Performance.drawdown(index),
+      volatility: Performance.volatility(index),
+      breakdown: Breakdown.of(transactions, accounts, market, filter, index)
+    }
+  end
+
+  defp performance_filter(nil, _transactions), do: Filter.all()
+
+  defp performance_filter(portfolio, transactions),
+    do: Filter.new([portfolio], List.wrap(portfolio.reference_account_id), transactions)
 
   defp first_transaction_day([first | _]), do: NaiveDateTime.to_date(first.date_time)
   defp first_transaction_day([]), do: nil

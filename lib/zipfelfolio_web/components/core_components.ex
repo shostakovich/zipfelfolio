@@ -331,6 +331,7 @@ defmodule ZipfelfolioWeb.CoreComponents do
       "M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
       "M9 4v16M16 9l-3 3 3 3"
     ],
+    "trend" => ["M3 17l6-6 4 4 8-8M15 7h6v6"],
     "wallet" => ["M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 7l13-4v4M17 13.5h.01"]
   }
 

@@ -162,6 +162,89 @@ defmodule Zipfelfolio.PortfoliosTest do
     end
   end
 
+  describe "performance/4" do
+    # A portfolio with its account and 10 shares bought at 100 € plus a 5 € fee on 1 September,
+    # at 90 € on 1 October and 99 € on Friday; another portfolio with 1,000 € in its account
+    # from 15 September.
+    setup %{scope: scope, portfolio: portfolio} do
+      account = account_fixture(scope, %{name: "Konto Langfristig"})
+      portfolio = Repo.update!(change(portfolio, reference_account_id: account.id))
+      security = security_fixture(quote_feed: :manual)
+
+      for {date, close} <- [{~D[2026-09-01], 100}, {~D[2026-10-01], 90}, {@friday, 99}],
+          do: price_fixture(security, date, price(close), :pp)
+
+      transaction_fixture(scope, ~D[2026-09-01],
+        type: :deposit,
+        account_id: account.id,
+        amount: money(1_005)
+      )
+
+      transaction_fixture(scope, ~D[2026-09-01],
+        type: :buy,
+        portfolio_id: portfolio.id,
+        account_id: account.id,
+        security_id: security.id,
+        shares: shares(10),
+        amount: money(1_005),
+        units: [%TransactionUnit{type: :fee, amount: money(5), currency: "EUR"}]
+      )
+
+      savings = account_fixture(scope, %{name: "Konto Sparplan"})
+      other = portfolio_fixture(scope, %{name: "Sparplan", reference_account_id: savings.id})
+
+      transaction_fixture(scope, ~D[2026-09-15],
+        type: :deposit,
+        account_id: savings.id,
+        amount: money(1_000)
+      )
+
+      %{portfolio: portfolio, other: other}
+    end
+
+    test "gives the returns, drawdown, volatility and breakdown of all portfolios", ctx do
+      performance = Portfolios.performance(ctx.scope, :max, nil, @saturday)
+
+      assert performance.portfolio == nil
+      assert Enum.map(performance.portfolios, & &1.name) == ["Langfristig", "Sparplan"]
+      assert performance.interval == Date.range(~D[2026-08-31], @saturday)
+      assert_in_delta performance.ttwror, 1_000 / 1_005 * (1_990 / 2_000) - 1, 1.0e-12
+      assert %{max: max, from: ~D[2026-09-01], to: ~D[2026-10-01]} = performance.drawdown
+      assert_in_delta max, 0.05, 1.0e-12
+      assert performance.volatility > 0
+      assert is_float(performance.irr) and is_float(performance.ttwror_per_year)
+
+      assert %{
+               initial_value: 0,
+               capital_gains: -1_000,
+               fees: 500,
+               transfers: 200_500,
+               final_value: 199_000
+             } = performance.breakdown
+    end
+
+    test "gives one portfolio with its reference account", ctx do
+      performance = Portfolios.performance(ctx.scope, :one_month, ctx.other.id, @saturday)
+
+      assert performance.portfolio.id == ctx.other.id
+      assert performance.interval == Date.range(~D[2026-09-03], @saturday)
+      assert %{initial_value: 0, transfers: 100_000, final_value: 100_000} = performance.breakdown
+      assert performance.ttwror == 0.0
+    end
+
+    test "shows all portfolios for one of another user", ctx do
+      foreign = portfolio_fixture(user_scope_fixture(), %{name: "Fremd"})
+
+      performance = Portfolios.performance(ctx.scope, :max, foreign.id, @saturday)
+      all = Portfolios.performance(ctx.scope, :max, nil, @saturday)
+
+      assert performance.portfolio == nil
+      assert Enum.map(performance.portfolios, & &1.name) == ["Langfristig", "Sparplan"]
+      assert performance.ttwror == all.ttwror
+      assert performance.breakdown == all.breakdown
+    end
+  end
+
   describe "holdings/3" do
     defp security_at(close, name, attrs \\ []) do
       security = security_fixture([quote_feed: :manual, name: name] ++ attrs)

@@ -31,7 +31,7 @@ defmodule ZipfelfolioWeb.OverviewLive do
       <.header class="flex-wrap">
         Übersicht
         <:actions :if={!@empty}>
-          <nav id="period" class="btn-group btn-group-sm" aria-label="Zeitraum">
+          <nav id="period" class="btn-group btn-group-sm app-periods" aria-label="Zeitraum">
             <.link
               :for={{param, period, label} <- @periods}
               patch={~p"/?#{[period: param]}"}

@@ -122,6 +122,94 @@ defmodule Zipfelfolio.Valuation.Filter do
   defp transfer(false, true, t), do: crossing(false, true, Valuation.received(t))
   defp transfer(false, false, _t), do: []
 
+  @doc """
+  The transaction as the filter's portfolios and accounts book it, as PP's filtered client holds
+  it: none when it happens outside, one as it is or converted where it crosses the edge, or, for a
+  dividend, tax or fee on the reference account outside, itself and the deposit or removal that
+  settles it. A deposit or removal from a conversion has no security and no units.
+  """
+  def view(%__MODULE__{} = filter, %Transaction{type: type} = t), do: view(filter, type, t)
+
+  defp view(filter, type, t) when type in [:deposit, :removal, :interest, :interest_charge],
+    do: if(account?(filter, t.account_id), do: [t], else: [])
+
+  defp view(filter, type, t) when type in [:inbound_delivery, :outbound_delivery],
+    do: if(portfolio?(filter, t.portfolio_id), do: [t], else: [])
+
+  defp view(filter, type, t) when type in [:buy, :sell] do
+    case {portfolio?(filter, t.portfolio_id), account?(filter, t.account_id)} do
+      {true, true} -> [t]
+      {true, false} -> [%{t | type: delivery(type), account_id: nil}]
+      {false, true} -> [cash(t, if(type == :buy, do: :removal, else: :deposit))]
+      {false, false} -> []
+    end
+  end
+
+  defp view(filter, :security_transfer, t) do
+    case {portfolio?(filter, t.portfolio_id), portfolio?(filter, t.other_portfolio_id)} do
+      {true, true} ->
+        [t]
+
+      {true, false} ->
+        [%{t | type: :outbound_delivery, other_portfolio_id: nil}]
+
+      {false, true} ->
+        [
+          %{
+            t
+            | type: :inbound_delivery,
+              portfolio_id: t.other_portfolio_id,
+              other_portfolio_id: nil
+          }
+        ]
+
+      {false, false} ->
+        []
+    end
+  end
+
+  defp view(filter, :cash_transfer, t) do
+    case {account?(filter, t.account_id), account?(filter, t.other_account_id)} do
+      {true, true} ->
+        [t]
+
+      {true, false} ->
+        [cash(%{t | other_account_id: nil}, :removal)]
+
+      {false, true} ->
+        {amount, currency} = Valuation.received(t)
+        received = %{t | account_id: t.other_account_id, amount: amount, currency: currency}
+        [cash(%{received | other_account_id: nil}, :deposit)]
+
+      {false, false} ->
+        []
+    end
+  end
+
+  defp view(filter, type, t) do
+    {outside_security, settlement} =
+      if type in @security_credits, do: {:deposit, :removal}, else: {:removal, :deposit}
+
+    cond do
+      account?(filter, t.account_id) ->
+        if t.security_id == nil or held?(filter, t.security_id),
+          do: [t],
+          else: [cash(t, outside_security)]
+
+      MapSet.member?(filter.reference_account_ids, t.account_id) and held?(filter, t.security_id) ->
+        [t, cash(t, settlement)]
+
+      true ->
+        []
+    end
+  end
+
+  defp delivery(:buy), do: :inbound_delivery
+  defp delivery(:sell), do: :outbound_delivery
+
+  defp cash(t, type),
+    do: %{t | type: type, portfolio_id: nil, security_id: nil, shares: nil, units: []}
+
   defp security_related(filter, t, outside_security, reference_account) do
     cond do
       account?(filter, t.account_id) ->

@@ -1,0 +1,150 @@
+defmodule ZipfelfolioWeb.PerformanceLiveTest do
+  use ZipfelfolioWeb.ConnCase
+
+  import Phoenix.LiveViewTest
+  import Zipfelfolio.{PortfoliosFixtures, SecuritiesFixtures}
+
+  alias Zipfelfolio.{LocalTime, Repo}
+  alias Zipfelfolio.Portfolios.TransactionUnit
+  alias Zipfelfolio.Securities.Security
+
+  setup :register_and_log_in_user
+
+  defp today, do: LocalTime.today()
+
+  # Two years ago 1,000 € came into the account of „Langfristig“, which bought 10 shares at
+  # 100 € plus a 2 € fee; they closed at 90 € a year ago and are quoted at 110 € today.
+  # „Sparplan“ holds 500 € in its account since yesterday.
+  setup %{scope: scope} do
+    account = account_fixture(scope, %{name: "Konto Langfristig"})
+    portfolio = portfolio_fixture(scope, %{name: "Langfristig", reference_account_id: account.id})
+    two_years_ago = Date.shift(today(), year: -2)
+
+    security =
+      security_fixture(quote_feed: :manual, latest_date: today(), latest_close: price(110))
+
+    price_fixture(security, two_years_ago, price(100), :pp)
+    price_fixture(security, Date.shift(today(), year: -1), price(90), :pp)
+
+    transaction_fixture(scope, two_years_ago,
+      type: :deposit,
+      account_id: account.id,
+      amount: money(1_002)
+    )
+
+    transaction_fixture(scope, two_years_ago,
+      type: :buy,
+      portfolio_id: portfolio.id,
+      account_id: account.id,
+      security_id: security.id,
+      shares: shares(10),
+      amount: money(1_002),
+      units: [%TransactionUnit{type: :fee, amount: money(2), currency: "EUR"}]
+    )
+
+    savings = account_fixture(scope, %{name: "Konto Sparplan"})
+    sparplan = portfolio_fixture(scope, %{name: "Sparplan", reference_account_id: savings.id})
+
+    transaction_fixture(scope, Date.add(today(), -1),
+      type: :deposit,
+      account_id: savings.id,
+      amount: money(500)
+    )
+
+    %{portfolio: portfolio, sparplan: sparplan}
+  end
+
+  test "is in the sidebar and the tab bar", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/performance")
+
+    assert has_element?(lv, "#side-performance.active[href='/performance']")
+    assert has_element?(lv, "#tab-performance.active[href='/performance']")
+  end
+
+  test "shows the key figures of all portfolios for the year to date", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/performance")
+
+    assert has_element?(lv, "#period a.active[aria-current]", "YTD")
+    assert has_element?(lv, "#portfolio-menu-toggle", "Gesamt")
+    assert has_element?(lv, "h1", "Performance")
+    assert has_element?(lv, "#ttwror .stat-value")
+    assert lv |> element("#ttwror") |> render() =~ "p.\u00A0a."
+    assert has_element?(lv, "#irr .stat-value")
+    assert has_element?(lv, "#drawdown .stat-label", "Max. Drawdown")
+    assert has_element?(lv, "#volatility .stat-label", "Volatilität")
+  end
+
+  test "breaks down the change in value from the initial to the final value", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/performance?period=max")
+
+    breakdown = lv |> element("#breakdown") |> render()
+    first_day = Date.shift(today(), year: -2) |> Date.add(-1) |> ZipfelfolioWeb.Format.date()
+
+    assert breakdown =~ ~r/Anfangswert\s*<span[^>]*>\s*#{first_day}/
+    assert breakdown =~ "0,00\u00A0€"
+    assert breakdown =~ ~r/Unrealisierte Kursgewinne.*\+100,00\x{00A0}€/su
+    assert breakdown =~ ~r/Gebühren.*−2,00\x{00A0}€/su
+    assert breakdown =~ ~r/Einlagen und Entnahmen.*\+1.502,00\x{00A0}€/su
+
+    assert breakdown =~
+             ~r/Endwert\s*<span[^>]*>\s*#{ZipfelfolioWeb.Format.date(today())}.*1.600,00\x{00A0}€/su
+
+    refute breakdown =~ "Währungsgewinne"
+  end
+
+  test "shows the largest fall with its days", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/performance?period=max")
+
+    drawdown = lv |> element("#drawdown") |> render()
+
+    assert drawdown =~ "−10,00\u00A0%"
+    assert drawdown =~ ZipfelfolioWeb.Format.date(Date.shift(today(), year: -2))
+    assert drawdown =~ ZipfelfolioWeb.Format.date(Date.shift(today(), year: -1))
+  end
+
+  test "keeps the period and the portfolio in the URL, so that they survive a reload", ctx do
+    {:ok, lv, _html} = live(ctx.conn, ~p"/performance")
+
+    lv |> element("#period a", "1\u202FM") |> render_click()
+    assert_patch(lv, ~p"/performance?period=1m")
+
+    lv |> element("#portfolio-menu a", "Sparplan") |> render_click()
+    path = ~p"/performance?#{[period: "1m", portfolio: ctx.sparplan.id]}"
+    assert_patch(lv, path)
+
+    {:ok, lv, _html} = live(ctx.conn, path)
+
+    assert has_element?(lv, "#period a.active", "1\u202FM")
+    assert has_element?(lv, "#portfolio-menu-toggle", "Sparplan")
+
+    assert lv |> element("#breakdown") |> render() =~
+             ~r/Einlagen und Entnahmen.*\+500,00\x{00A0}€/su
+
+    lv |> element("#period a", "3\u202FJ") |> render_click()
+    assert_patch(lv, ~p"/performance?#{[period: "3y", portfolio: ctx.sparplan.id]}")
+  end
+
+  test "falls back to the year to date and all portfolios for unknown parameters", ctx do
+    {:ok, lv, _html} = live(ctx.conn, ~p"/performance?period=decade&portfolio=nope")
+
+    assert has_element?(lv, "#period a.active", "YTD")
+    assert has_element?(lv, "#portfolio-menu-toggle", "Gesamt")
+  end
+
+  test "updates when new prices arrive", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/performance?period=max")
+
+    Repo.update_all(Security, set: [latest_close: price(120)])
+    send(lv.pid, :market_data_updated)
+
+    assert lv |> element("#breakdown") |> render() =~ ~r/Endwert.*1.700,00\x{00A0}€/su
+  end
+
+  test "points to the import without any portfolio or account" do
+    conn = build_conn() |> log_in_user(Zipfelfolio.UsersFixtures.user_fixture())
+    {:ok, lv, _html} = live(conn, ~p"/performance")
+
+    assert has_element?(lv, "a[href='/settings/import']")
+    refute has_element?(lv, "#breakdown")
+  end
+end

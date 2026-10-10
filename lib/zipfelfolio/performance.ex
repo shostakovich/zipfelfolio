@@ -17,7 +17,7 @@ defmodule Zipfelfolio.Performance do
     and without any cash flow the IRR is 0. `IRR` solves it as PP does.
   """
 
-  alias Zipfelfolio.Performance.IRR
+  alias Zipfelfolio.Performance.{IRR, TradeCalendar}
   alias Zipfelfolio.Valuation
   alias Zipfelfolio.Valuation.{Filter, Market}
 
@@ -75,10 +75,99 @@ defmodule Zipfelfolio.Performance do
     do: for({^kind, cents} <- day_flows, reduce: 0, do: (sum -> sum + cents))
 
   @doc "The TTWROR as a fraction, 0.1 for 10 %."
-  def ttwror(%__MODULE__{days: [reference_day | days]}) do
+  def ttwror(%__MODULE__{} = index), do: index |> accumulated() |> List.last()
+
+  @doc """
+  The TTWROR spread over years of 365 days, as PP annualises it; nil after a loss of more than
+  everything, which has no such rate.
+  """
+  def ttwror_per_year(%__MODULE__{days: [reference_day | _] = days} = index) do
+    years = Date.diff(List.last(days).date, reference_day.date) / 365
+    base = 1 + ttwror(index)
+    if base >= 0, do: :math.pow(base, 1 / years) - 1
+  end
+
+  @doc """
+  The maximum drawdown as PP computes it: the largest fall of the accumulated TTWROR from its
+  highest point before, as a fraction, with the day of that point (`from`) and of the low
+  (`to`). It starts on the first day with a value; without any fall it is 0 on that day. While
+  the highest point is a total loss or below, there is nothing to fall from.
+  """
+  def drawdown(%__MODULE__{days: days} = index) do
+    series = Enum.zip(Enum.map(days, & &1.date), accumulated(index))
+    start = Enum.find_index(days, &(&1.value != 0)) || length(days) - 1
+    [{first_date, first} | rest] = Enum.drop(series, start)
+
+    initial = %{
+      peak: first + 1,
+      peak_date: first_date,
+      max: 0.0,
+      from: first_date,
+      to: first_date
+    }
+
+    rest
+    |> Enum.reduce(initial, fn {date, accumulated}, acc ->
+      value = accumulated + 1
+
+      cond do
+        value > acc.peak ->
+          %{acc | peak: value, peak_date: date}
+
+        acc.peak <= 0 ->
+          acc
+
+        (acc.peak - value) / acc.peak > acc.max ->
+          %{acc | max: (acc.peak - value) / acc.peak, from: acc.peak_date, to: date}
+
+        true ->
+          acc
+      end
+    end)
+    |> Map.take([:max, :from, :to])
+  end
+
+  @doc """
+  The volatility as PP computes it: the standard deviation of the daily log returns times the
+  square root of their number. It leaves out the reference day, days without a value on them or
+  the day before, the days markets are closed (`TradeCalendar`) and losses of everything or more,
+  which have no log return; with fewer than two returns it is 0.
+  """
+  def volatility(%__MODULE__{days: days} = index) do
+    log_returns =
+      for {[previous, day], daily_return} <-
+            Enum.zip(Enum.chunk_every(days, 2, 1, :discard), daily_returns(index)),
+          previous.value != 0 and day.value != 0,
+          TradeCalendar.trading_day?(day.date),
+          1 + daily_return > 0,
+          do: :math.log(1 + daily_return)
+
+    case length(log_returns) do
+      count when count <= 1 ->
+        0.0
+
+      count ->
+        mean = Enum.sum(log_returns) / count
+        squares = Enum.reduce(log_returns, 0.0, fn r, sum -> sum + :math.pow(r - mean, 2) end)
+        :math.sqrt(squares / (count - 1) * count)
+    end
+  end
+
+  # The accumulated TTWROR of every day, 0 on the reference day.
+  defp accumulated(index) do
+    index
+    |> daily_returns()
+    |> Enum.scan(0.0, fn daily_return, accumulated ->
+      (accumulated + 1) * (daily_return + 1) - 1
+    end)
+    |> then(&[0.0 | &1])
+  end
+
+  # The return of every day after the reference day.
+  defp daily_returns(%__MODULE__{days: [reference_day | days]}) do
     days
-    |> Enum.reduce({0.0, reference_day.value}, fn day, {accumulated, previous} ->
-      {(accumulated + 1) * (daily_return(previous, day) + 1) - 1, day.value}
+    |> Enum.map_reduce(reference_day.value, fn day, previous ->
+      {daily_return(previous, day), day.value}
     end)
     |> elem(0)
   end

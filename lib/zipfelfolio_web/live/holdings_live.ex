@@ -27,7 +27,11 @@ defmodule ZipfelfolioWeb.HoldingsLive do
         Bestand
         <:subtitle :if={!@empty}>{subtitle(@holdings)}</:subtitle>
         <:actions :if={!@empty}>
-          <.portfolio_switcher holdings={@holdings} allocation_tab={@allocation_tab} />
+          <Layouts.portfolio_switcher
+            portfolios={@holdings.portfolios}
+            portfolio={@holdings.portfolio}
+            path={&holdings_path(portfolio: &1, allocation: @allocation_tab)}
+          />
         </:actions>
       </.header>
 
@@ -350,73 +354,6 @@ defmodule ZipfelfolioWeb.HoldingsLive do
       </div>
     </div>
     """
-  end
-
-  attr :holdings, :map, required: true
-  attr :allocation_tab, :any, required: true
-
-  # A Bootstrap dropdown without Bootstrap's JS: LiveView's JS commands toggle it.
-  defp portfolio_switcher(assigns) do
-    ~H"""
-    <div
-      class="dropdown"
-      phx-click-away={hide_menu()}
-      phx-window-keydown={hide_menu()}
-      phx-key="Escape"
-    >
-      <button
-        id="portfolio-menu-toggle"
-        type="button"
-        class="btn btn-sm btn-light dropdown-toggle"
-        aria-expanded="false"
-        aria-controls="portfolio-menu"
-        phx-click={
-          JS.toggle_class("show", to: "#portfolio-menu")
-          |> JS.toggle_attribute({"aria-expanded", "true", "false"})
-        }
-      >
-        {if @holdings.portfolio, do: @holdings.portfolio.name, else: "Gesamt"}
-      </button>
-      <ul id="portfolio-menu" class="dropdown-menu dropdown-menu-end" data-bs-popper="static">
-        <li>
-          <.menu_item patch={holdings_path(allocation: @allocation_tab)} active={!@holdings.portfolio}>
-            Gesamt
-          </.menu_item>
-        </li>
-        <li :if={@holdings.portfolios != []}><hr class="dropdown-divider" /></li>
-        <li :for={portfolio <- @holdings.portfolios}>
-          <.menu_item
-            patch={holdings_path(portfolio: portfolio.id, allocation: @allocation_tab)}
-            active={@holdings.portfolio && @holdings.portfolio.id == portfolio.id}
-          >
-            <Layouts.chip portfolio={portfolio} />{portfolio.name}
-          </.menu_item>
-        </li>
-      </ul>
-    </div>
-    """
-  end
-
-  attr :patch, :string, required: true
-  attr :active, :boolean, required: true
-  slot :inner_block, required: true
-
-  defp menu_item(assigns) do
-    ~H"""
-    <.link
-      patch={@patch}
-      class={["dropdown-item d-flex align-items-center gap-2", @active && "active"]}
-      aria-current={@active && "page"}
-      phx-click={hide_menu()}
-    >
-      {render_slot(@inner_block)}
-    </.link>
-    """
-  end
-
-  defp hide_menu do
-    JS.remove_class("show", to: "#portfolio-menu")
-    |> JS.set_attribute({"aria-expanded", "false"}, to: "#portfolio-menu-toggle")
   end
 
   # The holdings with `params`; nil and the default tab are left out.
