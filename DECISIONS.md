@@ -45,3 +45,18 @@ Accepted, 2026-10-10
   token lives in the database, so a database backup grants access to Paperless. Any signed-in user can make the
   server call the URL they enter, which is acceptable for a self-hosted app with trusted users and no
   self-registration.
+
+## 0005. The UI is built on setzkasten, Tailwind and daisyUI
+
+Accepted, 2026-10-11
+
+- **Context:** The author's Phoenix apps have the same kind of backend screens, and each one styling its own
+  buttons, tables, dialogs and navigation drifts apart and repeats the work.
+- **Decision:** Tailwind 4 and daisyUI 5 as `phx.new` 1.8 sets them up, with the components and themes of the
+  shared library setzkasten (`use Setzkasten`) and its design rules: flat pages, cards only for independent objects,
+  every irreversible delete confirmed in one shared dialog. Only zipfelfolio's own styles live in
+  `assets/css/app.css`.
+- **Consequences:** The asset build needs the Tailwind binary and setzkasten is a dependency. daisyUI is a sparse
+  git Mix dependency pinned to a tag in `mix.exs`, not the file `phx.new` vendors into `assets/vendor`. A component the
+  other apps could use goes into the library, not into the app. LiveView tests confirm deletes through
+  `ConfirmHelpers`, as the dialog parks the event in the browser.

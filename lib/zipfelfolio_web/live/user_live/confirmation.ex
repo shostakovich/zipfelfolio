@@ -8,20 +8,21 @@ defmodule ZipfelfolioWeb.UserLive.Confirmation do
   def render(assigns) do
     ~H"""
     <Layouts.auth flash={@flash}>
-      <.card title="Anmelden">
-        <p class="text-body-secondary">{@user.email}</p>
-        <.form
-          for={@form}
-          id="login-form"
-          phx-submit="submit"
-          phx-mounted={JS.focus_first()}
-          action={~p"/users/log-in"}
-          phx-trigger-action={@trigger_submit}
-        >
-          <input type="hidden" name={@form[:token].name} value={@form[:token].value} />
-          <.button class="w-100" phx-disable-with="Anmelden …">Anmelden</.button>
-        </.form>
-      </.card>
+      <h2 class="text-center text-lg font-semibold">Anmelden</h2>
+      <p class="mb-6 text-center text-sm text-base-content/70 wrap-anywhere">{@user.email}</p>
+      <.form
+        for={@form}
+        id="login-form"
+        phx-submit="submit"
+        phx-mounted={JS.focus_first()}
+        action={~p"/users/log-in"}
+        phx-trigger-action={@trigger_submit}
+      >
+        <input type="hidden" name={@form[:token].name} value={@form[:token].value} />
+        <.button type="submit" variant={:primary} class="w-full" phx-disable-with="Anmelden …">
+          Anmelden
+        </.button>
+      </.form>
     </Layouts.auth>
     """
   end

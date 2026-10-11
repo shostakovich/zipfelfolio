@@ -1,524 +1,79 @@
-.app-auth { max-width: 26rem; }
-.app-avatar { width: 2.25rem; height: 2.25rem; flex-shrink: 0; }
-.app-icon {
-  width: 1.25rem; height: 1.25rem; flex-shrink: 0;
-  fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
-}
-.app-icon-sm { width: 1rem; height: 1rem; }
-/* `d-flex` would show the hidden connection alerts of the flash group. */
-.alert[hidden] { display: none !important; }
-.app-chart { position: relative; height: 14rem; }
-@media (min-width: 992px) { .app-chart { height: 19rem; } }
-.app-swatch { display: inline-block; width: .75rem; height: .75rem; border-radius: .2rem; vertical-align: -.05rem; }
-/* Lines keyed as lines: net worth bold, invested capital dashed as on the chart, the benchmark solid. */
-:is(.app-swatch-primary, .app-swatch-secondary, .app-swatch-benchmark) { width: 1rem; height: 2px; border-radius: 1px; vertical-align: .25em; }
-.app-swatch-primary { height: 3px; background: var(--net-worth-line); vertical-align: .22em; }
-.app-swatch-secondary { background: repeating-linear-gradient(90deg, var(--felt-secondary) 0 4px, transparent 4px 7px); }
-.app-swatch-benchmark { background: var(--benchmark); }
-.app-legend .app-swatch { margin-right: .125rem; }
-@media (max-width: 575.98px) { .app-legend { flex-basis: 100%; font-size: .8125rem; column-gap: .75rem !important; } }
-:root {
-  --app-year-taupe: light-dark(var(--felt-taupe), #a89a89); --app-year-mustard: light-dark(var(--felt-mustard), #d3a43a);
-  --app-year-now: light-dark(var(--felt-primary), #5a82c2);
-}
-.app-swatch-taupe { background: var(--app-year-taupe); }
-.app-swatch-mustard { background: var(--app-year-mustard); }
-.app-swatch-now { background: var(--app-year-now); }
-.app-card-table > * > tr > :first-child { padding-left: var(--felt-card-spacer-x); }
-.app-card-table > * > tr > :last-child { padding-right: var(--felt-card-spacer-x); }
-.app-card-table > tbody:last-of-type > tr:last-child > * { border-bottom-width: 0; }
-.app-card-table .table-group-divider { border-top: 1px solid var(--felt-border-color); }
-.app-card-table > tfoot > tr:first-child > * { border-top: var(--felt-border-width, 1px) solid var(--felt-border-color); }
-.app-card-table > tfoot > tr:last-child > * { border-bottom-width: 0; }
-@media (max-width: 575.98px) {
-  .app-card-table > * > tr > :not(.d-none):not(:has(~ :not(.d-none))) { padding-right: var(--felt-card-spacer-x); }
-}
-.app-num-col { width: 1%; white-space: nowrap; padding-left: 1rem !important; }
-.app-card-title { font-size: 1rem; font-weight: 600; }
-/* Felt colours each cell itself, so a muted head has to set the table's colour. */
-.table > thead.text-body-secondary { --felt-table-color: var(--felt-secondary-color); }
-.app-year-table > tbody > tr > th { font-weight: 400; }
-@media (min-width: 768px) {
-  .app-year-table { table-layout: fixed; }
-  .app-year-table > tbody > tr > th { font-weight: 500; }
-  .app-year-table > thead > tr > :first-child { width: 6rem; }
-  .app-year-table > thead > tr > :last-child { width: 7.5rem; }
-}
-.app-received-year > * { --felt-table-bg: var(--felt-surface-raised); padding-block: .75rem !important; font-weight: 600; }
-.app-received-year > td:not(:last-child) { font-weight: 500; }
-.app-received-year > td:last-child { font-weight: 700; }
-@media (max-width: 575.98px) {
-  .app-card-table { --felt-card-spacer-x: 1rem; }
-  .app-received > tbody > tr > * { padding-block: .625rem; }
-  /* The date column is hidden, so the security's column is the first one shown. */
-  .app-received > * > tr > :nth-child(2) { padding-inline: var(--felt-card-spacer-x); }
-}
-.app-received-phone { display: grid; grid-template-columns: 1fr auto; align-items: start; column-gap: 1rem; row-gap: .125rem; }
-.app-received-phone > .app-received-name { grid-column: 1 / -1; margin-bottom: .125rem; line-height: 1.25; }
-.app-more { min-height: 2.75rem; }
-:root { --app-forecast: light-dark(color-mix(in srgb, var(--felt-primary) 30%, transparent), color-mix(in srgb, #5a82c2 55%, transparent)); }
-.app-swatch-forecast { box-sizing: border-box; border: 1px solid var(--app-year-now); background: var(--app-forecast); }
-.app-chart-sm { height: 14rem; }
-@media (min-width: 992px) { .app-chart-sm { height: 16rem; } }
-@media (min-width: 992px) { .app-sticky-lg { position: sticky; top: 1.5rem; margin-top: 1.4375rem; } }
-.app-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
-@media (min-width: 992px) { .app-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-@media (min-width: 576px) { .app-kpis.card { --felt-card-bg: transparent; --felt-card-border-width: 0; --felt-card-box-shadow: none; background: none; border: 0; box-shadow: none; } }
-.app-kpi .stat-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.app-kpi-name { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.3; }
-@media (max-width: 575.98px) {
-  .app-kpis { gap: 0; }
-  .app-kpis > .app-kpi { --felt-card-bg: transparent; --felt-card-border-width: 0; --felt-card-box-shadow: none; border: 0; border-radius: 0; box-shadow: none; background: none; }
-  .app-kpis > .app-kpi:nth-child(odd) { border-right: 1px solid var(--felt-border-color); }
-  .app-kpis > .app-kpi:nth-child(-n + 2) { border-bottom: 1px solid var(--felt-border-color); }
-  .app-kpi .card-body { padding: .75rem .875rem; }
-  .app-kpi .stat-label { font-size: .6875rem; }
-  .app-kpi .stat-value { font-size: 1.375rem; }
-  .app-kpi .small { font-size: .8125rem; }
-}
-.app-calendar-month {
-  display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: .375rem;
-  padding-inline: var(--felt-list-group-item-padding-x, 1rem);
-  color: var(--felt-secondary-color); font-size: .8125rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
-}
-.app-calendar-total { font-size: .875rem; font-weight: 600; letter-spacing: 0; text-transform: none; white-space: nowrap; }
-.app-upcoming {
-  display: grid; grid-template-columns: 1fr auto; grid-template-areas: "name name" "dates amount" "shares .";
-  column-gap: 1rem; row-gap: .125rem; align-items: baseline; --felt-list-group-item-padding-y: .625rem;
-}
-.app-upcoming-name { grid-area: name; line-height: 1.25; }
-.app-upcoming-tag { grid-row: 3; grid-column: 1 / -1; justify-self: end; }
-.app-upcoming-amount { grid-area: amount; font-weight: 600; text-align: right; }
-.app-upcoming-meta { display: contents; }
-.app-upcoming-dates { grid-area: dates; display: flex; flex-wrap: wrap; }
-.app-upcoming-dates > * + *::before { content: "·"; margin-inline: .45em; }
-.app-upcoming-shares { grid-area: shares; }
-.app-kind { font-weight: 600; }
-.app-upcoming-announced { background: var(--felt-primary-subtle); color: var(--felt-primary-emphasis); }
-.app-upcoming-forecast { background: transparent; color: var(--felt-secondary-color); box-shadow: inset 0 0 0 1px var(--felt-border-color); }
-@media (min-width: 576px) {
-  .app-upcoming { grid-template-areas: "name amount" "meta tag"; --felt-list-group-item-padding-y: .75rem; }
-  .app-upcoming-tag { grid-area: tag; }
-  .app-upcoming-meta { display: flex; flex-wrap: wrap; grid-area: meta; }
-  .app-upcoming-dates { display: contents; }
-  .app-upcoming-shares::before { content: "·"; margin-inline: .45em; }
-}
-.app-quiet-link:hover { text-decoration: underline !important; }
-.app-quiet-link .app-icon { vertical-align: -.15em; }
-.app-next-dividend {
-  display: grid; grid-template-columns: 2.5rem 1fr auto; grid-template-areas: "date name name" "date tag amount";
-  column-gap: .875rem; row-gap: .25rem; align-items: center; padding-inline: var(--felt-card-spacer-x);
-}
-.app-next-dividend-date { grid-area: date; display: flex; flex-direction: column; align-items: center; line-height: 1.15; }
-.app-next-dividend-day { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-.app-next-dividend-name { grid-area: name; line-height: 1.25; }
-.app-next-dividend-tag { grid-area: tag; justify-self: start; }
-.app-next-dividend-amount { grid-area: amount; text-align: right; }
-.app-payment { display: grid; grid-template-columns: 1fr auto; column-gap: 1rem; row-gap: .125rem; align-items: baseline; }
-.app-payment > .badge { justify-self: end; }
-.app-dividend-card { container-type: inline-size; }
-.app-payment-table { display: none; }
-.app-dividend-table .app-pay-date { padding-right: 1.25rem; }
-@container (min-width: 39rem) {
-  .app-payment-list { display: none; }
-  .app-payment-table { display: block; }
-  .app-dividend-table { table-layout: fixed; }
-  .app-col-date { width: 8.25rem; }
-  .app-col-ex-date { width: 4.5rem; }
-  .app-col-per-share { width: 7.5rem; }
-  .app-col-shares { width: 4rem; }
-  .app-col-amount { width: 7rem; }
-}
-/* The price chart's dots: a purchase as a ring, a sale filled. */
-.app-dot { display: inline-block; width: .7rem; height: .7rem; border-radius: 50%; border: 2px solid var(--felt-success-text); vertical-align: -.05rem; }
-.app-dot-sale { border: none; background: var(--felt-danger-text); }
-/* Allocation: one bar per region, sector or classification, the largest at full width; „Ohne Angabe“
- * muted; a classification's target as a line across its bar. */
-.app-allocation-bar { position: relative; height: .6rem; }
-.app-allocation-bar > div { height: 100%; border-radius: 1rem; background: var(--felt-primary); }
-.app-allocation-bar > .app-allocation-unknown { background: var(--felt-secondary); }
-.app-allocation-bar > .app-allocation-target {
-  position: absolute; top: -.2rem; bottom: -.2rem; height: auto; width: 2px; margin-left: -1px;
-  border-radius: 0; background: var(--felt-emphasis-color);
-}
-/* Two stat cards side by side on a phone: values up to „+135,94 %“ still fit. */
-@media (max-width: 575.98px) { .app-stats .stat-value { font-size: 1.5rem; } }
+/* Styles: Tailwind CSS 4 with daisyUI 5 and setzkasten's themes (zipfel-light / zipfel-dark) and
+   patches. Components come from setzkasten; this file only holds what is specific to zipfelfolio:
+   the heatmap and the receipt's text. Colours are the theme's tokens (var(--color-*)), so dark
+   mode follows by itself. */
 
-/* Shell: a dark sidebar from 768 px, an icon rail below 1280 px and from 1280 px when collapsed on this
- * device (sidebar.js); a header and a tab bar below 768 px. */
-.app { max-width: 1200px; padding-bottom: calc(6.25rem + env(safe-area-inset-bottom)); }
-@media (min-width: 768px) { .app { padding-top: 1.75rem; padding-bottom: 3rem; } }
-/* The sidebar's colours follow the page's theme, so they are computed on :root as registered colours;
- * a look other than clean overrides these tokens. */
-@property --side-bg { syntax: "<color>"; inherits: true; initial-value: #1e2b45; }
-@property --side-edge { syntax: "<color>"; inherits: true; initial-value: transparent; }
-@property --side-ink { syntax: "<color>"; inherits: true; initial-value: #f4f6fa; }
-@property --side-muted { syntax: "<color>"; inherits: true; initial-value: #b4bdcc; }
-@property --side-fly { syntax: "<color>"; inherits: true; initial-value: #2d3a59; }
-:root {
-  --side-bg: light-dark(#1e2b45, #151b28); --side-edge: light-dark(transparent, rgb(255 255 255 / .07));
-  --side-ink: #f4f6fa; --side-muted: #b4bdcc; --side-fly: light-dark(#2d3a59, #283247);
-  --rail-w: 4.25rem;
+@import "tailwindcss" source(none);
+@import "phoenix-colocated/zipfelfolio/colocated.css";
+@source "../css";
+@source "../js";
+@source "../../lib/zipfelfolio_web";
+
+@plugin "daisyui/packages/bundle/daisyui" {
+  themes: false;
 }
-@media (min-width: 768px) {
-  body:has(.app-side) { padding-left: 18.5rem; }
-  :root:is(.app-rail, .app-side-peek) body:has(.app-side) { padding-left: var(--rail-w); }
-  :root.app-rail .app { max-width: calc(1200px + 18.5rem - var(--rail-w)); }
-}
-.app-side {
-  --side-hover: rgb(255 255 255 / .06); --side-line: rgb(255 255 255 / .24);
-  --side-mark: #8fb2e8; --side-neg: #ff9d8c; --side-pad-r: .625rem;
-  position: fixed; inset: 0 auto 0 0; z-index: 1030; width: 18.5rem;
-  background-color: var(--side-bg); color: var(--side-ink); box-shadow: 1px 0 0 var(--side-edge);
-  font-size: .9375rem; line-height: 1.25;
-}
-.app-rail .app-side { width: var(--rail-w); }
-.app-side-peek .app-side { box-shadow: 1px 0 0 var(--side-edge), 12px 0 32px rgb(0 0 0 / .35); }
-/* Below 1280 px the opened sidebar lies over the page, which a scrim dims. */
-.app-side-scrim { display: none; position: fixed; inset: 0; z-index: 1029; background: light-dark(rgb(0 0 0 / .28), rgb(0 0 0 / .4)); }
-@media (min-width: 768px) { .app-side-peek .app-side-scrim { display: block; } }
-.app-side .app-icon { stroke-width: 1.75; }
-.app-side-top { padding: .75rem var(--side-pad-r) .5rem .625rem; }
-.app-side-scroll {
-  flex: 1 1 auto; min-height: 0; overflow: hidden auto; padding: 0 var(--side-pad-r) .75rem .625rem;
-  scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / .2) transparent;
-}
-/* A list longer than the sidebar fades out at the bottom until scrolled to its end. */
-@property --side-fade { syntax: "<length>"; inherits: false; initial-value: 0px; }
-@keyframes app-side-fade { from, 99% { --side-fade: 2.5rem; } to { --side-fade: 0px; } }
-@supports (animation-timeline: scroll()) {
-  :root:not(.app-rail) .app-side-scroll {
-    mask-image: linear-gradient(to bottom, #000 calc(100% - var(--side-fade)), transparent);
-    animation: app-side-fade auto linear both; animation-timeline: scroll(self);
-  }
-}
-.app-side-foot { display: flex; align-items: center; gap: .25rem; margin: 0 var(--side-pad-r) 0 .625rem; padding: .5rem 0 .75rem; border-top: 1px solid var(--side-line); }
-.app-side-foot .nav-link { flex: 1 1 auto; }
-/* The account menu: the logo on the icon column, the name on the text column. */
-.app-side-me {
-  position: relative; display: flex; align-items: center; gap: .625rem; width: 100%; min-height: 2.75rem; padding: .25rem .5rem; border: 0;
-  border-radius: var(--felt-radius); background: none; color: inherit; text-align: left;
-}
-.app-side-me:hover, .app-side-me[aria-expanded="true"] { background-color: var(--side-hover); }
-.app-side-logo { width: 1.5rem; height: 1.5rem; flex-shrink: 0; fill: none; stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; }
-.app-side-me .app-side-text { min-width: 0; }
-.app-side-me b { display: block; font-size: .9375rem; font-weight: 700; }
-.app-side-me small { display: block; overflow: hidden; color: var(--side-muted); font-size: .8125rem; text-overflow: ellipsis; white-space: nowrap; }
-.app-side-me .app-chev { width: 1rem; height: 1rem; margin-left: auto; color: var(--side-muted); }
-.app-side .dropdown-menu {
-  --felt-dropdown-min-width: 13rem; --felt-dropdown-bg: var(--side-fly); --felt-dropdown-border-color: rgb(255 255 255 / .12);
-  --felt-dropdown-link-color: var(--side-ink); --felt-dropdown-link-hover-color: #fff; --felt-dropdown-link-hover-bg: rgb(255 255 255 / .08);
-  box-shadow: 0 8px 24px rgb(0 0 0 / .4);
-}
-/* 2 px under the button, as Bootstrap's Popper places it. */
-.app-side-top .dropdown-menu[data-bs-popper] { top: calc(100% - .5rem + 2px); left: .625rem; margin-top: 0; }
-.app-rail .app-side-top .dropdown-menu[data-bs-popper] { left: .5rem; }
-.app-side .dropdown-item { display: flex; align-items: center; gap: .625rem; font-size: .875rem; }
-.app-side .dropdown-item .app-icon { width: 1rem; height: 1rem; color: var(--side-muted); }
-/* „+ Buchung“, the one action: an outline, so the open screen stays the only strong shape. */
-.app-side-book {
-  position: relative; display: flex; align-items: center; justify-content: center; gap: .375rem; width: 100%; height: 2.25rem; margin-bottom: .75rem;
-  border: 1px solid rgb(255 255 255 / .3); border-radius: var(--felt-radius); background: rgb(255 255 255 / .04); color: var(--side-ink);
-  font-size: .875rem; font-weight: 600;
-}
-.app-side-book:hover { background: var(--side-hover); border-color: rgb(255 255 255 / .45); }
-.app-side-book .app-icon { width: 1rem; height: 1rem; }
-.app-side .nav { flex-wrap: nowrap; gap: 2px; }
-.app-side .nav-link {
-  position: relative; display: flex; align-items: center; gap: .75rem; min-width: 0; height: 2.125rem; padding: 0 .625rem;
-  border-radius: var(--felt-radius); color: var(--side-ink); font-size: .9375rem; font-weight: 500; line-height: 1.25; text-decoration: none;
-}
-.app-side .nav-link .badge { margin-left: auto; padding: 0 .375rem; min-width: 1.25rem; height: 1.25rem; justify-content: center; font-size: .6875rem; }
-.app-side .nav-link:hover { background-color: var(--side-hover); color: #fff; }
-.app-side .nav-link.active { background-color: rgb(255 255 255 / .10); color: #fff; font-weight: 600; }
-.app-side .nav-link.active::before {
-  content: ""; position: absolute; left: 4px; top: 50%; width: 3px; height: 1.125rem; translate: 0 -50%; border-radius: 2px; background: var(--side-mark);
-}
-/* Money: the portfolios with their reference account, then the accounts of no portfolio; the totals add up
- * to net worth. */
-.app-side-h {
-  display: flex; justify-content: space-between; gap: .5rem; margin: 1.25rem 0 .25rem; padding: 0 .625rem;
-  color: var(--side-muted); font-size: .6875rem; font-weight: 700; letter-spacing: .07em; line-height: 1rem; text-transform: uppercase;
-}
-.app-side-h > :last-child { letter-spacing: 0; font-variant-numeric: tabular-nums; }
-.app-side .app-acc { height: 1.875rem; font-size: .875rem; }
-.app-side .app-sub { gap: .5rem; padding-left: 2.625rem; font-size: .8125rem; color: var(--side-muted); }
-.app-side .app-sub .app-icon { width: .875rem; height: .875rem; }
-.app-side .app-sub .app-bal { font-size: .8125rem; color: var(--side-muted); }
-.app-side .app-sub.active .app-bal { color: inherit; }
-.app-acc-name { min-width: 0; margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.app-bal { flex-shrink: 0; font-size: .875rem; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.app-bal.is-zero { color: var(--side-muted); }
-.app-bal.is-neg { color: var(--side-neg); }
-/* Chips: a portfolio is a filled square with its initial, an account of no portfolio an outlined square
- * with a wallet. */
-.app-chip {
-  --chip: var(--felt-denim);
-  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 1.25rem; height: 1.25rem;
-  border-radius: .3125rem; background: var(--chip); color: #fff; font-size: .6875rem; font-weight: 700; line-height: 1;
-}
-.app-chip-acc { background: none; color: inherit; box-shadow: inset 0 0 0 1.5px currentColor; }
-.app-side .app-chip-acc { color: var(--side-muted); }
-.app-chip-acc .app-icon { width: .8125rem; height: .8125rem; stroke-width: 2; }
-.app-chip-all { background: var(--felt-taupe); }
-.app-chip-all .app-icon { width: .875rem; height: .875rem; stroke-width: 2; }
-.app-side-toggle {
-  position: relative; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 2.125rem; height: 2.125rem;
-  border: 0; border-radius: var(--felt-radius); background: none; color: var(--side-muted);
-}
-.app-side-toggle:hover { background: var(--side-hover); color: #fff; }
-.app-fly { display: none; }
-/* Touch: 44 px targets; the rail widens to keep them clear of its edge. */
-@media (pointer: coarse) {
-  :root { --rail-w: 4.75rem; }
-  .app-side .nav-link, .app-side .app-acc { height: 2.75rem; }
-  .app-side .app-side-book { height: 2.75rem; margin-bottom: .5rem; }
-  .app-rail .app-side .app-side-book { width: 2.75rem; }
-  .app-side .app-side-toggle { width: 2.75rem; height: 2.75rem; }
-  .app-side .dropdown-item { min-height: 2.75rem; }
-  .app-side-h { margin-top: .75rem; }
-}
-/* The rail: icons and chips only; names and values stay for screen readers and show in a flyout. */
-.app-rail .app-side :is(.app-side-text, .app-acc-name, .app-bal) {
-  position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
-}
-.app-rail .app-side :is(.app-sub, .app-side-me .app-chev) { display: none; }
-.app-rail .app-side-scroll { overflow: visible; padding-inline: .5rem; }
-.app-rail .app-side-top { padding-inline: .5rem; }
-.app-rail .app-side-foot { flex-direction: column; margin-inline: .5rem; }
-.app-rail .app-side-me { justify-content: center; padding-inline: 0; }
-.app-rail .app-side .nav-link { justify-content: center; padding-inline: 0; }
-.app-rail .app-side-book { width: 2.25rem; margin-inline: auto; padding: 0; }
-.app-rail .app-side-foot .nav-link { width: 100%; }
-.app-rail .app-side-h { height: 0; margin: .75rem .5rem; padding: 0; border-top: 1px solid var(--side-line); }
-.app-rail .app-side-h > * { display: none; }
-.app-rail .app-side-toggle svg { transform: scaleX(-1); }
-.app-rail .app-side .nav-link .badge {
-  position: absolute; top: -.125rem; left: calc(50% + .25rem); min-width: 1.125rem; height: 1.125rem; padding: 0 .25rem; font-size: .6875rem;
-  box-shadow: 0 0 0 2px var(--side-bg);
-}
-.app-rail .app-side :is(.nav-link, .app-side-book, .app-side-me:not([aria-expanded="true"]), .app-side-toggle):is(:hover, :focus-visible) > .app-fly {
-  display: flex; gap: .75rem; position: absolute; z-index: 1; left: calc(100% + .75rem); top: 50%; translate: 0 -50%;
-  padding: .375rem .625rem; border-radius: var(--felt-radius-sm); background: var(--side-fly); color: #fff; box-shadow: 0 4px 14px rgb(0 0 0 / .35);
-  font-size: .8125rem; font-weight: 500; line-height: 1.25rem; white-space: nowrap; pointer-events: none;
-}
-.app-fly > span { color: var(--side-muted); font-variant-numeric: tabular-nums; }
-/* Phone: the header, the tab bar and the „Depots“ screen. */
-.app-head-logo { width: 1.75rem; height: 1.75rem; }
-.app-avatar-hit { display: inline-flex; align-items: center; justify-content: center; width: 2.75rem; height: 2.75rem; margin: -.25rem; border-radius: 50%; }
-/* „+ Buchung“ on the phone, above the tab bar. */
-.app-fab {
-  position: fixed; inset: auto 0 calc(4rem + max(.5rem, env(safe-area-inset-bottom)) + .75rem); z-index: 1030;
-  display: flex; justify-content: flex-end; padding-inline: 1rem; pointer-events: none;
-}
-.app-fab > * { pointer-events: auto; }
-/* The dialog „Buchung erfassen“ lies over the sidebar and the tab bar. */
-#transaction-modal { z-index: 1055; }
-.app-tabbar .nav-pills { --felt-nav-pills-link-active-bg: light-dark(var(--felt-primary), #5a82c2); }
-.app-tabbar .nav-link { padding-inline: .125rem; }
-.app-tabbar .app-icon { stroke-width: 1.75; }
-.app-tabbar small { font-size: .6875rem; }
-.app-tabbar .badge {
-  position: absolute; top: .125rem; left: calc(50% + .375rem); min-width: 1rem; height: 1rem; padding: 0 .25rem; justify-content: center;
-  font-size: .625rem; line-height: 1; box-shadow: 0 0 0 2px var(--felt-surface);
-}
-.app-sheet-h { display: flex; justify-content: space-between; gap: .5rem; margin: 0 .25rem .5rem; color: var(--felt-secondary-color); font-size: .75rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
-.app-sheet-h > :last-child { letter-spacing: 0; font-variant-numeric: tabular-nums; }
-/* A portfolio and its account read as one: no divider between them, the account's glyph on the portfolio's
- * text column. */
-.app-tree .list-group-item { display: flex; align-items: center; gap: .75rem; min-height: 3rem; }
-.app-tree .app-sub { min-height: 2.75rem; padding-left: 3rem; color: var(--felt-secondary-color); font-size: .875rem; }
-.app-tree .app-sub > .app-icon:first-child { width: .875rem; height: .875rem; margin-right: -.25rem; }
-.app-tree .list-group-item:has(+ .app-sub) { border-bottom-width: 0; }
-.app-tree .app-chev { width: 1rem; height: 1rem; color: var(--felt-tertiary-color); }
-/* „Buchungen“: a row the user booked opens the dialog through its title, which covers the row. */
-.app-tx-text { flex: 1; min-width: 0; hyphens: auto; overflow-wrap: break-word; }
-.app-tx-edit { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; }
-.app-tx-edit:focus-visible { outline: none; }
-.list-group-item:has(.app-tx-edit:focus-visible) { outline: 2px solid var(--felt-primary); outline-offset: -2px; z-index: 2; }
-#receipts-upload:has(input:focus-visible) label { outline: 2px solid var(--felt-primary); outline-offset: 2px; }
-.app-tx-receipt { position: relative; z-index: 2; }
-.app-filter { scrollbar-width: none; }
-@media (max-width: 575.98px) { .app-filter { gap: .75rem; } }
-/* Period buttons and the benchmark toggle: neutral outlines, the chosen or pressed one in the primary colour;
- * on a phone the periods across the width. */
-:is(.app-periods .btn, .app-benchmark-toggle) {
-  --felt-btn-color: color-mix(in oklab, var(--felt-body-color) 85%, transparent);
-  --felt-btn-border-color: var(--felt-border-color);
-  --felt-btn-bg: var(--felt-surface-raised); font-variant-numeric: tabular-nums;
-  --felt-btn-active-bg: light-dark(var(--felt-primary), #3f66b0); --felt-btn-active-color: #fff;
-  --felt-btn-active-border-color: light-dark(var(--felt-primary), #3f66b0);
-  min-width: 3.5rem;
-}
-/* The benchmark's mustard, deeper on a light page and dimmer on a dark one, so that it keys clearly and the net worth
- * line still leads. */
-:root { --benchmark: light-dark(#a06604, #b7893b); }
-/* The net worth line, lighter on a dark page so that it leads over the benchmark's. */
-:root { --net-worth-line: light-dark(var(--felt-primary), #6a92d6); }
-/* The benchmark toggle: while it is shown, its key filled and its border in the benchmark's colour; the selected
- * period alone is filled. */
-.btn.app-benchmark-toggle {
-  --felt-btn-active-bg: var(--felt-btn-bg);
-  --felt-btn-active-color: var(--felt-emphasis-color);
-  --felt-btn-active-border-color: color-mix(in srgb, var(--benchmark) 85%, var(--felt-border-color));
-  display: inline-flex; align-items: center; gap: .5rem; white-space: nowrap;
-}
-@media (prefers-color-scheme: dark) {
-  .btn.app-benchmark-toggle { --felt-btn-active-border-color: color-mix(in srgb, var(--benchmark) 70%, var(--felt-border-color)); }
-}
-.app-benchmark-key {
-  --key: .625rem;
-  display: inline-block; flex: none; width: var(--key); height: var(--key); border-radius: 50%;
-  border: 2px solid var(--benchmark);
-}
-.app-benchmark-toggle.active .app-benchmark-key { background: var(--benchmark); }
-/* The benchmark under the TTWROR, keyed like the toggle: its label and TTWROR, its name on the next line, which
- * gives way. Both cards of the row keep room for two lines whenever a benchmark is picked, so that nothing moves
- * when it is shown. */
-.app-benchmark-note { display: flex; flex-direction: column; min-width: 0; }
-.app-benchmark-note .app-benchmark-key { --key: .5rem; border: 0; margin-right: .375rem; background: var(--benchmark); vertical-align: .08em; }
-.app-benchmark-ttwror { margin-left: .3em; font-variant-numeric: tabular-nums; color: var(--felt-emphasis-color); font-weight: 600; }
-.app-benchmark-name { min-width: 0; padding-left: .875rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.app-stats-benchmark :is(#ttwror, #irr) .stat > :last-child { min-height: calc(2 * 1.5em); }
-.app-stats-benchmark #ttwror { container-type: inline-size; }
-/* In a phone's card the label gives way to the figure; the key ties it to the toggle above. */
-@container (max-width: 13rem) {
-  .app-benchmark-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .app-benchmark-ttwror { margin-left: 0; }
-}
-/* The shadow portfolio's key on the net worth chart: the name gives way first. */
-.app-benchmark-legend { min-width: 0; max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* The benchmark among the securities, keyed like the toggle. */
-.badge.app-benchmark-badge {
-  display: inline-flex; align-items: center; gap: .375rem; padding: .2em .6em; vertical-align: .1em;
-  border: 1px solid color-mix(in srgb, var(--benchmark) 70%, var(--felt-border-color)); background: none;
-  color: var(--felt-body-color); font-size: .75rem; font-weight: 600;
-}
-.app-benchmark-badge .app-benchmark-key { --key: .5rem; border: 0; background: var(--benchmark); }
-@media (min-width: 576px) { header > .app-benchmark-toggle { margin-right: .25rem; } }
-@media (max-width: 575.98px) {
-  /* On the overview the toggle joins the title and the periods take a row of their own. */
-  header:has(> .app-benchmark-toggle) > .app-periods { order: 3; display: flex; width: 100%; margin-top: .25rem; }
-  header:has(> .app-benchmark-toggle) > .app-periods .btn { flex: 1 1 0; min-height: 44px; }
-  header > .app-benchmark-toggle, .app-head-benchmark .btn { min-height: 44px; }
-  header > .app-benchmark-toggle { padding-inline: .875rem; }
-  /* On the performance screen the portfolio switcher and the toggle share a row of their own, both as wide. */
-  .app-head:has(.app-head-benchmark) {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas: "title title" "subtitle subtitle" "switcher benchmark" "periods periods";
-  }
-  .app-head:has(.app-head-benchmark) :is(.app-head-switcher, .app-head-benchmark) { margin: .75rem 0 0; }
-  .app-head:has(.app-head-benchmark) .app-head-periods { margin-top: .5rem; }
-  .app-head:has(.app-head-benchmark) :is(.app-head-switcher .dropdown, .app-head-switcher .btn, .app-head-benchmark .btn) {
-    width: 100%; justify-content: center;
-  }
-}
-/* A page header with title and subtitle on the left, the controls on the right. */
-.app-head {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; column-gap: .75rem;
-  grid-template-areas: "title benchmark periods switcher" "subtitle subtitle subtitle subtitle"; margin-bottom: 1rem;
-}
-.app-head-benchmark { grid-area: benchmark; }
-.app-head-title { grid-area: title; }
-.app-head-subtitle { grid-area: subtitle; }
-.app-head-periods { grid-area: periods; }
-.app-head-switcher { grid-area: switcher; }
-@media (max-width: 575.98px) {
-  .app-head {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: "title switcher" "subtitle benchmark" "periods periods";
-  }
-  .app-head-periods { display: flex; margin-top: .75rem; }
-  .app-head-periods .btn { flex: 1 1 0; }
-  .app-head .btn { min-height: 44px; }
-  /* The switcher centres on the title without pushing the subtitle down. */
-  .app-head-switcher { margin-block: -.25rem; }
-  .app-head-switcher .btn { padding-inline: .75rem; }
-  .app-stats .card-body { padding: 1rem; }
-  .app-stats .stat-label { white-space: nowrap; letter-spacing: .02em; }
-}
-/* The breakdown's rows in line with its heading, the final value as the sum below a rule. */
-.app-breakdown .list-group-item { padding-inline: var(--felt-card-cap-padding-x); padding-block: .625rem; }
-.app-breakdown .app-breakdown-total { border-top: 2px solid color-mix(in oklab, var(--felt-border-color), var(--felt-emphasis-color) 25%); }
-.app-breakdown .list-group-item > :first-child { min-width: 0; }
-.app-breakdown .list-group-item:has(+ .app-breakdown-total) { border-bottom-width: 0; }
-.app-breakdown-date { font-variant-numeric: normal; }
-/* Its heading sits in the card like the labels of the key figures. */
-.app-breakdown .card-header { background: transparent; border-bottom: 0; padding-block: 1.25rem .75rem; }
-/* Wide rows: the row under the pointer is tinted, so that its value is easy to find from its label. */
-.app-breakdown .list-group-item:hover { background-color: color-mix(in oklab, var(--felt-body-color) 5%, transparent); }
-.app-stats .stat-value { font-variant-numeric: tabular-nums; }
-.app-stats .stat { gap: .25rem; }
-.app-stats .stat-label { margin-bottom: .125rem; }
-@media (min-width: 576px) { .app-stats .card-body { padding-block: 1.25rem; } }
-@media (max-width: 575.98px) {
-  .app-breakdown { --felt-card-cap-padding-x: 1rem; }
-  .app-head-subtitle { line-height: 1.35; }
-  .app-breakdown .list-group-item { font-size: .9375rem; }
-  .app-head { margin-top: .5rem; }
-  .app-stats .stat > :last-child { font-size: .8125rem; }
-}
-/* Monthly returns: a cell per month, green up and red down, the stronger the further from zero (--heat, 0 to 1);
- * ±0,0 grey, months without returns outlined; the year's column set apart. On a phone each year folds into its
- * year with the year's return and two rows of six months, each with its name. */
+
+/* setzkasten's themes and patches. Resolved through NODE_PATH, which holds the Mix build path
+   (config :tailwind): Mix links every dependency's priv to _build/<env>/lib/<dep>/priv, so this line
+   works for path, git and hex dependencies alike. */
+@import "lib/setzkasten/priv/static/setzkasten.css";
+
+/* Monthly returns: a cell per month, green up and red down, the stronger the further from zero
+   (data-heat, 0 to 10); ±0,0 grey, months without returns outlined; the year's column set apart. On a
+   phone each year folds into its year with the year's return and two rows of six months, each with
+   its name. */
 .app-heatmap {
   --heat-up-low: oklch(92.5% .065 145); --heat-up-high: oklch(72% .14 145);
   --heat-down-low: oklch(92.5% .055 15); --heat-down-high: oklch(69% .15 15);
-  --heat-flat: oklch(93.5% .003 260); --heat-none: color-mix(in oklab, var(--felt-border-color), var(--felt-body-color) 55%);
+  --heat-flat: oklch(93.5% .003 260); --heat-none: color-mix(in oklab, var(--color-base-content) 45%, transparent);
+  --heat-ink: var(--color-base-content);
 }
-/* On a dark page the scale runs from a tint that still stands off the card to a full colour that keeps light text
- * at 4.5:1. */
-@media (prefers-color-scheme: dark) {
-  .app-heatmap {
+/* On a dark page the scale runs from a tint that still stands off the page to a full colour that
+   keeps light text at 4.5:1. */
+.app-heatmap {
+  @variant dark {
     --heat-up-low: oklch(35% .055 150); --heat-up-high: oklch(47% .125 148);
     --heat-down-low: oklch(35% .06 20); --heat-down-high: oklch(47% .15 22);
-    --heat-flat: oklch(37% .004 260); --heat-none: rgb(255 255 255 / .5);
+    --heat-flat: oklch(37% .004 260); --heat-ink: oklch(97% 0 0);
   }
-  .app-heat { color: oklch(97% 0 0); }
 }
-/* Where the content is 75rem wide (from 1440 px with the rail) the heatmap takes the larger share beside the
- * breakdown, its months still about 3.5rem wide; narrower, e.g. with the sidebar open, both span the width. */
-.app-performance-grid { container-type: inline-size; }
-@container (min-width: 75rem) {
-  .row > .app-col-breakdown { width: 36%; }
-  .row > .app-col-heatmap { width: 64%; }
-}
-.app-heatmap .card-header { background: transparent; border-bottom: 0; padding-block: 1.25rem .75rem; }
-.app-heatmap .card-body { padding: 0 var(--felt-card-cap-padding-x) .625rem; container-type: inline-size; }
 .app-heatmap-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: .8125rem; }
-@container (min-width: 44rem) { .app-heatmap-table { font-size: .875rem; } }
 .app-heatmap-table :is(th, td) { padding: 1.5px; }
-.app-heatmap-table th { color: color-mix(in oklab, var(--felt-body-color) 72%, transparent); font-size: .75rem; font-weight: 600; text-align: center; }
+.app-heatmap-table th { color: color-mix(in oklab, var(--color-base-content) 70%, transparent); font-size: .75rem; font-weight: 600; text-align: center; }
 .app-heatmap-table thead th { padding-bottom: .25rem; }
 .app-heatmap-table thead th:first-child { width: 2.75rem; }
 .app-heatmap-table thead .app-heatmap-total { font-weight: 700; }
 .app-heatmap-table .app-heatmap-total { width: 4.875rem; padding-left: 1rem; }
-.app-heatmap-table tbody th { padding: 0; color: var(--felt-body-color); font-size: .8125rem; text-align: left; }
+.app-heatmap-table tbody th { padding: 0; color: var(--color-base-content); font-size: .8125rem; text-align: left; }
 .app-heatmap-table abbr { text-decoration: none; cursor: help; }
 .app-heat {
-  display: flex; align-items: center; justify-content: center; height: 2.625rem; border-radius: .375rem;
-  background: var(--heat-flat); color: var(--felt-body-color); font-weight: 600; white-space: nowrap;
+  --heat: 0; display: flex; align-items: center; justify-content: center; height: 2.625rem; border-radius: .375rem;
+  background: var(--heat-flat); color: var(--heat-ink); font-weight: 600; white-space: nowrap;
 }
 .app-heat-up { background: color-mix(in oklab, var(--heat-up-high) calc(var(--heat) * 100%), var(--heat-up-low)); }
 .app-heat-down { background: color-mix(in oklab, var(--heat-down-high) calc(var(--heat) * 100%), var(--heat-down-low)); }
+.app-heat[data-heat="1"] { --heat: .1; } .app-heat[data-heat="2"] { --heat: .2; } .app-heat[data-heat="3"] { --heat: .3; }
+.app-heat[data-heat="4"] { --heat: .4; } .app-heat[data-heat="5"] { --heat: .5; } .app-heat[data-heat="6"] { --heat: .6; }
+.app-heat[data-heat="7"] { --heat: .7; } .app-heat[data-heat="8"] { --heat: .8; } .app-heat[data-heat="9"] { --heat: .9; }
+.app-heat[data-heat="10"] { --heat: 1; }
 .app-heat.app-heat-none { background: none; border: 1px dashed var(--heat-none); }
 .app-heatmap-total .app-heat { font-weight: 700; }
 .app-heat::before { display: none; content: attr(data-label) / ""; }
-@media (max-width: 575.98px) {
-  .app-heatmap { --felt-card-cap-padding-x: 1rem; }
-  .app-heatmap .card-body { padding-bottom: 1rem; }
+@media (max-width: 39.99rem) {
   .app-heatmap-table, .app-heatmap-table tbody { display: block; }
   .app-heatmap-table { margin-top: .25rem; }
   .app-heatmap-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .app-heatmap-table tr { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .5rem; }
-  .app-heatmap-table tr + tr { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--felt-border-color); }
+  .app-heatmap-table tr + tr {
+    margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid color-mix(in oklab, var(--color-base-content) 10%, transparent);
+  }
   .app-heatmap-table :is(th, td) { padding: 0; }
   .app-heatmap-table tbody tr > :is(th, .app-heatmap-total) { margin-bottom: .375rem; align-self: baseline; }
   .app-heatmap-table tbody th { grid-area: 1 / 1 / 2 / 4; font-size: .9375rem; line-height: 1.75rem; }
   .app-heatmap-table td.app-heatmap-total { grid-area: 1 / 4 / 2 / 7; width: auto; padding-left: 0; line-height: 1.5; }
   .app-heat { flex-direction: column; gap: 1px; height: 2.5rem; line-height: 1.15; }
   .app-heat::before { display: block; font-size: .75rem; font-weight: 500; }
-  .app-heat.app-heat-none::before { color: var(--felt-secondary-color); }
+  .app-heat.app-heat-none::before { color: color-mix(in oklab, var(--color-base-content) 70%, transparent); }
   /* The year's return as a paler bar over the last three columns, at most 40 % of the scale. */
   .app-heatmap-total .app-heat {
     flex-direction: row; justify-content: space-between; align-items: baseline; gap: .375rem; height: auto;
@@ -527,46 +82,28 @@
   .app-heatmap-total .app-heat-up { background: color-mix(in oklab, var(--heat-up-high) calc(var(--heat) * 40%), var(--heat-up-low)); }
   .app-heatmap-total .app-heat-down { background: color-mix(in oklab, var(--heat-down-high) calc(var(--heat) * 40%), var(--heat-down-low)); }
   .app-heatmap-total .app-heat::before { font-size: .875em; }
-  .app-heatmap-note { padding-top: 1.75rem !important; font-size: .8125rem; }
 }
-/* The inbox: the text takes the room, the action stays beside it unless the row is too narrow. */
-.app-inbox-text { flex: 1 1 14rem; min-width: 0; }
-/* The actions fill one slot, so their column has a straight edge; on the phone they wrap below the
- * text, on its column. */
-@media (min-width: 576px) { .list-group-item .app-inbox-action { width: 10.5rem; } }
-@media (max-width: 575.98px) {
-  .list-group-item .app-inbox-action { margin-left: calc(2.25rem + .5rem); }
-  .app-inbox-row > .app-avatar { align-self: flex-start; }
-}
-/* „Depots“: a depot number's row and its form in place, on the name's column. */
-#depot-numbers .list-group-item { gap: .75rem; }
-#depot-numbers .app-chip { margin-top: .125rem; }
-.app-depot-number-text { flex: 1; min-width: 0; }
-#depot-number-form .form-control, #depot-number-form .btn { min-height: 2.75rem; }
-@media (max-width: 575.98px) { #depot-numbers .btn, #paperless-form .btn { min-height: 2.75rem; } }
 
-/* „Beleg prüfen“: the receipt's text as on paper, the recognised values marked. */
-.app-receipt-sheet { padding: 1.25rem; border-radius: .25rem; background: #fff; color: #222; box-shadow: 0 1px 4px rgb(0 0 0 / .2); }
-.app-receipt-lines { margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; overflow-x: auto; color: inherit; font-family: ui-monospace, Menlo, monospace; font-size: .7rem; line-height: 1.45; white-space: pre; }
-/* Tighter than „Buchung erfassen“, so that the amount the checks compare fits beside the receipt. */
-.app-receipt-dialog .modal-body { padding-top: 1rem; }
-.app-receipt-dialog .modal-body .row.g-3 { --felt-gutter-y: .75rem; }
-.app-receipt-dialog .modal-body .alert-light { padding-block: 1rem; }
-/* Both columns start with a label of one height. */
-.app-receipt-head { height: 1.875rem; }
-.app-receipt-head .btn { --felt-btn-padding-y: 0; line-height: 1.875rem; }
-/* The receipt stays beside the form while it scrolls; below lg twelve lines fading into the paper show that
- * it scrolls. */
-@media (min-width: 992px) {
-  .app-receipt-pane { position: sticky; top: 0; align-self: flex-start; }
-  .app-receipt-lines { font-size: .8rem; }
+/* „Beleg prüfen“: the receipt's text as on paper, the recognised values marked in the warning fill
+   with its own text colour, so they read in both themes. Wide lines scroll sideways behind an
+   always visible scrollbar (macOS hides overlay scrollbars), so no value is cut off unnoticed. */
+.app-receipt-lines { margin: 0; padding-bottom: .25rem; overflow-x: auto; font-family: ui-monospace, Menlo, monospace; font-size: .75rem; line-height: 1.45; white-space: pre; }
+.app-receipt-lines mark { padding: 0 .1rem; border-radius: .125rem; background: var(--color-warning); color: var(--color-warning-content); }
+.app-receipt-lines::-webkit-scrollbar { width: .5rem; height: .5rem; }
+.app-receipt-lines::-webkit-scrollbar-track { border-radius: 9999px; background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
+.app-receipt-lines::-webkit-scrollbar-thumb { border-radius: 9999px; background: color-mix(in oklab, var(--color-base-content) 40%, transparent); }
+@supports not selector(::-webkit-scrollbar) {
+  .app-receipt-lines { scrollbar-color: color-mix(in oklab, var(--color-base-content) 40%, transparent) transparent; }
 }
-@media (max-width: 991.98px) {
+/* The receipt stays beside the form while it scrolls; below lg twelve lines fading out show that it
+   scrolls. */
+@media (min-width: 64rem) {
+  .app-receipt-pane { position: sticky; top: 0; align-self: flex-start; }
+}
+@media (max-width: 63.99rem) {
   .app-receipt-lines {
     max-height: calc(12 * 1.45em); overflow-y: auto;
     mask-image: linear-gradient(to bottom, #000 calc(100% - 2rem), transparent);
   }
 }
-@media (max-width: 575.98px) { .app-receipt-lines { white-space: pre-wrap; overflow-wrap: anywhere; } }
-@media (prefers-color-scheme: dark) { .app-receipt-sheet { background: #e6e4df; box-shadow: none; } }
-.app-receipt-sheet mark { padding: 0 .1rem; background: color-mix(in srgb, var(--felt-warning) 45%, transparent); color: inherit; }
+@media (max-width: 39.99rem) { .app-receipt-lines { white-space: pre-wrap; overflow-wrap: anywhere; } }

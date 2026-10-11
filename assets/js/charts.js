@@ -62,36 +62,59 @@ function ticks(min, max, count) {
   return result
 }
 
-// A felt.css colour as the canvas needs it, resolved for the current light or dark scheme.
-export function cssColor(el, name) {
-  el.style.color = `var(${name})`
-  const color = getComputedStyle(el).color
+// A theme colour as the canvas needs it, resolved for the current light or dark theme: a custom
+// property such as "--color-chart-1" or any CSS colour, e.g. a color-mix() of tokens.
+export function cssColor(el, color) {
+  el.style.color = color.startsWith("--") ? `var(${color})` : color
+  const resolved = getComputedStyle(el).color
   el.style.color = ""
-  return color
+  return rgba(resolved)
 }
 
-// An rgb() colour with transparency; none for a colour in another notation.
-export function transparent(color, alpha) {
-  const [r, g, b] = /^rgba?\(/.test(color) ? color.match(/[\d.]+/g) : []
-  return b === undefined ? "transparent" : `rgba(${r}, ${g}, ${b}, ${alpha})`
+let pixel
+
+// The browser computes the theme's colours as oklch() or oklab(), which Chart.js cannot parse to
+// lighten them on hover; one pixel painted in the colour reads back as rgba().
+function rgba(color) {
+  pixel ??= document.createElement("canvas").getContext("2d", { willReadFrequently: true })
+  pixel.clearRect(0, 0, 1, 1)
+  pixel.fillStyle = color
+  pixel.fillRect(0, 0, 1, 1)
+  const [r, g, b, a] = pixel.getImageData(0, 0, 1, 1).data
+  return `rgba(${r}, ${g}, ${b}, ${Math.round((a / 255) * 1000) / 1000})`
 }
+
+// A chart series of setzkasten as a token name such as "chart-1": its fill for bars, areas and
+// dots, its line for lines and outlines.
+export const series = (el, name) => ({ fill: cssColor(el, `--color-${name}-fill`), line: cssColor(el, `--color-${name}`) })
+
+// The page's text colour at `percent` strength: axes and their labels at 70, grid lines at 10.
+export const inkColor = (el, percent) =>
+  cssColor(el, `color-mix(in oklab, var(--color-base-content) ${percent}%, transparent)`)
+
+// A theme colour with transparency, e.g. a series' fill under its line.
+export const transparent = (el, color, alpha) =>
+  cssColor(el, `color-mix(in oklab, ${color} ${alpha * 100}%, transparent)`)
 
 export const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches
 
 // A LiveView hook for one chart: draws what `config(data, el)` gives for the data the page pushes
-// as `event`, and again in the other colours when the device switches between light and dark.
-// Without a config there is nothing to draw.
+// as `event`, and again in the other colours when the theme changes, by the device's light or dark
+// mode or by a theme set on <html>. Without a config there is nothing to draw.
 export function chartHook(event, config) {
   return {
     mounted() {
       this.handleEvent(event, (data) => this.draw(data))
-      this.scheme = matchMedia("(prefers-color-scheme: dark)")
       this.redraw = () => this.data && this.draw(this.data)
+      this.scheme = matchMedia("(prefers-color-scheme: dark)")
       this.scheme.addEventListener("change", this.redraw)
+      this.theme = new MutationObserver(this.redraw)
+      this.theme.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] })
     },
 
     destroyed() {
       this.scheme.removeEventListener("change", this.redraw)
+      this.theme.disconnect()
       this.chart?.destroy()
     },
 

@@ -32,6 +32,15 @@ defmodule Zipfelfolio.PortfoliosTest do
     user_scope_fixture(user)
   end
 
+  test "empty?/1 holds until the user has a portfolio or an account of their own", ctx do
+    other = user_scope_fixture()
+    refute Portfolios.empty?(ctx.scope)
+    assert Portfolios.empty?(other)
+
+    account_fixture(other)
+    refute Portfolios.empty?(other)
+  end
+
   describe "overview/3" do
     # 10 shares delivered on Friday for 1,000 €, closing at 100 € that day and at 102 € today.
     defp shares_fixture(scope, portfolio, count \\ 10) do
@@ -141,7 +150,7 @@ defmodule Zipfelfolio.PortfoliosTest do
       assert Portfolios.overview(ctx.scope, :six_months, @saturday).dividends == money(20)
     end
 
-    test "lists the portfolios with their value and TTWROR since 1 January", ctx do
+    test "lists the portfolios with their securities' value and TTWROR since 1 January", ctx do
       account = account_fixture(ctx.scope, %{name: "Konto Langfristig"})
       portfolio = Repo.update!(change(ctx.portfolio, reference_account_id: account.id))
       deposit(ctx.scope, account, ~D[2025-06-01], 240)
@@ -153,11 +162,31 @@ defmodule Zipfelfolio.PortfoliosTest do
 
       assert [langfristig, sparplan] = Portfolios.overview(ctx.scope, :max, @saturday).portfolios
 
-      assert %{account: ^account, balance: 24_000, securities: 1, value: 126_000} = langfristig
+      # The securities alone, as in the sidebar: the account's 240 € are its balance.
+      assert %{account: ^account, balance: 24_000, securities: 1, value: 102_000} = langfristig
       assert langfristig.portfolio.id == portfolio.id
-      assert_in_delta langfristig.ttwror, 1_260 / 1_240 - 1, 1.0e-12
+      assert_in_delta langfristig.ttwror, 102 / 100 - 1, 1.0e-12
 
-      assert %{account: ^savings, securities: 0, value: 150_000, ttwror: +0.0} = sparplan
+      assert %{account: ^savings, balance: 150_000, securities: 0, value: 0, ttwror: +0.0} =
+               sparplan
+    end
+
+    test "counts a dividend paid into the reference account for the depot's TTWROR", ctx do
+      account = account_fixture(ctx.scope)
+      portfolio = Repo.update!(change(ctx.portfolio, reference_account_id: account.id))
+      security = shares_fixture(ctx.scope, portfolio)
+
+      transaction_fixture(ctx.scope, @saturday,
+        type: :dividend,
+        account_id: account.id,
+        security_id: security.id,
+        amount: money(10)
+      )
+
+      assert [row] = Portfolios.overview(ctx.scope, :max, @saturday).portfolios
+      # The securities alone are worth 1,020 €; the 10 € dividend counts for them.
+      assert row.value == money(1_020)
+      assert_in_delta row.ttwror, (1_020 + 10) / 1_000 - 1, 1.0e-12
     end
 
     test "counts an account two portfolios settle against for the first of them", ctx do
@@ -173,8 +202,26 @@ defmodule Zipfelfolio.PortfoliosTest do
       assert [a_row, b_row, _langfristig] =
                Portfolios.overview(ctx.scope, :max, @saturday).portfolios
 
-      assert {a_row.portfolio.id, a_row.account, a_row.value} == {a.id, account, money(50)}
+      assert {a_row.portfolio.id, a_row.account, a_row.balance} == {a.id, account, money(50)}
       assert {b_row.portfolio.id, b_row.account, b_row.value} == {b.id, nil, money(102)}
+    end
+
+    test "gives an account a retired portfolio settles against too the active one", ctx do
+      account = account_fixture(ctx.scope, %{name: "K"})
+      deposit(ctx.scope, account, @friday, 50)
+      Repo.update!(change(ctx.portfolio, reference_account_id: account.id))
+      retired = portfolio_fixture(ctx.scope, %{name: "Alt", retired: true})
+      Repo.update!(change(retired, reference_account_id: account.id))
+      shares_fixture(ctx.scope, retired, 1)
+
+      assert [alt, langfristig] = Portfolios.overview(ctx.scope, :max, @saturday).portfolios
+      assert {alt.portfolio.id, alt.account} == {retired.id, nil}
+      assert {langfristig.account, langfristig.balance} == {account, money(50)}
+
+      assert [%{account: ^account, portfolio: %{id: id}}] =
+               Portfolios.sidebar(ctx.scope, @saturday).accounts
+
+      assert id == ctx.portfolio.id
     end
 
     test "gives nothing but zeros without any transaction", ctx do
@@ -856,7 +903,7 @@ defmodule Zipfelfolio.PortfoliosTest do
       )
     end
 
-    test "gives each portfolio with its reference account, then the accounts of no portfolio",
+    test "gives the portfolios with their securities and every account, adding up to net worth",
          ctx do
       account = account_fixture(ctx.scope, %{name: "Konto Langfristig"})
       deposit_into(ctx.scope, account, 2_000)
@@ -869,51 +916,41 @@ defmodule Zipfelfolio.PortfoliosTest do
       sidebar = Portfolios.sidebar(ctx.scope, @saturday)
 
       assert [
-               %{portfolio: %{name: "Langfristig"}, value: 300_000} = langfristig,
-               %{portfolio: %{name: "Sparplan"}, value: 0, account: nil}
+               %{portfolio: %{name: "Langfristig"}, value: 100_000},
+               %{portfolio: %{name: "Sparplan"}, value: 0}
              ] = sidebar.portfolios
 
-      assert langfristig.account == %{account: account, value: 200_000}
-      assert sidebar.accounts == [%{account: savings, value: 100_000}]
+      assert sidebar.accounts == [
+               %{account: account, value: 200_000, portfolio: portfolio},
+               %{account: savings, value: 100_000, portfolio: nil}
+             ]
 
-      holdings = Portfolios.holdings(ctx.scope, nil, @saturday)
-
-      assert Enum.map(holdings.groups, & &1.value) ==
-               Enum.map(sidebar.portfolios, & &1.value) ++ [money(1_000)]
+      total = Enum.sum_by(sidebar.portfolios ++ sidebar.accounts, & &1.value)
+      assert Portfolios.net_worth(ctx.scope, [@saturday]) == %{@saturday => total}
     end
 
-    test "lists an account two portfolios settle against under the first of them", ctx do
+    test "gives an account two portfolios settle against the first of them", ctx do
       account = account_fixture(ctx.scope, %{name: "K"})
-      deposit_into(ctx.scope, account, 50)
 
-      for name <- ["A", "B"],
-          do: portfolio_fixture(ctx.scope, %{name: name, reference_account_id: account.id})
+      [a, _b] =
+        for name <- ["A", "B"],
+            do: portfolio_fixture(ctx.scope, %{name: name, reference_account_id: account.id})
 
-      assert [%{account: %{account: ^account}}, %{account: nil}, %{account: nil}] =
-               Portfolios.sidebar(ctx.scope, @saturday).portfolios
+      assert [%{account: ^account, portfolio: ^a}] =
+               Portfolios.sidebar(ctx.scope, @saturday).accounts
     end
 
-    test "keeps a retired portfolio while it holds shares", ctx do
+    test "leaves out retired portfolios and accounts, even while they hold something", ctx do
       retired = portfolio_fixture(ctx.scope, %{name: "Alt", retired: true})
-      security = held(ctx.scope, retired, 5, 100)
+      held(ctx.scope, retired, 5, 100)
+      closed = account_fixture(ctx.scope, %{name: "Geschlossen", retired: true})
+      deposit_into(ctx.scope, closed, 500)
 
-      assert [%{portfolio: %{name: "Alt"}, value: 50_000}, %{portfolio: %{name: "Langfristig"}}] =
-               Portfolios.sidebar(ctx.scope, @saturday).portfolios
-
-      transaction_fixture(ctx.scope, @saturday,
-        type: :outbound_delivery,
-        portfolio_id: retired.id,
-        security_id: security.id,
-        shares: shares(5)
-      )
-
-      assert [%{portfolio: %{name: "Langfristig"}}] =
-               Portfolios.sidebar(ctx.scope, @saturday).portfolios
+      assert %{portfolios: [%{portfolio: %{name: "Langfristig"}}], accounts: []} =
+               Portfolios.sidebar(ctx.scope, @saturday)
     end
 
-    test "leaves out retired accounts once empty and other users' portfolios and accounts",
-         ctx do
-      account_fixture(ctx.scope, %{name: "Geschlossen", retired: true})
+    test "leaves out other users' portfolios and accounts", ctx do
       other = user_scope_fixture()
       deposit_into(other, account_fixture(other, %{name: "Fremdes Konto"}), 1)
       held(other, portfolio_fixture(other, %{name: "Fremd"}), 1, 100)

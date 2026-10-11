@@ -1,14 +1,16 @@
 defmodule ZipfelfolioWeb.Benchmark do
   @moduledoc """
   Showing or hiding the user's benchmark on the overview and the performance screen, a choice of
-  the device like the collapsed sidebar: hidden by default, the browser keeps the choice and sends
-  it when a page connects (`assets/js/benchmark.js`). An `on_mount` hook assigns it as
-  `@benchmark_shown` and handles the button's `"toggle_benchmark"`.
+  the device: hidden by default, the browser keeps the choice and sends it when a page connects
+  (`assets/js/benchmark.js`). An `on_mount` hook assigns it as `@benchmark_shown` and handles the
+  button's `"toggle_benchmark"`.
   """
   use Phoenix.Component
 
   import Phoenix.LiveView,
     only: [attach_hook: 4, connected?: 1, get_connect_params: 1, push_event: 3]
+
+  import Setzkasten.Components.Actions, only: [button: 1]
 
   alias ZipfelfolioWeb.Format
 
@@ -34,18 +36,21 @@ defmodule ZipfelfolioWeb.Benchmark do
 
   attr :shown, :boolean, required: true
 
-  @doc "The button „Benchmark“ that shows or hides the benchmark."
+  @doc """
+  The button „Benchmark“ that shows or hides the benchmark, pressed like a selected segment
+  while shown, with the key of its line.
+  """
   def toggle_button(assigns) do
     ~H"""
-    <button
-      type="button"
+    <.button
       id="benchmark-toggle"
-      class={["btn btn-sm btn-outline-secondary app-benchmark-toggle", @shown && "active"]}
+      size={:sm}
+      variant={if @shown, do: :primary, else: :neutral}
       aria-pressed={to_string(@shown)}
       phx-click="toggle_benchmark"
     >
-      <span class="app-benchmark-key" aria-hidden="true"></span> Benchmark
-    </button>
+      <.key />Benchmark
+    </.button>
     """
   end
 
@@ -59,32 +64,28 @@ defmodule ZipfelfolioWeb.Benchmark do
     assigns = assign(assigns, :figure, Format.signed_rate(assigns.benchmark.ttwror))
 
     ~H"""
-    <span id="benchmark-ttwror" class="app-benchmark-note">
-      <span class="text-nowrap app-benchmark-figure">
-        <span class="app-benchmark-key" aria-hidden="true"></span><span class="app-benchmark-label">Benchmark</span><span class="app-benchmark-ttwror">{@figure}</span>
+    <span id="benchmark-ttwror" class="flex min-w-0 flex-col">
+      <span class="inline-flex items-center gap-1.5 whitespace-nowrap">
+        <.key />Benchmark <span class="tabular-nums">{@figure}</span>
       </span>
-      <span class="app-benchmark-name" title={@benchmark.security.name}>
+      <span class="truncate" title={@benchmark.security.name}>
         {short_name(@benchmark.security.name)}
       </span>
     </span>
     """
   end
 
-  attr :security, :map, required: true
-
-  @doc """
-  The key of the shadow portfolio's line on the net worth chart, on the phone „Benchmark“ as on
-  the button, so that all keys fit one row.
-  """
-  def legend(assigns) do
+  # The key of the benchmark's line, chart series 2, drawn as `<.legend>` draws a line marker.
+  defp key(assigns) do
     ~H"""
-    <span id="benchmark-legend" class="app-benchmark-legend" title={@security.name}>
-      <span class="app-swatch app-swatch-benchmark"></span>
-      <span class="d-none d-sm-inline">{short_name(@security.name)}</span>
-      <span class="d-sm-none">Benchmark</span>
-    </span>
+    <svg class="h-2.5 w-4 shrink-0 stroke-chart-2" viewBox="0 0 16 10" aria-hidden="true">
+      <line x1="0" y1="5" x2="16" y2="5" stroke-width="2" />
+    </svg>
     """
   end
+
+  @doc "The key of the shadow portfolio's line on the net worth chart, for `<.legend>`."
+  def legend_item(security), do: %{label: short_name(security.name), color: 2, marker: :line}
 
   @doc """
   The name without what most fund names end with, such as „UCITS ETF USD (Acc)“, a last „ETF“

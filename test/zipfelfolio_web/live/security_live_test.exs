@@ -56,17 +56,17 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
 
       assert page_title(lv) =~ "Vanguard FTSE All-World"
       assert has_element?(lv, "h1", "Vanguard FTSE All-World")
-      assert has_element?(lv, "header", "IE00B3RBWM25 · WKN A1JX52 · EUR")
+      assert has_element?(lv, "header", "IE00B3RBWM25\u2060\u00A0· WKN A1JX52\u2060\u00A0· EUR")
       assert lv |> element("#price") |> render() =~ "102,00\u00A0€"
 
-      assert lv |> element("#price .text-success") |> render() =~
+      assert lv |> element("#price .text-success-ink") |> render() =~
                "+2,00\u00A0€ (+2,00\u00A0%) heute"
     end
 
     test "charts a year of prices with the user's purchases and sales", ctx do
       {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{ctx.security}")
 
-      assert has_element?(lv, "#period a.active[aria-current]", "1 J")
+      assert has_element?(lv, "#period a[aria-current]", "1\u00A0J")
       assert_push_event(lv, "price-chart", chart)
       assert chart.currency == "€"
       assert chart.dates == [Date.add(today(), -1), today()]
@@ -84,7 +84,7 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
       {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{ctx.security}")
       assert_push_event(lv, "price-chart", _one_year)
 
-      lv |> element("#period a", "5 J") |> render_click()
+      lv |> element("#period a", "5\u00A0J") |> render_click()
 
       assert_patch(lv, ~p"/securities/#{ctx.security}?period=5y")
       assert_push_event(lv, "price-chart", %{dates: [first | _], trades: [delivery | _]})
@@ -93,7 +93,7 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
 
       {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{ctx.security}?period=5y")
 
-      assert has_element?(lv, "#period a.active", "5 J")
+      assert has_element?(lv, "#period a[aria-current]", "5\u00A0J")
       assert_push_event(lv, "price-chart", %{dates: [^first | _]})
     end
 
@@ -130,7 +130,7 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
 
       assert has_element?(
                lv,
-               "#holding-portfolios a:first-child[href='/holdings?portfolio=#{pension.id}']"
+               "#holding-portfolios a:first-of-type[href='/holdings?portfolio=#{pension.id}']"
              )
     end
 
@@ -149,8 +149,7 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
     test "marks the holdings in the navigation", %{conn: conn, security: security} do
       {:ok, lv, _html} = live(conn, ~p"/securities/#{security}")
 
-      assert has_element?(lv, "#side-holdings.active")
-      assert has_element?(lv, "#tab-portfolios.active")
+      assert has_element?(lv, sidebar_link("/holdings") <> "[aria-current=page]")
       assert has_element?(lv, "main a[href='/holdings']", "Bestand")
     end
   end
@@ -184,7 +183,7 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
                [day(-100), "–", "1,80\u00A0€", "12", "21,60\u00A0€"]
              ]
 
-      assert has_element?(lv, "#distributions .card-header", "33,60\u00A0€")
+      assert has_element?(lv, "#distributions-total", "33,60\u00A0€")
     end
 
     test "gives the amount per share of a security in dollars in dollars", ctx do
@@ -233,8 +232,8 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
 
       {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{ctx.security}")
 
-      assert lv |> query("#distributions tbody tr:not(.d-none)") |> Enum.count() == 8
-      assert lv |> query("#distributions tbody tr.d-none[data-older]") |> Enum.count() == 2
+      assert lv |> query("#distributions tbody tr:not([hidden])") |> Enum.count() == 8
+      assert lv |> query("#distributions tbody tr[hidden]") |> Enum.count() == 2
       assert has_element?(lv, "#distributions-all", "Alle 10 anzeigen")
     end
 
@@ -277,8 +276,22 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
                ["Zahltag", "Ex-Tag", "Art", "je Anteil", "Stück", "Brutto"]
 
       assert cells(lv, "#upcoming-payments tbody tr", "td") == [
-               [day(1), short_day(1), "angekündigt", "0,50\u00A0€", "100", "50,00\u00A0€"],
-               [Format.date(forecast), "–", "Prognose", "~1,00\u00A0USD", "100", "~80,00\u00A0€"]
+               [
+                 "#{day(1)} 100\u00A0Stück × 0,50\u00A0€",
+                 short_day(1),
+                 "angekündigt",
+                 "0,50\u00A0€",
+                 "100",
+                 "50,00\u00A0€"
+               ],
+               [
+                 "#{Format.date(forecast)} 100\u00A0Stück × ~1,00\u00A0USD",
+                 "–",
+                 "Prognose",
+                 "~1,00\u00A0USD",
+                 "100",
+                 "~80,00\u00A0€"
+               ]
              ]
 
       html = render(lv)
@@ -299,7 +312,8 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
       attribute_type_fixture("logo", "Logo", "ImageConverter", "Account")
       attribute_type_fixture("ter", "Total Expense Ratio (TER)", "PercentConverter")
       attribute_type_fixture("aum", "Assets under Management", "AmountPlainConverter")
-      attribute_type_fixture("vendor", "Anbieter", "StringConverter")
+      # PP's English default name for its built-in vendor attribute reads in German.
+      attribute_type_fixture("vendor", "Vendor", "StringConverter")
       attribute_type_fixture("index", "Index", "StringConverter")
       attribute_type_fixture("launch", "Auflage", "DateConverter")
       attribute_type_fixture("fee", "Kaufgebühr", "PercentConverter")
@@ -325,7 +339,7 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
 
       assert texts(lv, "#profile dt, #profile dd") == [
                "TER",
-               "0,22\u00A0% · 22\u00A0€ im Jahr",
+               "0,22\u00A0%\u2060\u00A0· 22\u00A0€ im Jahr",
                "Fondsgröße",
                "17,8\u00A0Mrd.\u00A0€",
                "Anbieter",
@@ -335,6 +349,27 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
                "Auflage",
                "22.05.2012"
              ]
+    end
+
+    test "links a bookmark as a styled link", ctx do
+      attribute_type_fixture("factsheet", "Factsheet", "BookmarkConverter")
+
+      security =
+        security_fixture_with_prices()
+        |> Ecto.Changeset.change(
+          attributes: %{"factsheet" => "[Factsheet](https://example.com/fs.pdf)"}
+        )
+        |> Repo.update!()
+
+      deliver(ctx.scope, portfolio_fixture(ctx.scope), security, 100)
+
+      {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{security}")
+
+      assert has_element?(
+               lv,
+               ~s(#profile dd a.link[href="https://example.com/fs.pdf"][target=_blank]),
+               "Factsheet"
+             )
     end
 
     test "says so when no attribute is set", %{conn: conn} do
@@ -364,7 +399,7 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
       assert lines(lv, "#composition-rows li", "span") ==
                ["USA 60,0\u00A0%", "Japan 25,0\u00A0%", "Schwellenländer 15,0\u00A0%"]
 
-      assert has_element?(lv, "#composition .card-footer", "DivvyDiary, Stand 08.10.2026")
+      assert has_element?(lv, "#composition", "DivvyDiary, Stand 08.10.2026")
 
       lv |> element("#composition nav a", "Sektoren") |> render_click()
       url = assert_patch(lv, ~p"/securities/#{ctx.security}?composition=sectors")
@@ -374,12 +409,12 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
                "Energie 30,0\u00A0%"
              ]
 
-      lv |> element("#period a", "5 J") |> render_click()
+      lv |> element("#period a", "5\u00A0J") |> render_click()
       assert_patch(lv, ~p"/securities/#{ctx.security}?composition=sectors&period=5y")
 
       {:ok, lv, _html} = live(ctx.conn, url)
 
-      assert has_element?(lv, "#composition nav a.active[aria-current]", "Sektoren")
+      assert has_element?(lv, "#composition nav a[aria-current]", "Sektoren")
       assert has_element?(lv, "#period a[href$='?composition=sectors&period=max']", "Max")
     end
 
@@ -414,8 +449,8 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
 
       {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{security}")
 
-      assert lines(lv, "#sources li", ".me-auto, .d-block") == [
-               "Kurse Yahoo · VGWL.DE abgerufen #{Format.datetime(fetched)}",
+      assert lines(lv, "#sources dl > div", "dt, p") == [
+               "Kurse Yahoo\u2060\u00A0· VGWL.DE abgerufen #{Format.datetime(fetched)}",
                "Länder und Sektoren DivvyDiary Stand 08.10.2026"
              ]
 
@@ -432,9 +467,9 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
 
       {:ok, lv, _html} = live(ctx.conn, ~p"/securities/#{security}")
 
-      assert lines(lv, "#sources li", ".me-auto, .d-block") == [
+      assert lines(lv, "#sources dl > div", "dt, p") == [
                "Kurse Manuell aus Portfolio Performance oder von Hand",
-               "Wechselkurs USD EZB · 1,1652 Stand 08.10.2026",
+               "Wechselkurs USD EZB\u2060\u00A0· 1,1652 Stand 08.10.2026",
                "Länder und Sektoren DivvyDiary ohne API-Key"
              ]
     end
@@ -455,7 +490,7 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
 
     {:ok, lv, _html} = live(conn, ~p"/securities/#{security}")
 
-    assert lv |> element("#price .text-body-secondary") |> render() =~
+    assert lv |> element("#price [class~=\"text-base-content/70\"]") |> render() =~
              ~r/>\s*0,00\s€ \(0,00\s%\) heute/u
   end
 
@@ -510,7 +545,7 @@ defmodule ZipfelfolioWeb.SecurityLiveTest do
   defp short_day(days), do: today() |> Date.add(days) |> Calendar.strftime("%d.%m.")
 
   defp portfolio_texts(lv, portfolio),
-    do: texts(lv, "#holding-#{portfolio.id} :is(.fw-semibold, .small)")
+    do: texts(lv, "#holding-#{portfolio.id} :is(a, p, [class~='max-md:hidden'] data)")
 
   defp texts(lv, selector), do: lv |> query(selector) |> Enum.map(&text/1)
 

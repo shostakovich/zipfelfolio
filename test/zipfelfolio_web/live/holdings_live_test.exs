@@ -77,6 +77,8 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
     assert row =~ "605,00\u00A0€"
     assert row =~ "+45,00\u00A0€"
     assert row =~ "+7,4\u00A0%"
+    # No position pays a dividend, so there is no yield column.
+    refute has_element?(lv, "thead th", "Div.-Rendite")
   end
 
   test "shows each holding's dividend yield and that of all, gross over the next 12 months",
@@ -103,7 +105,7 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
 
     {:ok, lv, _html} = live(ctx.conn, ~p"/holdings")
 
-    assert has_element?(lv, "#holdings th", "Div.-Rendite")
+    assert has_element?(lv, "thead th", "Div.-Rendite")
 
     assert lv |> element("#holding-#{portfolio.id}-#{paying.id} td:last-child") |> render() =~
              "2,0\u00A0%"
@@ -114,11 +116,11 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
     assert lv |> element("#holding-#{portfolio.id}-#{accumulating.id} td:last-child") |> render() =~
              "–"
 
-    assert lv |> element("#total td:last-child") |> render() =~ "1,3\u00A0%"
+    assert lv |> element("tfoot:has(#holdings-total) td:last-child") |> render() =~ "1,3\u00A0%"
 
     {:ok, lv, _html} = live(ctx.conn, ~p"/holdings?portfolio=#{other.id}")
 
-    assert lv |> element("#total td:last-child") |> render() =~ "2,0\u00A0%"
+    assert lv |> element("tfoot:has(#holdings-total) td:last-child") |> render() =~ "2,0\u00A0%"
   end
 
   test "shows the costs of the held funds, weighted by value", ctx do
@@ -139,7 +141,7 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
 
     assert cells(lv, "#cost-#{world.id}") ==
              [
-               "All-World 17,8\u00A0Mrd.\u00A0€",
+               "All-World Fondsgröße 17,8\u00A0Mrd.\u00A0€",
                "0,20\u00A0%",
                "17,8\u00A0Mrd.\u00A0€",
                "16\u00A0€"
@@ -147,7 +149,7 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
 
     assert cells(lv, "#cost-#{em.id}") == ["Emerging Markets", "0,50\u00A0%", "–", "10\u00A0€"]
     assert cells(lv, "#cost-#{unknown.id}") == ["Ohne TER", "–", "–", "–"]
-    assert cells(lv, "#costs-total") == ["Gesamt", "0,26\u00A0%", "", "26\u00A0€"]
+    assert cells(lv, "#costs tfoot tr") == ["Gesamt", "0,26\u00A0%", "", "26\u00A0€"]
     assert has_element?(lv, "#costs", "Wertpapiere ohne TER")
   end
 
@@ -182,10 +184,17 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
     |> Enum.map(&(&1 |> LazyHTML.text() |> String.split() |> Enum.join(" ")))
   end
 
+  # A progress bar's value and max.
+  defp progress(html) do
+    [_, value] = Regex.run(~r/<progress[^>]* value="([\d.]+)"/, html)
+    [_, max] = Regex.run(~r/<progress[^>]* max="([\d.]+)"/, html)
+    {value, max}
+  end
+
   # Each row of the allocation as "label share".
   defp allocation(lv) do
     lv
-    |> texts("#allocation-rows > li > div > span")
+    |> texts("#allocation-rows > li > div > div:first-child > span")
     |> Enum.chunk_every(2)
     |> Enum.map(&Enum.join(&1, " "))
   end
@@ -207,7 +216,7 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
 
       {:ok, lv, _html} = live(ctx.conn, ~p"/holdings")
 
-      assert has_element?(lv, "#allocation nav a.active[aria-current]", "Regionen")
+      assert has_element?(lv, "#allocation nav a[aria-current]", "Regionen")
 
       assert allocation(lv) == [
                "Schwellenländer 40,0 %",
@@ -217,6 +226,13 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
 
       assert has_element?(lv, "#allocation", "Stand 08.10.2026")
       assert has_element?(lv, "#allocation", "Konten zählen nicht mit")
+
+      # Each bar's value is its true share; the largest fills the bar.
+      assert lv |> element("#allocation-rows > li:nth-child(1)") |> render() |> progress() ==
+               {"40.0", "40.0"}
+
+      assert lv |> element("#allocation-rows > li:nth-child(2)") |> render() |> progress() ==
+               {"36.0", "40.0"}
     end
 
     test "counts a fund without composition as „Ohne Angabe“", ctx do
@@ -249,13 +265,13 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
 
       {:ok, lv, _html} = live(ctx.conn, url)
 
-      assert has_element?(lv, "#allocation nav a.active[aria-current]", "Sektoren")
+      assert has_element?(lv, "#allocation nav a[aria-current]", "Sektoren")
       assert allocation(lv) == ["Technologie 75,0 %", "Energie 25,0 %"]
 
       lv |> element("#portfolio-menu a", "Langfristig") |> render_click()
 
       assert_patch(lv, ~p"/holdings?allocation=sectors&portfolio=#{portfolio.id}")
-      assert has_element?(lv, "#allocation nav a.active", "Sektoren")
+      assert has_element?(lv, "#allocation nav a[aria-current]", "Sektoren")
 
       lv |> element("#allocation nav a", "Regionen") |> render_click()
 
@@ -307,20 +323,16 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
       }
     end
 
-    # Each row as "name share / Ziel target".
-    defp classifications(lv) do
-      lv
-      |> texts("#allocation-rows > li > div:first-child span:not(.tabular-nums)")
-      |> Enum.chunk_every(3)
-      |> Enum.map(&Enum.join(&1, " "))
-    end
+    # Each row as "name share Ziel target", with its deviation from the target.
+    defp classifications(lv), do: texts(lv, "#allocation-rows > li")
 
-    # The bar and the target marker of a classification's row, in percent of the bar.
+    # The bar's value and max and the target marker of a classification's row, in percent of
+    # the bar.
     defp bar(lv, classification) do
       html = lv |> element("#classification-#{classification.id}") |> render()
-      [_, width] = Regex.run(~r/width: ([\d.]+)%/, html)
-      [_, target] = Regex.run(~r/app-allocation-target" style="left: ([\d.]+)%/, html)
-      {width, target}
+      {value, max} = progress(html)
+      [_, target] = Regex.run(~r/<rect[^>]* x="([\d.]+)%"/, html)
+      {value, max, target}
     end
 
     test "compares the top-level classifications with their targets; accounts count", ctx do
@@ -329,15 +341,17 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
       lv |> element("#allocation nav a", "Anlageklassen") |> render_click()
 
       assert classifications(lv) == [
-               "Aktien 80,0\u00A0% / Ziel 80,0\u00A0%",
-               "Immobilien 0,0\u00A0% / Ziel 10,0\u00A0%",
-               "Risikofrei 20,0\u00A0% / Ziel 10,0\u00A0%"
+               "Aktien 80,0\u00A0% Ziel 80,0\u00A0%",
+               "Immobilien 0,0\u00A0% Ziel 10,0\u00A0% unter Ziel",
+               "Risikofrei 20,0\u00A0% Ziel 10,0\u00A0% über Ziel"
              ]
 
-      assert has_element?(lv, "#classification-#{ctx.real_estate.id} .text-danger", "0,0")
-      assert has_element?(lv, "#classification-#{ctx.risk_free.id} .text-warning-emphasis")
-      assert bar(lv, ctx.real_estate) == {"0", "12.5"}
-      assert bar(lv, ctx.risk_free) == {"25", "12.5"}
+      assert has_element?(lv, "#classification-#{ctx.real_estate.id} .badge", "unter Ziel")
+      assert has_element?(lv, "#classification-#{ctx.risk_free.id} .badge", "über Ziel")
+      # The bar's value is the true share, the largest share or target fills it; the target
+      # marker sits at its exact share of the bar: 10 % of a bar that 80 % fills.
+      assert bar(lv, ctx.real_estate) == {"0.0", "80.0", "12.5"}
+      assert bar(lv, ctx.risk_free) == {"20.0", "80.0", "12.5"}
       assert has_element?(lv, "#allocation", "Ziele aus Portfolio Performance")
       refute has_element?(lv, "#allocation", "Ohne Kategorie")
     end
@@ -347,7 +361,7 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
 
       {:ok, lv, _html} = live(ctx.conn, ~p"/holdings?allocation=#{ctx.taxonomy.id}")
 
-      assert ["Aktien 80,0\u00A0% / Ziel 80,0\u00A0%" | _] = classifications(lv)
+      assert ["Aktien 80,0\u00A0% Ziel 80,0\u00A0%" | _] = classifications(lv)
 
       assert has_element?(
                lv,
@@ -363,13 +377,13 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
       {:ok, lv, _html} = live(ctx.conn, ~p"/holdings?allocation=#{ctx.taxonomy.id}")
 
       assert classifications(lv) == [
-               "Aktien 80,0\u00A0% / Ziel 80,0\u00A0%",
-               "Immobilien 0,0\u00A0% / Ziel −300,0\u00A0%",
-               "Risikofrei 20,0\u00A0% / Ziel 400,0\u00A0%"
+               "Aktien 80,0\u00A0% Ziel 80,0\u00A0%",
+               "Immobilien 0,0\u00A0% Ziel −300,0\u00A0% über Ziel",
+               "Risikofrei 20,0\u00A0% Ziel 400,0\u00A0% unter Ziel"
              ]
 
-      assert bar(lv, ctx.real_estate) == {"0", "0"}
-      assert bar(lv, ctx.risk_free) == {"20", "100"}
+      assert bar(lv, ctx.real_estate) == {"0.0", "100.0", "0"}
+      assert bar(lv, ctx.risk_free) == {"20.0", "100.0", "100"}
     end
 
     test "keeps the tab in the URL, so that it survives a reload and the switcher", ctx do
@@ -380,12 +394,12 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
 
       {:ok, lv, _html} = live(ctx.conn, url)
 
-      assert has_element?(lv, "#allocation nav a.active[aria-current]", "Anlageklassen")
+      assert has_element?(lv, "#allocation nav a[aria-current]", "Anlageklassen")
 
       lv |> element("#portfolio-menu a", "Langfristig") |> render_click()
 
       assert_patch(lv, ~p"/holdings?allocation=#{ctx.taxonomy.id}&portfolio=#{ctx.portfolio.id}")
-      assert has_element?(lv, "#allocation nav a.active", "Anlageklassen")
+      assert has_element?(lv, "#allocation nav a[aria-current]", "Anlageklassen")
     end
 
     test "shows the regions for a portfolio without value in the taxonomy", ctx do
@@ -396,13 +410,13 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
       lv |> element("#portfolio-menu a", "Spielgeld") |> render_click()
 
       assert_patch(lv, ~p"/holdings?allocation=#{ctx.taxonomy.id}&portfolio=#{other.id}")
-      assert has_element?(lv, "#allocation nav a.active", "Regionen")
+      assert has_element?(lv, "#allocation nav a[aria-current]", "Regionen")
       refute has_element?(lv, "#allocation nav a", "Anlageklassen")
 
       lv |> element("#portfolio-menu a", "Gesamt") |> render_click()
 
       assert_patch(lv, ~p"/holdings?allocation=#{ctx.taxonomy.id}")
-      assert has_element?(lv, "#allocation nav a.active", "Anlageklassen")
+      assert has_element?(lv, "#allocation nav a[aria-current]", "Anlageklassen")
     end
 
     test "gives no tab to a taxonomy with nothing held, nor to another user's", ctx do
@@ -417,7 +431,7 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
       for id <- [empty.id, foreign.id, "x"] do
         {:ok, lv, _html} = live(ctx.conn, ~p"/holdings?allocation=#{id}")
 
-        assert has_element?(lv, "#allocation nav a.active", "Regionen")
+        assert has_element?(lv, "#allocation nav a[aria-current]", "Regionen")
         assert has_element?(lv, "#allocation nav a", "Anlageklassen")
         refute has_element?(lv, "#allocation nav a", "Branchen")
         refute has_element?(lv, "#allocation nav a", "Fremd")
@@ -441,12 +455,12 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
     test "appears once, under the first portfolio, while all are shown", ctx do
       {:ok, lv, _html} = live(ctx.conn, ~p"/holdings")
 
-      assert has_element?(lv, "#portfolio-menu-toggle", "Gesamt")
-      assert has_element?(lv, "#portfolio-menu a[href$='=#{ctx.b.id}'] .app-chip", "B")
-      assert has_element?(lv, "#portfolio-#{ctx.a.id} #account-#{ctx.account.id}", "K")
-      refute has_element?(lv, "#portfolio-#{ctx.b.id} #account-#{ctx.account.id}")
-      refute has_element?(lv, "#accounts")
-      assert has_element?(lv, "#total", "150,00\u00A0€")
+      assert has_element?(lv, "#portfolio-menu summary", "Gesamt")
+      assert has_element?(lv, "#portfolio-menu a[href$='=#{ctx.b.id}']", "B")
+      assert has_element?(lv, "#holdings-portfolio-#{ctx.a.id} #account-#{ctx.account.id}", "K")
+      refute has_element?(lv, "#holdings-portfolio-#{ctx.b.id} #account-#{ctx.account.id}")
+      refute has_element?(lv, "#holdings-accounts")
+      assert has_element?(lv, "tfoot:has(#holdings-total)", "150,00\u00A0€")
     end
 
     test "appears under the selected portfolio", ctx do
@@ -455,10 +469,10 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
       lv |> element("#portfolio-menu a", "B") |> render_click()
 
       assert_patch(lv, ~p"/holdings?portfolio=#{ctx.b.id}")
-      assert has_element?(lv, "#portfolio-menu-toggle", "B")
-      assert has_element?(lv, "#portfolio-#{ctx.b.id} #account-#{ctx.account.id}", "K")
-      refute has_element?(lv, "#portfolio-#{ctx.a.id}")
-      assert has_element?(lv, "#total", "150,00\u00A0€")
+      assert has_element?(lv, "#portfolio-menu summary", "B")
+      assert has_element?(lv, "#holdings-portfolio-#{ctx.b.id} #account-#{ctx.account.id}", "K")
+      refute has_element?(lv, "#holdings-portfolio-#{ctx.a.id}")
+      assert has_element?(lv, "tfoot:has(#holdings-total)", "150,00\u00A0€")
     end
 
     test "keeps the selected portfolio in the URL, so that it survives a reload", ctx do
@@ -468,22 +482,22 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
 
       {:ok, lv, _html} = live(ctx.conn, url)
 
-      assert has_element?(lv, "#portfolio-menu-toggle", "B")
-      assert has_element?(lv, "#portfolio-menu a.active", "B")
-      assert has_element?(lv, "#portfolio-#{ctx.b.id}")
-      refute has_element?(lv, "#portfolio-#{ctx.a.id}")
+      assert has_element?(lv, "#portfolio-menu summary", "B")
+      assert has_element?(lv, "#portfolio-menu a[aria-current]", "B")
+      assert has_element?(lv, "#holdings-portfolio-#{ctx.b.id}")
+      refute has_element?(lv, "#holdings-portfolio-#{ctx.a.id}")
 
       lv |> element("#portfolio-menu a", "Gesamt") |> render_click()
 
       assert_patch(lv, ~p"/holdings")
-      assert has_element?(lv, "#portfolio-#{ctx.a.id}")
+      assert has_element?(lv, "#holdings-portfolio-#{ctx.a.id}")
     end
 
     test "marks the row of the account it was opened for", ctx do
       {:ok, lv, _html} =
         live(ctx.conn, ~p"/holdings?portfolio=#{ctx.a.id}&account=#{ctx.account.id}")
 
-      assert has_element?(lv, "#account-#{ctx.account.id}.table-active[aria-current]")
+      assert has_element?(lv, "#account-#{ctx.account.id}[aria-current=true]")
     end
   end
 
@@ -495,15 +509,21 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
 
     {:ok, lv, _html} = live(ctx.conn, ~p"/holdings?account=#{savings.id}")
 
-    assert has_element?(lv, "#accounts", "Konten")
-    assert has_element?(lv, "#accounts #account-#{savings.id}.table-active", "Tagesgeld")
+    assert has_element?(lv, "#holdings-accounts", "Konten")
+
+    assert has_element?(
+             lv,
+             "#holdings-accounts #account-#{savings.id}[aria-current=true]",
+             "Tagesgeld"
+           )
+
     assert lv |> element("#account-#{savings.id}") |> render() =~ "1.000,00\u00A0€"
     assert lv |> element("#account-#{savings.id}") |> render() =~ "50,0\u00A0%"
 
     lv |> element("#portfolio-menu a", "Langfristig") |> render_click()
 
-    refute has_element?(lv, "#accounts")
-    assert lv |> element("#total") |> render() =~ "50,0\u00A0%"
+    refute has_element?(lv, "#holdings-accounts")
+    assert lv |> element("tfoot:has(#holdings-total)") |> render() =~ "50,0\u00A0%"
   end
 
   test "hides holdings without shares, and retired portfolios and accounts once empty", ctx do
@@ -528,10 +548,10 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
     {:ok, lv, _html} = live(ctx.conn, ~p"/holdings")
 
     refute has_element?(lv, "#holding-#{portfolio.id}-#{sold.id}")
-    assert has_element?(lv, "#portfolio-#{portfolio.id}", "Keine Wertpapiere")
-    assert has_element?(lv, "#portfolio-#{retired.id}")
+    assert has_element?(lv, "#holdings-portfolio-#{portfolio.id}", "Keine Wertpapiere")
+    assert has_element?(lv, "#holdings-portfolio-#{retired.id}")
     assert has_element?(lv, "#portfolio-menu a", "Alt")
-    refute has_element?(lv, "#portfolio-#{empty.id}")
+    refute has_element?(lv, "#holdings-portfolio-#{empty.id}")
     refute has_element?(lv, "#portfolio-menu a", "Leer")
     refute has_element?(lv, "#account-#{closed.id}")
     assert has_element?(lv, "#account-#{kept.id}")
@@ -544,8 +564,8 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
 
     {:ok, lv, _html} = live(ctx.conn, ~p"/holdings?portfolio=#{foreign.id}")
 
-    assert has_element?(lv, "#portfolio-menu-toggle", "Gesamt")
-    assert has_element?(lv, "#portfolio-#{portfolio.id}")
+    assert has_element?(lv, "#portfolio-menu summary", "Gesamt")
+    assert has_element?(lv, "#holdings-portfolio-#{portfolio.id}")
     refute render(lv) =~ "Fremd"
   end
 
@@ -570,18 +590,18 @@ defmodule ZipfelfolioWeb.HoldingsLiveTest do
 
     assert {:ok, lv, _html} =
              lv
-             |> element("#portfolio-#{portfolio.id}")
+             |> element("#portfolio-#{portfolio.id} a")
              |> render_click()
              |> follow_redirect(ctx.conn, ~p"/holdings?portfolio=#{portfolio.id}")
 
-    assert has_element?(lv, "#portfolio-menu-toggle", "Langfristig")
+    assert has_element?(lv, "#portfolio-menu summary", "Langfristig")
   end
 
   test "points to the import while there are no portfolios", %{conn: conn} do
     {:ok, lv, _html} = live(conn, ~p"/holdings")
 
-    refute has_element?(lv, "#holdings")
-    assert has_element?(lv, "a[href='/settings/import']", "Import aus Portfolio Performance")
+    refute has_element?(lv, "#holdings-total")
+    assert has_element?(lv, "a[href='/settings/import']", "Aus Portfolio Performance importieren")
   end
 
   test "is not shown to a visitor who is not signed in" do

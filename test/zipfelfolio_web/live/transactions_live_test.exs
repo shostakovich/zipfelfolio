@@ -52,21 +52,60 @@ defmodule ZipfelfolioWeb.TransactionsLiveTest do
     {:ok, lv, _html} = live(ctx.conn, ~p"/")
 
     {:ok, lv, _html} =
-      lv |> element("#side-transactions") |> render_click() |> follow_redirect(ctx.conn)
+      lv |> element(sidebar_link("/transactions")) |> render_click() |> follow_redirect(ctx.conn)
 
-    assert has_element?(lv, "#side-transactions[aria-current=page]")
-    assert has_element?(lv, "#tab-transactions[aria-current=page]")
+    assert has_element?(lv, sidebar_link("/transactions") <> "[aria-current=page]")
+    assert has_element?(lv, ~s(nav.dock a[href="/transactions"][aria-current=page]))
 
-    assert lv |> element("#month-2026-10-01") |> render() =~ "Oktober 2026"
-    october = lv |> element("#month-2026-10-01") |> render()
-    assert october =~ "Kauf · Vanguard FTSE All-World"
+    assert has_element?(lv, "#month-2026-10-01", "Oktober 2026")
+    october = lv |> element("li[data-month='2026-10-01']") |> render()
+    assert october =~ "Kauf\u2060\u00A0· Vanguard FTSE All-World"
     assert october =~ "20 Stück à 158,90\u00A0€"
     assert october =~ "Gebühren 1,00\u00A0€"
     assert october =~ "−3.179,00\u00A0€"
 
-    september = lv |> element("#month-2026-09-01") |> render()
+    september = lv |> element("li[data-month='2026-09-01']") |> render()
     assert september =~ "Einlage"
     assert september =~ "+1.500,00\u00A0€"
+  end
+
+  test "the top bar's quiet „Buchung“ gives way to the page's own action", ctx do
+    {:ok, lv, _html} = live(ctx.conn, ~p"/")
+    assert has_element?(lv, "#bar-book", "Buchung")
+    refute has_element?(lv, "#bar-book.btn-primary")
+
+    {:ok, lv, _html} = live(ctx.conn, ~p"/transactions")
+    refute has_element?(lv, "#bar-book")
+    assert has_element?(lv, "#transactions-book.btn-primary", "Buchung erfassen")
+  end
+
+  test "the page's own „Buchung erfassen“ shows from 768 px, where the top bar has none", ctx do
+    {:ok, lv, _html} = live(ctx.conn, ~p"/transactions")
+    assert has_element?(lv, "#transactions-book.max-md\\:hidden")
+    refute has_element?(lv, "#transactions-book.max-lg\\:hidden")
+  end
+
+  test "invites the first booking while there is none", ctx do
+    {:ok, lv, _html} = live(ctx.conn, ~p"/transactions")
+
+    assert has_element?(lv, "#transactions-empty h2", "Noch keine Buchungen")
+    assert has_element?(lv, "#transactions-empty img[src^='/images/plush/receipt']")
+  end
+
+  test "names a foreign currency by its code", ctx do
+    usd = account_fixture(ctx.scope, name: "Dollarkonto", currency: "USD")
+
+    deposit =
+      transaction_fixture(ctx.scope, ~D[2026-10-01],
+        type: :deposit,
+        account_id: usd.id,
+        amount: money(100),
+        currency: "USD"
+      )
+
+    {:ok, lv, _html} = live(ctx.conn, ~p"/transactions")
+
+    assert lv |> element("#transaction-#{deposit.id}") |> render() =~ "+100,00\u00A0USD"
   end
 
   test "rounds the price per share as the holdings do", ctx do
@@ -81,7 +120,7 @@ defmodule ZipfelfolioWeb.TransactionsLiveTest do
     })
 
     {:ok, lv, _html} = live(ctx.conn, ~p"/transactions")
-    assert lv |> element("#month-2026-10-01") |> render() =~ "à 98,4644\u00A0€"
+    assert lv |> element("li[data-month='2026-10-01']") |> render() =~ "à 98,4644\u00A0€"
   end
 
   test "filters purchases and sales, earnings and account", ctx do
@@ -89,7 +128,13 @@ defmodule ZipfelfolioWeb.TransactionsLiveTest do
     book(ctx, %{"kind" => "dividend", "security_id" => ctx.security.id, "gross" => "10"})
 
     {:ok, lv, _html} = live(ctx.conn, ~p"/transactions?filter=earnings")
-    assert has_element?(lv, "li[id^=transaction-]", "Dividende · Vanguard FTSE All-World")
+
+    assert has_element?(
+             lv,
+             "li[id^=transaction-]",
+             "Dividende\u2060\u00A0· Vanguard FTSE All-World"
+           )
+
     refute has_element?(lv, "li[id^=transaction-]", "Einlage")
 
     lv |> element("#transaction-filter a", "Konto") |> render_click()
@@ -122,7 +167,7 @@ defmodule ZipfelfolioWeb.TransactionsLiveTest do
 
     lv |> element("#transaction-#{deposit.id} button") |> render_click()
     assert has_element?(lv, "#transaction-modal h2", "Buchung bearbeiten")
-    assert has_element?(lv, "#transaction_kind-deposit[checked]")
+    assert has_element?(lv, "input[name='transaction[kind]'][value=deposit][checked]")
     assert has_element?(lv, "#transaction_amount[value='100,00']")
     refute has_element?(lv, "#transaction-form button", "Buchen")
 
@@ -175,7 +220,7 @@ defmodule ZipfelfolioWeb.TransactionsLiveTest do
 
     {:ok, lv, _html} = live(ctx.conn, ~p"/transactions")
     lv |> element("#transaction-#{purchase.id} button") |> render_click()
-    lv |> element("#transaction-delete") |> render_click()
+    confirm_click(lv, "#transaction-delete", "Diese Buchung löschen?")
 
     assert has_element?(lv, "#transaction-delete-error", "fiele der Bestand später unter null")
     assert has_element?(lv, "#transaction-modal")
@@ -235,9 +280,17 @@ defmodule ZipfelfolioWeb.TransactionsLiveTest do
              "#transaction-#{deposit.id} a[href='/receipts/#{deposit.receipt_id}']"
            )
 
+    # A finger gets 44 px to hit the PDF badge.
+    for suffix <- ["", "-phone"] do
+      assert has_element?(
+               lv,
+               "#transaction-#{deposit.id}-receipt#{suffix}.pointer-coarse\\:min-h-11.pointer-coarse\\:min-w-11"
+             )
+    end
+
     lv |> element("#transaction-#{deposit.id} button") |> render_click()
     assert has_element?(lv, "#transaction-form a", "beleg.pdf")
-    lv |> element("#transaction-delete") |> render_click()
+    confirm_click(lv, "#transaction-delete", "Diese Buchung löschen?")
 
     assert render(lv) =~ "Buchung gelöscht."
     refute has_element?(lv, "#transaction-#{deposit.id}")
@@ -257,7 +310,7 @@ defmodule ZipfelfolioWeb.TransactionsLiveTest do
     ])
     |> render_upload("beleg.pdf", 50)
 
-    lv |> element("#transaction-delete") |> render_click()
+    confirm_click(lv, "#transaction-delete", "Diese Buchung löschen?")
 
     lv |> element("#transactions-book") |> render_click()
     change(lv, %{kind: "deposit", amount: "5"}, "amount")
@@ -281,7 +334,7 @@ defmodule ZipfelfolioWeb.TransactionsLiveTest do
     |> render_change(%{"_target" => ["security", "isin"]})
 
     refute_received {:search, _isin}
-    assert has_element?(lv, "#new-security-panel", "ist keine gültige ISIN")
+    assert has_element?(lv, "#new-security-panel", "Ist keine gültige ISIN")
 
     lv
     |> form("#transaction-form", security: %{isin: "IE00BKM4GZ66"})
@@ -332,6 +385,11 @@ defmodule ZipfelfolioWeb.TransactionsLiveTest do
     |> render_change(%{"_target" => ["security", "isin"]})
 
     render_async(lv)
-    assert has_element?(lv, "#new-security-lookup", "Yahoo kennt diese ISIN nicht.")
+
+    assert has_element?(
+             lv,
+             "#security_isin-help[aria-live=polite]",
+             "Yahoo kennt diese ISIN nicht."
+           )
   end
 end

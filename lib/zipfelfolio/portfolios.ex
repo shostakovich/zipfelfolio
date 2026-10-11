@@ -43,6 +43,12 @@ defmodule Zipfelfolio.Portfolios do
   def list_portfolios(%Scope{} = scope),
     do: Repo.all(from p in Portfolio, where: p.user_id == ^scope.user.id, order_by: p.name)
 
+  @doc "Whether the user has neither a portfolio nor an account yet, as before the first import."
+  def empty?(%Scope{} = scope) do
+    not Repo.exists?(from p in Portfolio, where: p.user_id == ^scope.user.id) and
+      not Repo.exists?(from a in Account, where: a.user_id == ^scope.user.id)
+  end
+
   @doc "The user's active portfolios by name with their reference accounts, for their depot numbers."
   def list_active_portfolios(%Scope{} = scope) do
     Repo.all(
@@ -127,9 +133,12 @@ defmodule Zipfelfolio.Portfolios do
     `Performance.benchmark_ttwror/3`; nil when they picked none
   - `dividends`: this year's up to `today`, before taxes and fees
   - `portfolios`: the portfolios by name, retired ones only while they hold shares, each with
-    `account`, its reference account as in the sidebar (nil when an earlier one settles against
-    it too, or once it is retired and empty), its `balance` in euros, the number of `securities`
-    held, the `value` of the securities and the account, and the `ttwror` of both since 1 January
+    `account`, its reference account as in the sidebar (nil when another portfolio owns it, see
+    below, or once it is retired and empty), its `balance` in euros, the number of `securities`
+    held, the `value` of the securities (as in the sidebar) and their `ttwror` since 1 January, as PP
+    figures a portfolio without its reference account. An account several portfolios settle
+    against belongs to the first active one by name, to a retired one only when no active one
+    settles against it.
   """
   def overview(%Scope{} = scope, period, today) do
     transactions = list_transactions(scope)
@@ -252,7 +261,6 @@ defmodule Zipfelfolio.Portfolios do
   defp portfolios_overview(scope, transactions, accounts, market, %Date.Range{last: today} = year) do
     holdings = Valuation.holdings(transactions, today)
     portfolios = shown_portfolios(scope, holdings)
-    owners = reference_account_owners(portfolios)
 
     rows = %{
       holdings: value_rows(holdings, market, today),
@@ -260,9 +268,9 @@ defmodule Zipfelfolio.Portfolios do
     }
 
     for %{portfolio: %Portfolio{} = portfolio} = group <- holding_groups(portfolios, nil, rows) do
-      # Its reference account counts towards the returns even once it is retired and empty.
-      account_ids = for {account_id, owner_id} <- owners, owner_id == portfolio.id, do: account_id
-      filter = Filter.new([portfolio], account_ids, transactions)
+      # The securities alone: purchases and sales are money in and out, dividends on the
+      # reference account count for them.
+      filter = Filter.new([portfolio], [], transactions)
       index = Performance.index(transactions, accounts, market, filter, year)
       account_row = List.first(group.accounts)
 
@@ -284,10 +292,12 @@ defmodule Zipfelfolio.Portfolios do
   end
 
   # The portfolio each reference account of `portfolios` belongs to, as `%{account_id =>
-  # portfolio_id}`: an account several of them settle against belongs to the first. The screens
-  # list the portfolios by name, so it is the first by name.
+  # portfolio_id}`: an account several of them settle against belongs to the first active one, to
+  # a retired one only when no active one settles against it. The screens list the portfolios by
+  # name, so it is the first by name, as in the sidebar.
   defp reference_account_owners(portfolios) do
-    for %{reference_account_id: account_id, id: id} <- Enum.reverse(portfolios),
+    for %{reference_account_id: account_id, id: id} <-
+          portfolios |> Enum.sort_by(& &1.retired) |> Enum.reverse(),
         account_id != nil,
         into: %{},
         do: {account_id, id}
@@ -301,7 +311,7 @@ defmodule Zipfelfolio.Portfolios do
   - `portfolio`: the chosen one of them, nil for all
   - `groups`: each portfolio shown with its `holdings` by value and its reference account in
     `accounts`. For all portfolios, an account several settle against appears under the first
-    (as in the overview), and the accounts of no portfolio follow in a group without portfolio.
+    active one (as in the overview and the sidebar), and the accounts of no portfolio follow in a group without portfolio.
     Each group has the `value` of its rows and the `purchase_value` and `gain` of its holdings.
   - `total`: `value`, `purchase_value` and `gain` of the groups shown, the `dividends` of their
     holdings and the `securities_value` they make up
@@ -541,38 +551,45 @@ defmodule Zipfelfolio.Portfolios do
 
   @doc """
   What the sidebar shows on `today`, valued as the holdings screen values all portfolios, amounts
-  in euro cents:
+  in euro cents; nothing retired, whatever it still holds:
 
-  - `portfolios`: the portfolios by name, retired ones only while they hold shares, each with its
-    `value` (its securities and its reference account) and its reference `account` as
-    `%{account: account, value: cents}`, nil when it has none or an earlier one settles against
-    it too
-  - `accounts`: the accounts of no portfolio as `%{account: account, value: cents}`, retired ones
-    only while they hold money
+  - `portfolios`: the active portfolios by name, each with the `value` of its securities
+  - `accounts`: the active accounts by name, reference accounts too, each with its `value` and the
+    active `portfolio` it is the reference account of (the first by name if several settle
+    against it), nil for none
+
+  With nothing retired the values add up to net worth.
   """
   def sidebar(%Scope{} = scope, today) do
     transactions = list_transactions(scope)
     accounts = list_accounts(scope)
     market = load_market(transactions, accounts, today, :since_date)
     holdings = Valuation.holdings(transactions, today)
-
-    rows = %{
-      holdings: value_rows(holdings, market, today),
-      accounts: account_rows(accounts, Valuation.balances(transactions, today), market, today)
-    }
-
-    {portfolio_groups, account_groups} =
-      scope
-      |> shown_portfolios(holdings)
-      |> holding_groups(nil, rows)
-      |> Enum.split_with(& &1.portfolio)
+    balances = Valuation.balances(transactions, today)
+    portfolios = scope |> list_portfolios() |> Enum.reject(& &1.retired)
+    owners = reference_account_owners(portfolios)
+    by_id = Map.new(portfolios, &{&1.id, &1})
 
     %{
       portfolios:
-        Enum.map(portfolio_groups, fn group ->
-          %{portfolio: group.portfolio, value: group.value, account: List.first(group.accounts)}
-        end),
-      accounts: Enum.flat_map(account_groups, & &1.accounts)
+        for portfolio <- portfolios do
+          value =
+            holdings
+            |> Enum.filter(&(&1.portfolio_id == portfolio.id))
+            |> Enum.sum_by(&Valuation.value(&1, market, today))
+
+          %{portfolio: portfolio, value: value}
+        end,
+      accounts:
+        for account <- accounts, not account.retired do
+          balance = Map.get(balances, account.id, 0)
+
+          %{
+            account: account,
+            value: Market.to_euros(market, balance, account.currency, today),
+            portfolio: by_id[owners[account.id]]
+          }
+        end
     }
   end
 

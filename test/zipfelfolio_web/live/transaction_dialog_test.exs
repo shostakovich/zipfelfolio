@@ -33,7 +33,7 @@ defmodule ZipfelfolioWeb.TransactionDialogTest do
     lv |> element("#fab-book") |> render_click()
 
     assert has_element?(lv, "#transaction-modal h2", "Buchung erfassen")
-    assert has_element?(lv, "#transaction_kind-purchase[checked]")
+    assert has_element?(lv, "input[name='transaction[kind]'][value=purchase][checked]")
     assert has_element?(lv, "#transaction_account_id option[selected]", "Verrechnungskonto")
 
     assert has_element?(
@@ -41,7 +41,7 @@ defmodule ZipfelfolioWeb.TransactionDialogTest do
              "#transaction_date[value='#{Date.to_iso8601(LocalTime.today())}']"
            )
 
-    lv |> element("#transaction-modal .btn-close") |> render_click()
+    close_modal(lv, "#transaction-cancel", "transaction-modal")
     refute has_element?(lv, "#transaction-modal")
   end
 
@@ -56,11 +56,11 @@ defmodule ZipfelfolioWeb.TransactionDialogTest do
     change(lv, params, "price")
     assert has_element?(lv, "#transaction_amount[value='375,01']")
     assert has_element?(lv, "#transaction_shares[value='31,0700']")
-    refute has_element?(lv, "#transaction-expected")
+    refute has_element?(lv, "#transaction_amount-help")
 
     change(lv, Map.put(params, :amount, "375,02"), "amount")
 
-    assert lv |> element("#transaction-expected") |> render() =~
+    assert lv |> element("#transaction_amount-help") |> render() =~
              "Stück × Kurs ergibt 375,01 €"
 
     lv |> form("#transaction-form") |> render_submit()
@@ -115,7 +115,7 @@ defmodule ZipfelfolioWeb.TransactionDialogTest do
 
     html = lv |> form("#transaction-form") |> render_submit()
 
-    assert html =~ "übersteigt den Bestand von 0 Stück"
+    assert html =~ "Übersteigt den Bestand von 0 Stück"
     assert has_element?(lv, "#transaction-modal")
     assert Portfolios.list_transactions(ctx.scope) == []
   end
@@ -143,6 +143,7 @@ defmodule ZipfelfolioWeb.TransactionDialogTest do
     change(lv, %{kind: "deposit", amount: "1.234,00"}, "amount")
     lv |> form("#transaction-form") |> render_submit()
 
-    assert lv |> element("#side-account-#{ctx.account.id}") |> render() =~ "1.234,00"
+    path = ~p"/holdings?#{[portfolio: ctx.portfolio.id, account: ctx.account.id]}"
+    assert lv |> element(sidebar_link(path)) |> render() =~ "1.234,00"
   end
 end

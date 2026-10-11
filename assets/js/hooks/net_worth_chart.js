@@ -1,20 +1,20 @@
-import { chartHook, cssColor, day, formatAxisEuros, formatDay, formatEuros, reducedMotion, timeAxis, transparent } from "../charts.js"
+import { chartHook, cssColor, inkColor, day, series, formatAxisEuros, formatDay, formatEuros, reducedMotion, timeAxis, transparent } from "../charts.js"
 
 // Net worth against invested capital and, while the benchmark is shown, the shadow portfolio in it;
 // the overview pushes the days of its period with the amounts in cents, and the benchmark's line
 // for a user who picked one.
 const chart = chartHook("net-worth-chart", (data, el) => {
   const { dates, net_worth, invested_capital, benchmark, benchmark_name, benchmark_shown } = data
-  const color = (name) => cssColor(el, name)
-  const [primary, line, secondary, mustard, muted, grid, background] = [
-    "--felt-primary", "--net-worth-line", "--felt-secondary", "--benchmark", "--felt-secondary-color",
-    "--felt-border-color", "--felt-card-bg",
-  ].map(color)
+  // Net worth in series 1, invested capital in 8, the benchmark in 2.
+  const [netWorth, invested, mark] = ["chart-1", "chart-8", "chart-2"].map((name) => series(el, name))
+  const background = cssColor(el, "--color-base-100")
+  const [line, secondary, mustard] = [netWorth.line, invested.line, mark.line]
+  const [muted, grid] = [inkColor(el, 70), inkColor(el, 10)]
   const days = dates.map(day)
   const points = (cents) => cents.map((amount, i) => ({ x: days[i], y: amount === null ? null : amount / 100 }))
   const last = days.length - 1
   const font = { family: getComputedStyle(el).fontFamily, size: 12 }
-  const narrow = el.clientWidth < 576
+  const compact = el.clientWidth < 576
 
   return {
     type: "line",
@@ -25,8 +25,8 @@ const chart = chartHook("net-worth-chart", (data, el) => {
           order: 0,
           data: points(net_worth),
           borderColor: line,
-          borderWidth: narrow ? 2.25 : 2.5,
-          backgroundColor: transparent(primary, 0.14),
+          borderWidth: compact ? 2.25 : 2.5,
+          backgroundColor: transparent(el, "var(--color-chart-1-fill)", 0.14),
           fill: "start",
           clip: false,
           pointRadius: (context) => (context.dataIndex === last ? 4 : 0),
@@ -40,7 +40,7 @@ const chart = chartHook("net-worth-chart", (data, el) => {
           order: 2,
           data: points(invested_capital),
           borderColor: secondary,
-          borderWidth: narrow ? 1.5 : 1.75,
+          borderWidth: compact ? 1.5 : 1.75,
           borderDash: [5, 4],
           stepped: true,
           pointRadius: 0,
@@ -79,7 +79,7 @@ const chart = chartHook("net-worth-chart", (data, el) => {
         y: {
           grid: { color: grid },
           border: { display: false, dash: [3, 4] },
-          ticks: { maxTicksLimit: narrow ? 6 : 7, color: muted, font, callback: formatAxisEuros },
+          ticks: { maxTicksLimit: compact ? 6 : 7, color: muted, font, callback: formatAxisEuros },
         },
       },
       plugins: {

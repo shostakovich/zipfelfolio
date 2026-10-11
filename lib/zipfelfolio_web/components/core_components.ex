@@ -1,364 +1,42 @@
 defmodule ZipfelfolioWeb.CoreComponents do
-  @moduledoc false
+  @moduledoc """
+  The app's own pieces next to setzkasten's components (`use Setzkasten` in `ZipfelfolioWeb`):
+  German error messages, figure tones, gains, the page without portfolios and URL ids.
+  """
   use Phoenix.Component
+  use ZipfelfolioWeb, :verified_routes
 
-  alias Phoenix.HTML.Form
-  alias Phoenix.LiveView.JS
+  import Setzkasten.Components.Actions, only: [button: 1]
+  import Setzkasten.Components.Data, only: [amount: 1]
+  import Setzkasten.Components.Feedback, only: [empty_state: 1]
 
-  attr :title, :string, default: nil
-  attr :subtitle, :string, default: nil
-  attr :class, :any, default: nil
-  attr :as, :string, default: "section"
-  attr :level, :integer, default: 2
-  attr :rest, :global
-  slot :inner_block
+  alias ZipfelfolioWeb.Format
 
-  def card(assigns) do
+  @doc """
+  The page of a user without portfolios and accounts yet: they come with the import from
+  Portfolio Performance.
+  """
+  def no_portfolios(assigns) do
     ~H"""
-    <.dynamic_tag tag_name={@as} class={["card", "mb-3", @class]} {@rest}>
-      <div class="card-body">
-        <%= if present?(@title) do %>
-          <.dynamic_tag tag_name={"h#{@level}"} class="card-title">{@title}</.dynamic_tag>
-          <p :if={present?(@subtitle)} class="card-subtitle">{@subtitle}</p>
-        <% end %>
-        {render_slot(@inner_block)}
-      </div>
-    </.dynamic_tag>
-    """
-  end
-
-  attr :id, :string, doc: "the optional id of the flash container"
-  attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
-  attr :title, :string, default: nil
-  attr :kind, :atom, values: [:info, :error], doc: "used for styling and flash lookup"
-  attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
-  slot :inner_block, doc: "the optional inner block that renders the flash message"
-
-  def flash(assigns) do
-    assigns = assign_new(assigns, :id, fn -> "flash-#{assigns.kind}" end)
-
-    ~H"""
-    <div
-      :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
-      id={@id}
-      phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
-      role="alert"
-      class={[
-        "alert alert-dismissible d-flex align-items-start gap-2 mb-3",
-        @kind == :info && "alert-success",
-        @kind == :error && "alert-danger"
-      ]}
-      {@rest}
+    <.empty_state
+      layout={:page}
+      plush="briefcase"
+      icon="briefcase"
+      title="Noch keine Depots"
     >
-      <div>
-        <strong :if={@title} class="d-block">{@title}</strong>
-        {msg}
-      </div>
-      <button type="button" class="btn-close" aria-label="Schließen"></button>
-    </div>
-    """
-  end
-
-  attr :flash, :map, required: true, doc: "the map of flash messages"
-  attr :id, :string, default: "flash-group", doc: "the optional id of flash container"
-
-  def flash_group(assigns) do
-    ~H"""
-    <div id={@id} aria-live="polite">
-      <.flash kind={:info} flash={@flash} />
-      <.flash kind={:error} flash={@flash} />
-      <.flash
-        id="client-error"
-        kind={:error}
-        title="Keine Verbindung"
-        phx-disconnected={show(".phx-client-error #client-error")}
-        phx-connected={hide("#client-error")}
-        hidden
-      >
-        Verbindung wird wiederhergestellt …
-      </.flash>
-      <.flash
-        id="server-error"
-        kind={:error}
-        title="Etwas ist schiefgelaufen"
-        phx-disconnected={show(".phx-server-error #server-error")}
-        phx-connected={hide("#server-error")}
-        hidden
-      >
-        Verbindung wird wiederhergestellt …
-      </.flash>
-    </div>
-    """
-  end
-
-  attr :variant, :string, default: "primary", doc: "the felt-css button variant (btn-<variant>)"
-  attr :size, :string, default: nil, values: [nil, "sm", "lg"]
-  attr :class, :any, default: nil
-
-  attr :rest, :global,
-    include: ~w(href navigate patch method download name value disabled type form)
-
-  slot :inner_block, required: true
-
-  def button(%{rest: rest} = assigns) do
-    assigns =
-      assign(assigns, :classes, [
-        "btn",
-        "btn-#{assigns.variant}",
-        assigns.size && "btn-#{assigns.size}",
-        assigns.class
-      ])
-
-    if rest[:href] || rest[:navigate] || rest[:patch] do
-      ~H"""
-      <.link class={@classes} {@rest}>{render_slot(@inner_block)}</.link>
-      """
-    else
-      ~H"""
-      <button class={@classes} {@rest}>{render_slot(@inner_block)}</button>
-      """
-    end
-  end
-
-  attr :id, :any, default: nil
-  attr :name, :any
-  attr :label, :string, default: nil
-  attr :value, :any
-
-  attr :type, :string,
-    default: "text",
-    values: ~w(checkbox color date datetime-local email file hidden month number password
-               range search select tel text textarea time url week)
-
-  attr :field, Phoenix.HTML.FormField,
-    doc: "a form field struct retrieved from the form, for example: @form[:email]"
-
-  attr :errors, :list, default: []
-  attr :checked, :boolean, doc: "the checked flag for checkbox inputs"
-  attr :switch, :boolean, default: false, doc: "a checkbox drawn as a switch"
-  attr :prompt, :string, default: nil, doc: "the prompt for select inputs"
-  attr :options, :list, doc: "the options to pass to Phoenix.HTML.Form.options_for_select/2"
-  attr :multiple, :boolean, default: false, doc: "the multiple flag for select inputs"
-  attr :class, :any, default: nil, doc: "extra classes for the control"
-  attr :wrapper_class, :any, default: "mb-3"
-
-  attr :rest, :global,
-    include: ~w(accept autocomplete capture cols disabled form list max maxlength min minlength
-                multiple pattern placeholder readonly required rows size step)
-
-  def input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
-    errors = if Phoenix.Component.used_input?(field), do: field.errors, else: []
-
-    assigns
-    |> assign(field: nil, id: assigns.id || field.id)
-    |> assign(:errors, Enum.map(errors, &translate_error/1))
-    |> assign_new(:name, fn -> if assigns.multiple, do: field.name <> "[]", else: field.name end)
-    |> assign_new(:value, fn -> field.value end)
-    |> input()
-  end
-
-  def input(%{type: "hidden"} = assigns) do
-    ~H"""
-    <input type="hidden" id={@id} name={@name} value={@value} {@rest} />
-    """
-  end
-
-  def input(%{type: "checkbox"} = assigns) do
-    assigns =
-      assign_new(assigns, :checked, fn ->
-        Form.normalize_value("checkbox", assigns[:value])
-      end)
-
-    ~H"""
-    <div class={["form-check", @switch && "form-switch", @wrapper_class]}>
-      <input type="hidden" name={@name} value="false" disabled={@rest[:disabled]} />
-      <input
-        type="checkbox"
-        id={@id}
-        name={@name}
-        value="true"
-        checked={@checked}
-        role={@switch && "switch"}
-        class={["form-check-input", @errors != [] && "is-invalid", @class]}
-        {@rest}
-      />
-      <label :if={@label} class="form-check-label" for={@id}>{@label}</label>
-      <.error :for={msg <- @errors}>{msg}</.error>
-    </div>
-    """
-  end
-
-  def input(%{type: "select"} = assigns) do
-    ~H"""
-    <div class={@wrapper_class}>
-      <label :if={@label} class="form-label" for={@id}>{@label}</label>
-      <select
-        id={@id}
-        name={@name}
-        class={["form-select", @errors != [] && "is-invalid", @class]}
-        multiple={@multiple}
-        {@rest}
-      >
-        <option :if={@prompt} value="">{@prompt}</option>
-        {Form.options_for_select(@options, @value)}
-      </select>
-      <.error :for={msg <- @errors}>{msg}</.error>
-    </div>
-    """
-  end
-
-  def input(%{type: "textarea"} = assigns) do
-    ~H"""
-    <div class={@wrapper_class}>
-      <label :if={@label} class="form-label" for={@id}>{@label}</label>
-      <textarea
-        id={@id}
-        name={@name}
-        class={["form-control", @errors != [] && "is-invalid", @class]}
-        {@rest}
-      >{Form.normalize_value("textarea", @value)}</textarea>
-      <.error :for={msg <- @errors}>{msg}</.error>
-    </div>
-    """
-  end
-
-  def input(assigns) do
-    ~H"""
-    <div class={@wrapper_class}>
-      <label :if={@label} class="form-label" for={@id}>{@label}</label>
-      <input
-        type={@type}
-        name={@name}
-        id={@id}
-        value={Form.normalize_value(@type, @value)}
-        class={[
-          if(@type in ~w(range), do: "form-range", else: "form-control"),
-          @type == "color" && "form-control-color",
-          @errors != [] && "is-invalid",
-          @class
-        ]}
-        {@rest}
-      />
-      <.error :for={msg <- @errors}>{msg}</.error>
-    </div>
-    """
-  end
-
-  slot :inner_block, required: true
-
-  def error(assigns) do
-    ~H"""
-    <div class="invalid-feedback d-block">{render_slot(@inner_block)}</div>
-    """
-  end
-
-  attr :class, :any, default: nil
-  attr :title_class, :any, default: nil
-  slot :inner_block, required: true
-  slot :leading
-  slot :subtitle
-  slot :actions
-
-  def header(assigns) do
-    ~H"""
-    <header class={["d-flex align-items-center gap-2 mb-3", @class]}>
-      {render_slot(@leading)}
-      <div class="me-auto">
-        <h1 class={["h2 mb-0", @title_class]}>{render_slot(@inner_block)}</h1>
-        <p :if={@subtitle != []} class="small text-body-secondary mb-0">{render_slot(@subtitle)}</p>
-      </div>
-      {render_slot(@actions)}
-    </header>
-    """
-  end
-
-  attr :id, :string, required: true
-  attr :label, :string, required: true
-  attr :value, :string, required: true
-  attr :value_class, :any, default: nil
-  attr :class, :any, default: nil
-
-  slot :prefix, doc: "a quiet remark before the value, such as „brutto“"
-
-  slot :note do
-    attr :class, :any
-  end
-
-  @doc "A key figure in a card: its label, its value and notes below."
-  def stat(assigns) do
-    ~H"""
-    <div class={["card h-100", @class]} id={@id}>
-      <div class="card-body">
-        <div class="stat">
-          <span class="stat-label">{@label}</span>
-          <span class={["stat-value", @value_class]}>
-            <span :if={@prefix != []} class="small fw-normal text-body-secondary">
-              {render_slot(@prefix)}
-            </span>
-            {@value}
-          </span>
-          <span :for={note <- @note} class={["small", note[:class]]}>{render_slot(note)}</span>
-        </div>
-      </div>
-    </div>
+      Depots, Konten und Buchungen kommen mit dem Import aus Portfolio Performance.
+      <:action>
+        <.button navigate={~p"/settings/import"} variant={:primary} icon="upload">
+          Aus Portfolio Performance importieren
+        </.button>
+      </:action>
+    </.empty_state>
     """
   end
 
   @doc "The class that mutes an amount of zero in a column of amounts."
-  def muted(0), do: "text-body-tertiary"
+  def muted(0), do: "text-base-content/70"
   def muted(_amount), do: nil
-
-  # The click dummy's line icons on a 24 px grid, each as the paths it draws.
-  @icons %{
-    "alert" => ["M12 3 2 20h20zM12 10v4M12 17h.01"],
-    "back" => ["m15 6-6 6 6 6"],
-    "check" => ["m5 12.5 4.5 4.5L19 7"],
-    "chevron" => ["m9 6 6 6-6 6"],
-    "coins" => [
-      "M3 7a6 3 0 1 0 12 0 6 3 0 1 0-12 0",
-      "M3 7v4c0 1.7 2.7 3 6 3s6-1.3 6-3V7M3 11v4c0 1.7 2.7 3 6 3 1 0 2-.1 2.8-.4",
-      "M13 15a4 2 0 1 0 8 0 4 2 0 1 0-8 0",
-      "M13 15v3c0 1.1 1.8 2 4 2s4-.9 4-2v-3"
-    ],
-    "copy" => [
-      "M10 8h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z",
-      "M16 8V4H4v12h4"
-    ],
-    "down" => ["m6 9 6 6 6-6"],
-    "file" => ["M14 3H6v18h12V7zM14 3v4h4M9 13h6M9 17h6"],
-    "gear" => [
-      "M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0",
-      "M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"
-    ],
-    "home" => ["M3 11 12 4l9 7M5 10v10h14V10M10 20v-6h4v6"],
-    "inbox" => ["M3 13h5l2 3h4l2-3h5M5 5h14l2 8v6H3v-6z"],
-    "key" => ["M12 15a4 4 0 1 1-8 0 4 4 0 0 1 8 0", "m11 12 9-9M16 7l3 3M14 9l2 2"],
-    "layers" => ["m12 3 9 5-9 5-9-5zM3 13l9 5 9-5M3 17.5l9 5 9-5"],
-    "list" => ["M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"],
-    "logout" => ["M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"],
-    "plus" => ["M12 5v14M5 12h14"],
-    "sidebar" => [
-      "M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
-      "M9 4v16M16 9l-3 3 3 3"
-    ],
-    "trend" => ["M3 17l6-6 4 4 8-8M15 7h6v6"],
-    "upload" => ["M12 15V3M7 8l5-5 5 5M4 15v5h16v-5"],
-    "wallet" => ["M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 7l13-4v4M17 13.5h.01"]
-  }
-
-  attr :name, :string, required: true, values: Map.keys(@icons)
-  attr :class, :any, default: nil
-
-  @doc "A line icon in the current text colour, hidden from screen readers."
-  def icon(assigns) do
-    assigns = assign(assigns, :paths, Map.fetch!(@icons, assigns.name))
-
-    ~H"""
-    <svg class={["app-icon", @class]} viewBox="0 0 24 24" aria-hidden="true">
-      <path :for={d <- @paths} d={d} />
-    </svg>
-    """
-  end
 
   @doc "German messages from the validation pass through; Ecto's English ones are looked up."
   @spec translate_error({String.t(), keyword}) :: String.t()
@@ -417,9 +95,31 @@ defmodule ZipfelfolioWeb.CoreComponents do
   The colour of a signed figure as `ZipfelfolioWeb.Format` shows it: green with a plus, red with a
   minus, muted for one that rounds to zero.
   """
-  def tone("+" <> _rest), do: "text-success"
-  def tone("−" <> _rest), do: "text-danger"
-  def tone(_unsigned), do: "text-body-secondary"
+  def tone(figure) do
+    case sign(figure) do
+      :success -> "text-success-ink"
+      :error -> "text-error-ink"
+      nil -> "text-base-content/70"
+    end
+  end
+
+  attr :gain, :integer, required: true
+  attr :purchase_value, :integer, default: 0, doc: "gives the gain in percent when positive"
+
+  @doc "A gain in euros with its sign and colour, below it in percent of the purchase value."
+  def gain(assigns) do
+    ~H"""
+    <.amount value={@gain} signed tone />
+    <div :if={@purchase_value > 0} class={["text-sm", tone(Format.signed_euros(@gain, 2))]}>
+      {@gain |> Format.percent_of(@purchase_value) |> Format.signed_percent(1)}
+    </div>
+    """
+  end
+
+  @doc "The `tone` of a signed figure for setzkasten's `stat`: `:success`, `:error` or nil."
+  def sign("+" <> _rest), do: :success
+  def sign("−" <> _rest), do: :error
+  def sign(_unsigned), do: nil
 
   @doc "A database id from a URL parameter; nil for anything else, beyond SQLite's integers too."
   def parse_id(param) when is_binary(param) do
@@ -430,14 +130,4 @@ defmodule ZipfelfolioWeb.CoreComponents do
   end
 
   def parse_id(_missing), do: nil
-
-  def show(js \\ %JS{}, selector) do
-    JS.show(js, to: selector, time: 200, transition: {"fade", "opacity-0", "opacity-100"})
-  end
-
-  def hide(js \\ %JS{}, selector) do
-    JS.hide(js, to: selector, time: 200, transition: {"fade", "opacity-100", "opacity-0"})
-  end
-
-  defp present?(value), do: is_binary(value) and String.trim(value) != ""
 end

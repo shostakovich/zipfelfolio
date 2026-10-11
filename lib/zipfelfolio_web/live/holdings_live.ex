@@ -23,7 +23,7 @@ defmodule ZipfelfolioWeb.HoldingsLive do
       sidebar={@sidebar}
       current={{:holdings, shown_portfolio_id(assigns), @account_id}}
     >
-      <.header class="flex-wrap">
+      <.header>
         Bestand
         <:subtitle :if={!@empty}>{subtitle(@holdings)}</:subtitle>
         <:actions :if={!@empty}>
@@ -35,160 +35,170 @@ defmodule ZipfelfolioWeb.HoldingsLive do
         </:actions>
       </.header>
 
-      <.card :if={@empty}>
-        <p class="mb-0">
-          Noch keine Depots. Sie kommen mit dem <.link navigate={~p"/settings/import"}>Import aus Portfolio Performance</.link>.
-        </p>
-      </.card>
+      <.no_portfolios :if={@empty} />
 
-      <section :if={!@empty} id="holdings" class="card mb-4" aria-label="Bestand">
-        <div class="table-responsive">
-          <table class="table table-hover align-middle mb-0 app-card-table">
-            <thead class="small fw-semibold text-body-secondary">
-              <tr>
-                <th scope="col">Wertpapier</th>
-                <th scope="col" class="text-end d-none d-lg-table-cell">Stück</th>
-                <th scope="col" class="text-end d-none d-lg-table-cell">Kurs</th>
-                <th scope="col" class="text-end">Wert</th>
-                <th scope="col" class="text-end d-none d-md-table-cell">Einstand</th>
-                <th scope="col" class="text-end d-none d-sm-table-cell">Gewinn</th>
-                <th scope="col" class="text-end d-none d-md-table-cell">Anteil</th>
-                <th
-                  scope="col"
-                  class="text-end text-nowrap tabular-nums d-none d-lg-table-cell"
-                  title="Brutto, nächste 12 Monate auf heutigen Wert"
-                >
-                  Div.-Rendite
-                </th>
-              </tr>
-            </thead>
-            <tbody :for={group <- @holdings.groups} id={group_id(group)}>
-              <tr class="table-group-divider">
-                <th
-                  scope="colgroup"
-                  colspan="8"
-                  class="small fw-semibold text-body-secondary bg-body-tertiary"
-                >
-                  {if group.portfolio, do: group.portfolio.name, else: "Konten"}
-                </th>
-              </tr>
-              <tr
-                :for={row <- group.holdings}
-                id={"holding-#{group.portfolio.id}-#{row.security.id}"}
-              >
-                <td>
-                  <.link
-                    navigate={~p"/securities/#{row.security}"}
-                    class="fw-semibold text-body text-decoration-none"
-                  >
-                    {row.security.name}
-                  </.link>
-                  <div :if={row.security.isin} class="small text-body-secondary d-none d-lg-block">
-                    {row.security.isin}
-                  </div>
-                  <div class="small text-body-secondary tabular-nums d-lg-none">
-                    <span class="text-nowrap">{Format.shares(row.shares)} Stück</span>
-                    · <span class="text-nowrap">{price(row)}</span>
-                  </div>
-                </td>
-                <td class="text-end text-nowrap tabular-nums d-none d-lg-table-cell">
-                  {Format.shares(row.shares)}
-                </td>
-                <td class="text-end text-nowrap tabular-nums d-none d-lg-table-cell">{price(row)}</td>
-                <td class="text-end text-nowrap tabular-nums">
-                  <span class="fw-semibold">{Format.euros(row.value, 2)}</span>
-                  <.gain class="small d-sm-none" gain={row.gain} purchase_value={row.purchase_value} />
-                </td>
-                <td class="text-end text-nowrap tabular-nums d-none d-md-table-cell">
-                  {Format.euros(row.purchase_value, 2)}
-                </td>
-                <td class="text-end text-nowrap tabular-nums d-none d-sm-table-cell">
-                  <.gain gain={row.gain} purchase_value={row.purchase_value} />
-                </td>
-                <td class="text-end text-nowrap tabular-nums d-none d-md-table-cell">
-                  {share(row.value, @holdings.net_worth)}
-                </td>
-                <td class={[
-                  "text-end text-nowrap tabular-nums d-none d-lg-table-cell",
-                  muted(row.dividends)
-                ]}>
-                  {dividend_yield(row.dividends, row.value)}
-                </td>
-              </tr>
-              <tr :if={group.portfolio && group.holdings == []}>
-                <td colspan="8" class="small text-body-secondary">Keine Wertpapiere</td>
-              </tr>
-              <tr
-                :for={row <- group.accounts}
-                id={"account-#{row.account.id}"}
-                class={row.account.id == @account_id && "table-active"}
-                aria-current={row.account.id == @account_id && "true"}
-              >
-                <td>
-                  <span class="d-inline-flex align-items-center gap-2 fw-semibold">
-                    <.icon name="wallet" class="app-icon-sm text-body-secondary" />
-                    {row.account.name}
-                  </span>
-                  <div class="small text-body-secondary">{account_note(group, row.account)}</div>
-                </td>
-                <td class="d-none d-lg-table-cell"></td>
-                <td class="d-none d-lg-table-cell"></td>
-                <td class="text-end text-nowrap tabular-nums fw-semibold">
-                  {Format.euros(row.value, 2)}
-                </td>
-                <td class="d-none d-md-table-cell"></td>
-                <td class="d-none d-sm-table-cell"></td>
-                <td class="text-end text-nowrap tabular-nums d-none d-md-table-cell">
-                  {share(row.value, @holdings.net_worth)}
-                </td>
-                <td class="d-none d-lg-table-cell"></td>
-              </tr>
-            </tbody>
-            <tfoot>
-              <tr id="total" class="fw-bold">
-                <th scope="row">
-                  {if @holdings.portfolio, do: @holdings.portfolio.name, else: "Gesamt"}
-                </th>
-                <td class="d-none d-lg-table-cell"></td>
-                <td class="d-none d-lg-table-cell"></td>
-                <td class="text-end text-nowrap tabular-nums">
-                  {Format.euros(@holdings.total.value, 2)}
-                  <.gain class="small d-sm-none" gain={@holdings.total.gain} />
-                </td>
-                <td class="text-end text-nowrap tabular-nums d-none d-md-table-cell">
-                  {Format.euros(@holdings.total.purchase_value, 2)}
-                </td>
-                <td class="text-end text-nowrap tabular-nums d-none d-sm-table-cell">
-                  <.gain gain={@holdings.total.gain} />
-                </td>
-                <td class="text-end text-nowrap tabular-nums d-none d-md-table-cell">
-                  {@holdings.portfolio && share(@holdings.total.value, @holdings.net_worth)}
-                </td>
-                <td class="text-end text-nowrap tabular-nums d-none d-lg-table-cell">
-                  {dividend_yield(@holdings.total.dividends, @holdings.total.securities_value)}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </section>
-
-      <%!-- Side by side from 1400 px, where the costs still fit four columns. --%>
-      <div :if={!@empty and @holdings.costs.funds != []} class="row g-4">
-        <div class="col-xxl-5">
-          <.allocation
-            allocation={@holdings.allocation}
-            tab={shown_tab(assigns)}
-            tabs={allocation_tabs(assigns)}
-            available={@compositions_available}
+      <.table
+        :if={!@empty}
+        id="holdings"
+        groups={groups(@holdings, @account_id)}
+        row_id={& &1.id}
+        row_link={&row_link/1}
+        row_attrs={&row_attrs/1}
+      >
+        <:col :let={item} label="Wertpapier" class="min-w-52">
+          <.position_name item={item} />
+        </:col>
+        <:col :let={item} label="Stück" align={:end} show_from={:xl}>
+          <span :if={item.type == :holding}>{Format.shares(item.entry.shares)}</span>
+        </:col>
+        <:col :let={item} label="Kurs" align={:end} show_from={:xl}>
+          <span :if={item.type == :holding}>{price(item.entry)}</span>
+        </:col>
+        <:col :let={item} label="Wert" align={:end}>
+          <.amount :if={item.type != :none} value={item.entry.value} class="font-semibold" />
+          <.cell_sub :if={item.type == :holding} hide_from={:sm}>
+            <.gain gain={item.entry.gain} purchase_value={item.entry.purchase_value} />
+          </.cell_sub>
+        </:col>
+        <:col :let={item} label="Einstand" align={:end} show_from={:md}>
+          <.amount :if={item.type == :holding} value={item.entry.purchase_value} />
+        </:col>
+        <:col :let={item} label="Gewinn" align={:end} show_from={:sm}>
+          <.gain
+            :if={item.type == :holding}
+            gain={item.entry.gain}
+            purchase_value={item.entry.purchase_value}
           />
-        </div>
-        <div class="col-xxl-7">
-          <.costs costs={@holdings.costs} />
-        </div>
+        </:col>
+        <:col :let={item} label="Anteil" align={:end} show_from={:md}>
+          <span :if={item.type != :none}>{share(item.entry.value, @holdings.net_worth)}</span>
+        </:col>
+        <:col :let={item} :if={@yields?} label="Div.-Rendite" align={:end} show_from={:lg}>
+          <span :if={item.type == :holding} class={muted(item.entry.dividends)}>
+            {dividend_yield(item.entry.dividends, item.entry.value)}
+          </span>
+        </:col>
+        <:foot>
+          <th scope="row" id="holdings-total">
+            {if @holdings.portfolio, do: Format.portfolio_name(@holdings.portfolio), else: "Gesamt"}
+          </th>
+          <td class={show_from(:xl)}></td>
+          <td class={show_from(:xl)}></td>
+          <td class="text-end whitespace-nowrap">
+            <.amount value={@holdings.total.value} />
+            <.cell_sub hide_from={:sm}><.gain gain={@holdings.total.gain} /></.cell_sub>
+          </td>
+          <td class={["text-end whitespace-nowrap", show_from(:md)]}>
+            <.amount value={@holdings.total.purchase_value} />
+          </td>
+          <td class={["text-end whitespace-nowrap", show_from(:sm)]}>
+            <.gain gain={@holdings.total.gain} />
+          </td>
+          <td class={["text-end whitespace-nowrap", show_from(:md)]}>
+            {@holdings.portfolio && share(@holdings.total.value, @holdings.net_worth)}
+          </td>
+          <td :if={@yields?} class={["text-end whitespace-nowrap", show_from(:lg)]}>
+            {dividend_yield(@holdings.total.dividends, @holdings.total.securities_value)}
+          </td>
+        </:foot>
+      </.table>
+      <p :if={!@empty and @yields?} class="mt-2 hidden text-sm text-base-content/70 lg:block">
+        Div.-Rendite: brutto, nächste 12 Monate auf den heutigen Wert.
+      </p>
+
+      <div
+        :if={!@empty and @holdings.costs.funds != []}
+        class="mt-8 grid gap-x-10 gap-y-8 2xl:grid-cols-2"
+      >
+        <.allocation
+          allocation={@holdings.allocation}
+          tab={shown_tab(assigns)}
+          tabs={allocation_tabs(assigns)}
+          available={@compositions_available}
+        />
+        <.costs costs={@holdings.costs} />
       </div>
     </Layouts.app>
     """
+  end
+
+  attr :item, :map, required: true, doc: "an item of `groups/2`"
+
+  # A security with its ISIN or, below lg, its shares and price; an account with what it is; the
+  # note of a portfolio without securities.
+  defp position_name(%{item: %{type: :holding, entry: entry}} = assigns) do
+    assigns = assign(assigns, :entry, entry)
+
+    ~H"""
+    {@entry.security.name}
+    <.cell_sub :if={@entry.security.isin} show_from={:xl}>{@entry.security.isin}</.cell_sub>
+    <.cell_sub hide_from={:xl} class="tabular-nums">
+      <span class="whitespace-nowrap">{Format.shares(@entry.shares)} Stück</span><.meta_sep /><span class="whitespace-nowrap">{price(
+        @entry
+      )}</span>
+    </.cell_sub>
+    """
+  end
+
+  defp position_name(%{item: %{type: :account}} = assigns) do
+    ~H"""
+    <span class="inline-flex items-center gap-2 font-medium">
+      <.icon name="wallet" class="text-base-content/70" />{@item.entry.account.name}
+    </span>
+    <.cell_sub class="whitespace-nowrap">{@item.note}</.cell_sub>
+    """
+  end
+
+  defp position_name(%{item: %{type: :none}} = assigns) do
+    ~H"""
+    <span class="text-sm text-base-content/70">Keine Wertpapiere</span>
+    """
+  end
+
+  # A security opens its page; the account the page was opened for is marked.
+  defp row_link(%{type: :holding, entry: entry}), do: ~p"/securities/#{entry.security}"
+  defp row_link(_item), do: nil
+
+  defp row_attrs(%{type: :account, marked: true}),
+    do: %{"aria-current": "true", class: "bg-primary/8"}
+
+  defp row_attrs(_item), do: %{}
+
+  # A group per portfolio, its securities, a note when it has none, and its reference account;
+  # last the accounts of no portfolio as „Konten“.
+  defp groups(holdings, marked_account_id),
+    do: Enum.map(holdings.groups, &group(&1, marked_account_id))
+
+  defp group(%{portfolio: nil} = group, marked_account_id),
+    do: %{id: "accounts", label: "Konten", rows: accounts(group, marked_account_id)}
+
+  defp group(%{portfolio: portfolio} = group, marked_account_id) do
+    securities =
+      for entry <- group.holdings,
+          do: %{type: :holding, id: "holding-#{portfolio.id}-#{entry.security.id}", entry: entry}
+
+    none =
+      if group.holdings == [],
+        do: [%{type: :none, id: "holdings-none-#{portfolio.id}"}],
+        else: []
+
+    %{
+      id: "portfolio-#{portfolio.id}",
+      label: Format.portfolio_name(portfolio),
+      rows: securities ++ none ++ accounts(group, marked_account_id)
+    }
+  end
+
+  defp accounts(group, marked_account_id) do
+    for entry <- group.accounts do
+      %{
+        type: :account,
+        id: "account-#{entry.account.id}",
+        entry: entry,
+        note: account_note(group, entry.account),
+        marked: entry.account.id == marked_account_id
+      }
+    end
   end
 
   attr :allocation, :map, required: true
@@ -198,10 +208,11 @@ defmodule ZipfelfolioWeb.HoldingsLive do
 
   defp allocation(assigns) do
     ~H"""
-    <section id="allocation" class="card h-100" aria-label="Aufteilung">
-      <div class="card-header">
-        <.card_tabs label="Aufteilung nach" tabs={@tabs} />
-      </div>
+    <section id="allocation" aria-labelledby="allocation-title">
+      <.section_heading id="allocation-title">Aufteilung</.section_heading>
+      <.tabs label="Aufteilung nach" class="mb-4">
+        <:tab :for={tab <- @tabs} patch={tab.path} active={tab.active}>{tab.label}</:tab>
+      </.tabs>
       <.composition :if={is_atom(@tab)} allocation={@allocation} tab={@tab} available={@available} />
       <.classifications
         :if={is_integer(@tab)}
@@ -220,16 +231,14 @@ defmodule ZipfelfolioWeb.HoldingsLive do
     assigns = assign(assigns, :rows, Map.fetch!(assigns.allocation, assigns.tab))
 
     ~H"""
-    <div class="card-body">
-      <.missing_key :if={!@available} />
-      <.composition_bars :if={@available} id="allocation-rows" rows={@rows} />
-    </div>
-    <div :if={@available} class="card-footer small text-body-secondary">
+    <.missing_key :if={!@available} />
+    <.composition_bars :if={@available} id="allocation-rows" rows={@rows} />
+    <p :if={@available} class="mt-4 max-w-prose text-sm text-base-content/70">
       {source(@allocation.as_of)} Konten zählen nicht mit.
       <span :if={Enum.any?(@rows, &is_nil(&1.key))}>
         „Ohne Angabe“: Wertpapiere ohne Länder- oder Sektordaten von DivvyDiary.
       </span>
-    </div>
+    </p>
     """
   end
 
@@ -240,37 +249,37 @@ defmodule ZipfelfolioWeb.HoldingsLive do
     rows = assigns.allocation.classifications
 
     assigns =
-      assign(assigns, rows: rows, scale: bar_scale(Enum.flat_map(rows, &[&1.share, &1.target])))
+      assign(assigns, rows: rows, max: bar_max(Enum.flat_map(rows, &[&1.share, &1.target])))
 
     ~H"""
-    <div class="card-body">
-      <ul id="allocation-rows" class="list-unstyled d-flex flex-column gap-3 mb-0">
-        <li :for={row <- @rows} id={"classification-#{row.classification.id}"}>
-          <div class="d-flex justify-content-between gap-3 small mb-1">
-            <span class="fw-semibold">{row.classification.name}</span>
-            <span class="tabular-nums text-nowrap">
-              <span class={deviation_tone(row.deviation)}>{in_percent(row.share)}</span>
-              <span class="text-body-secondary">/ Ziel {in_percent(row.target)}</span>
-            </span>
-          </div>
-          <div class="app-allocation-bar bg-body-tertiary rounded-pill" aria-hidden="true">
-            <div style={"width: #{bar_position(row.share, @scale)}%"}></div>
-            <div
-              class="app-allocation-target"
-              style={"left: #{bar_position(row.target, @scale)}%"}
-            >
-            </div>
-          </div>
-        </li>
-      </ul>
-      <p :if={@allocation.unassigned} class="small text-body-secondary mt-3 mb-0">
+    <ul id="allocation-rows" class="flex flex-col gap-3">
+      <li :for={entry <- @rows} id={"classification-#{entry.classification.id}"}>
+        <.bar
+          label={entry.classification.name}
+          value={bar_value(entry.share)}
+          max={@max}
+          target={bar_value(entry.target)}
+          show_value
+          value_label={in_percent(entry.share)}
+        >
+          Ziel {in_percent(entry.target)}
+          <.badge :if={entry.deviation} tone={deviation_tone(entry.deviation)} class="ms-1">
+            {deviation_label(entry.deviation)}
+          </.badge>
+        </.bar>
+      </li>
+    </ul>
+    <p class="mt-4 max-w-prose text-sm text-base-content/70">
+      <span :if={@allocation.unassigned}>
         Ohne Kategorie: {unassigned(@allocation.unassigned)}. Die Anteile beziehen sich wie die
         Ziele auf den zugeordneten Wert.
-      </p>
-    </div>
-    <div class="card-footer small text-body-secondary">
-      Balken: Ist · Strich: dein Ziel · Zuordnungen und Ziele aus Portfolio Performance
-    </div>
+      </span>
+      {join_meta([
+        "Balken: Ist",
+        "Strich: dein Ziel",
+        "Zuordnungen und Ziele aus Portfolio Performance"
+      ])}
+    </p>
     """
   end
 
@@ -278,81 +287,39 @@ defmodule ZipfelfolioWeb.HoldingsLive do
 
   defp costs(assigns) do
     ~H"""
-    <%!-- On a phone the fund size goes under the name. --%>
-    <section id="costs" class="card h-100" aria-labelledby="costs-title">
-      <div class="card-header d-flex flex-wrap align-items-baseline justify-content-between gap-2">
-        <h2 class="app-card-title mb-0" id="costs-title">Kosten</h2>
-        <span :if={@costs.ter} class="small text-body-secondary">
-          gewichtet {Format.ter(@costs.ter)}
-        </span>
-      </div>
-      <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0 app-card-table">
-          <thead class="small fw-semibold text-body-secondary">
-            <tr>
-              <th scope="col">Wertpapier</th>
-              <th scope="col" class="text-end app-num-col">TER</th>
-              <th scope="col" class="text-end d-none d-sm-table-cell app-num-col">Größe</th>
-              <th scope="col" class="text-end app-num-col">pro Jahr</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={fund <- @costs.funds} id={"cost-#{fund.security.id}"}>
-              <td>
-                <.link
-                  navigate={~p"/securities/#{fund.security}"}
-                  class="text-body text-decoration-none"
-                >
-                  {fund.security.name}
-                </.link>
-                <div
-                  :if={fund.fund_size}
-                  class="small text-body-secondary text-nowrap tabular-nums d-sm-none"
-                >
-                  {fund_size(fund)}
-                </div>
-              </td>
-              <td class="text-end tabular-nums app-num-col">{Format.ter(fund.ter)}</td>
-              <td class="text-end tabular-nums app-num-col d-none d-sm-table-cell">
-                {fund_size(fund)}
-              </td>
-              <td class="text-end tabular-nums app-num-col">{per_year(fund.per_year)}</td>
-            </tr>
-          </tbody>
-          <tfoot>
-            <tr id="costs-total" class="fw-bold">
-              <th scope="row">Gesamt</th>
-              <td class="text-end tabular-nums app-num-col">{Format.ter(@costs.ter)}</td>
-              <td class="d-none d-sm-table-cell app-num-col"></td>
-              <td class="text-end tabular-nums app-num-col">{per_year(@costs.per_year)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      <div class="card-footer small text-body-secondary">
+    <section id="costs" aria-labelledby="costs-title">
+      <.section_heading id="costs-title">
+        Kosten
+        <:actions :if={@costs.ter}>
+          <span class="text-sm text-base-content/70">gewichtet {Format.ter(@costs.ter)}</span>
+        </:actions>
+      </.section_heading>
+      <.table id="cost-rows" rows={@costs.funds} row_id={&"cost-#{&1.security.id}"} size={:sm}>
+        <:col :let={fund} label="Wertpapier">
+          <.link navigate={~p"/securities/#{fund.security}"} class="hover:underline">
+            {fund.security.name}
+          </.link>
+          <.cell_sub :if={fund.fund_size} hide_from={:sm} class="tabular-nums whitespace-nowrap">
+            Fondsgröße {fund_size(fund)}
+          </.cell_sub>
+        </:col>
+        <:col :let={fund} label="TER" align={:end}>{Format.ter(fund.ter)}</:col>
+        <:col :let={fund} label="Größe" align={:end} show_from={:sm}>{fund_size(fund)}</:col>
+        <:col :let={fund} label="pro Jahr" align={:end}><.per_year cents={fund.per_year} /></:col>
+        <:foot>
+          <th scope="row">Gesamt</th>
+          <td class="text-end">{Format.ter(@costs.ter)}</td>
+          <td class={show_from(:sm)}></td>
+          <td class="text-end whitespace-nowrap"><.per_year cents={@costs.per_year} /></td>
+        </:foot>
+      </.table>
+      <p class="mt-2 max-w-prose text-sm text-base-content/70">
         Laufende Kosten, die im Kurs stecken. Ordergebühren kommen aus den Buchungen.
         <span :if={Enum.any?(@costs.funds, &is_nil(&1.ter))}>
           Wertpapiere ohne TER in Portfolio Performance zählen nicht mit.
         </span>
-      </div>
+      </p>
     </section>
-    """
-  end
-
-  attr :gain, :integer, required: true
-  attr :purchase_value, :integer, default: 0, doc: "gives the gain in percent when positive"
-  attr :class, :any, default: nil
-
-  defp gain(assigns) do
-    assigns = assign(assigns, :shown, Format.signed_euros(assigns.gain, 2))
-
-    ~H"""
-    <div class={[tone(@shown), @class]}>
-      {@shown}
-      <div :if={@purchase_value > 0} class="small">
-        {@gain |> Format.percent_of(@purchase_value) |> Format.signed_percent(1)}
-      </div>
-    </div>
     """
   end
 
@@ -405,28 +372,21 @@ defmodule ZipfelfolioWeb.HoldingsLive do
   defp shown_portfolio_id(%{holdings: %{portfolio: %{id: id}}}), do: id
   defp shown_portfolio_id(_assigns), do: nil
 
-  defp group_id(%{portfolio: nil}), do: "accounts"
-  defp group_id(%{portfolio: portfolio}), do: "portfolio-#{portfolio.id}"
-
   defp subtitle(%{portfolio: nil, portfolios: portfolios, groups: groups}) do
     securities = groups |> Enum.flat_map(& &1.holdings) |> Enum.uniq_by(& &1.security.id)
     accounts = Enum.flat_map(groups, & &1.accounts)
 
-    Enum.join(
-      [
-        count(length(portfolios), "Depot", "Depots"),
-        count(length(securities), "Wertpapier", "Wertpapiere"),
-        count(length(accounts), "Konto", "Konten")
-      ],
-      " · "
-    )
+    join_meta([
+      count(length(portfolios), "Depot", "Depots"),
+      count(length(securities), "Wertpapier", "Wertpapiere"),
+      count(length(accounts), "Konto", "Konten")
+    ])
   end
 
   defp subtitle(%{groups: [group]}) do
-    Enum.join(
+    join_meta(
       [count(length(group.holdings), "Wertpapier", "Wertpapiere")] ++
-        Enum.map(group.accounts, & &1.account.name),
-      " · "
+        Enum.map(group.accounts, & &1.account.name)
     )
   end
 
@@ -435,13 +395,15 @@ defmodule ZipfelfolioWeb.HoldingsLive do
   defp count(count, _one, many), do: "#{count}\u00A0#{many}"
 
   defp account_note(%{portfolio: nil}, account), do: account.currency
-  defp account_note(_portfolio_group, account), do: "Referenzkonto · #{account.currency}"
+  defp account_note(_portfolio_group, account), do: join_meta(["Referenzkonto", account.currency])
 
   defp price(%{price: price, security: security}), do: Format.price(price, security.currency)
 
-  defp deviation_tone(:above), do: "text-warning-emphasis"
-  defp deviation_tone(:below), do: "text-danger"
-  defp deviation_tone(nil), do: "text-success"
+  defp deviation_tone(:above), do: :warning
+  defp deviation_tone(:below), do: :error
+
+  defp deviation_label(:above), do: "über Ziel"
+  defp deviation_label(:below), do: "unter Ziel"
 
   defp unassigned(%{value: value, share: nil}), do: Format.euros(value, 2)
 
@@ -454,8 +416,13 @@ defmodule ZipfelfolioWeb.HoldingsLive do
 
   defp fund_size(fund), do: Format.fund_size(fund.fund_size, fund.security.currency)
 
-  defp per_year(nil), do: "–"
-  defp per_year(cents), do: Format.euros(cents)
+  attr :cents, :integer, required: true, doc: "nil without a TER"
+
+  defp per_year(assigns) do
+    ~H"""
+    <span :if={!@cents}>–</span><.amount :if={@cents} value={@cents} decimals={0} />
+    """
+  end
 
   defp dividend_yield(cents, value) when cents <= 0 or value <= 0, do: "–"
   defp dividend_yield(cents, value), do: cents |> Format.percent_of(value) |> Format.percent()
@@ -465,9 +432,7 @@ defmodule ZipfelfolioWeb.HoldingsLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    scope = socket.assigns.current_scope
-
-    empty = Portfolios.list_portfolios(scope) == [] and Portfolios.list_accounts(scope) == []
+    empty = Portfolios.empty?(socket.assigns.current_scope)
 
     {:ok,
      assign(socket,
@@ -500,6 +465,14 @@ defmodule ZipfelfolioWeb.HoldingsLive do
 
   defp load_holdings(socket) do
     %{current_scope: scope, portfolio_id: portfolio_id} = socket.assigns
-    assign(socket, holdings: Portfolios.holdings(scope, portfolio_id, LocalTime.today()))
+    holdings = Portfolios.holdings(scope, portfolio_id, LocalTime.today())
+    assign(socket, holdings: holdings, yields?: yields?(holdings))
+  end
+
+  # The dividend yield column only when a position has one.
+  defp yields?(holdings) do
+    holdings.groups
+    |> Enum.flat_map(& &1.holdings)
+    |> Enum.any?(&(&1.dividends > 0 and &1.value > 0))
   end
 end

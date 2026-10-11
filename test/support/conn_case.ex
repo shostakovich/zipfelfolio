@@ -30,6 +30,7 @@ defmodule ZipfelfolioWeb.ConnCase do
       import Plug.Conn
       import Phoenix.ConnTest
       import ZipfelfolioWeb.ConnCase
+      import ZipfelfolioWeb.ConfirmHelpers
     end
   end
 
@@ -37,6 +38,12 @@ defmodule ZipfelfolioWeb.ConnCase do
     Zipfelfolio.DataCase.setup_sandbox(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
+
+  @doc """
+  The selector of the sidebar's link to `path`. setzkasten's shell renders the navigation more than
+  once (sidebar, rail, its dialog, dock); this is the one in the sidebar.
+  """
+  def sidebar_link(path), do: ~s(aside nav[aria-label="Hauptnavigation"] a[href="#{path}"])
 
   @doc """
   Setup helper that registers and logs in users.

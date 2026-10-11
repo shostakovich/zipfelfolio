@@ -54,24 +54,23 @@ defmodule ZipfelfolioWeb.PerformanceLiveTest do
     %{portfolio: portfolio, sparplan: sparplan}
   end
 
-  test "is in the sidebar and the tab bar", %{conn: conn} do
+  test "is in the sidebar", %{conn: conn} do
     {:ok, lv, _html} = live(conn, ~p"/performance")
 
-    assert has_element?(lv, "#side-performance.active[href='/performance']")
-    assert has_element?(lv, "#tab-performance.active[href='/performance']")
+    assert has_element?(lv, sidebar_link("/performance") <> "[aria-current=page]")
   end
 
   test "shows the key figures of all portfolios for the year to date", %{conn: conn} do
     {:ok, lv, _html} = live(conn, ~p"/performance")
 
-    assert has_element?(lv, "#period a.active[aria-current]", "YTD")
-    assert has_element?(lv, "#portfolio-menu-toggle", "Gesamt")
+    assert has_element?(lv, "#period a[aria-current]", "YTD")
+    assert has_element?(lv, "#portfolio-menu summary", "Gesamt")
     assert has_element?(lv, "h1", "Performance")
     assert has_element?(lv, "#ttwror .stat-value")
     assert lv |> element("#ttwror") |> render() =~ "p.\u00A0a."
     assert has_element?(lv, "#irr .stat-value")
-    assert has_element?(lv, "#drawdown .stat-label", "Max. Drawdown")
-    assert has_element?(lv, "#volatility .stat-label", "Volatilität")
+    assert has_element?(lv, "#drawdown .stat-title", "Max. Drawdown")
+    assert has_element?(lv, "#volatility .stat-title", "Volatilität")
   end
 
   test "breaks down the change in value from the initial to the final value", %{conn: conn} do
@@ -80,14 +79,14 @@ defmodule ZipfelfolioWeb.PerformanceLiveTest do
     breakdown = lv |> element("#breakdown") |> render()
     first_day = Date.shift(today(), year: -2) |> Date.add(-1) |> ZipfelfolioWeb.Format.date()
 
-    assert breakdown =~ ~r/Anfangswert\s*<span[^>]*>\s*#{first_day}/
+    assert breakdown =~ "Anfangswert am #{first_day}"
     assert breakdown =~ "0,00\u00A0€"
     assert breakdown =~ ~r/Unrealisierte Kursgewinne.*\+100,00\x{00A0}€/su
     assert breakdown =~ ~r/Gebühren.*−2,00\x{00A0}€/su
     assert breakdown =~ ~r/Einlagen und Entnahmen.*\+1.502,00\x{00A0}€/su
 
     assert breakdown =~
-             ~r/Endwert\s*<span[^>]*>\s*#{ZipfelfolioWeb.Format.date(today())}.*1.600,00\x{00A0}€/su
+             ~r/Endwert am #{ZipfelfolioWeb.Format.date(today())}.*1.600,00\x{00A0}€/su
 
     refute breakdown =~ "Währungsgewinne"
   end
@@ -162,7 +161,7 @@ defmodule ZipfelfolioWeb.PerformanceLiveTest do
   test "keeps the period and the portfolio in the URL, so that they survive a reload", ctx do
     {:ok, lv, _html} = live(ctx.conn, ~p"/performance")
 
-    lv |> element("#period a", "1\u202FM") |> render_click()
+    lv |> element("#period a", "1\u00A0M") |> render_click()
     assert_patch(lv, ~p"/performance?period=1m")
 
     lv |> element("#portfolio-menu a", "Sparplan") |> render_click()
@@ -171,21 +170,21 @@ defmodule ZipfelfolioWeb.PerformanceLiveTest do
 
     {:ok, lv, _html} = live(ctx.conn, path)
 
-    assert has_element?(lv, "#period a.active", "1\u202FM")
-    assert has_element?(lv, "#portfolio-menu-toggle", "Sparplan")
+    assert has_element?(lv, "#period a[aria-current]", "1\u00A0M")
+    assert has_element?(lv, "#portfolio-menu summary", "Sparplan")
 
     assert lv |> element("#breakdown") |> render() =~
              ~r/Einlagen und Entnahmen.*\+500,00\x{00A0}€/su
 
-    lv |> element("#period a", "3\u202FJ") |> render_click()
+    lv |> element("#period a", "3\u00A0J") |> render_click()
     assert_patch(lv, ~p"/performance?#{[period: "3y", portfolio: ctx.sparplan.id]}")
   end
 
   test "falls back to the year to date and all portfolios for unknown parameters", ctx do
     {:ok, lv, _html} = live(ctx.conn, ~p"/performance?period=decade&portfolio=nope")
 
-    assert has_element?(lv, "#period a.active", "YTD")
-    assert has_element?(lv, "#portfolio-menu-toggle", "Gesamt")
+    assert has_element?(lv, "#period a[aria-current]", "YTD")
+    assert has_element?(lv, "#portfolio-menu summary", "Gesamt")
   end
 
   test "updates when new prices arrive", %{conn: conn} do

@@ -56,78 +56,97 @@ defmodule ZipfelfolioWeb.TransactionsLive do
         Buchungen
         <:subtitle>Aus Portfolio Performance importierte Buchungen sind nur lesbar.</:subtitle>
         <:actions>
-          <form id="receipts-upload" phx-change="upload" phx-submit="upload" class="d-inline">
-            <label
-              for={@uploads.receipts.ref}
-              class="btn btn-sm d-inline-flex align-items-center gap-1"
-              role="button"
-            >
-              <.icon name="upload" class="app-icon-sm" /> PDF hochladen
+          <form id="receipts-upload" phx-change="upload" phx-submit="upload">
+            <label class={[
+              "btn has-focus-visible:outline-2 has-focus-visible:outline-offset-2",
+              "has-focus-visible:outline-primary"
+            ]}>
+              <.icon name="upload" /> PDF hochladen
+              <.live_file_input upload={@uploads.receipts} class="sr-only" />
             </label>
-            <.live_file_input upload={@uploads.receipts} class="visually-hidden" />
           </form>
-          <button
+          <.button
+            :if={!@empty}
             id="transactions-book"
-            type="button"
-            class="btn btn-sm btn-primary d-none d-lg-inline-flex align-items-center gap-1"
+            variant={:primary}
+            icon="plus"
+            class="max-md:hidden"
             phx-click={TransactionDialog.open()}
           >
-            <.icon name="plus" class="app-icon-sm" /> Buchung erfassen
-          </button>
+            Buchung erfassen
+          </.button>
         </:actions>
       </.header>
 
-      <div :for={message <- receipt_upload_errors(@uploads)} class="alert alert-danger" role="alert">
-        {message}
+      <div :if={receipt_upload_errors(@uploads) != []} class="mb-6 flex flex-col gap-2">
+        <.alert :for={message <- receipt_upload_errors(@uploads)} tone={:error}>{message}</.alert>
       </div>
 
-      <ReceiptComponents.inbox
-        :if={@inbox != []}
-        receipts={@inbox}
-        names={@names}
-        polled_at={@polled_at}
-      />
+      <div class="flex flex-col gap-8">
+        <ReceiptComponents.inbox
+          :if={@inbox != []}
+          receipts={@inbox}
+          names={@names}
+          polled_at={@polled_at}
+        />
 
-      <nav id="transaction-filter" aria-label="Filter">
-        <ul class="nav nav-underline mb-3 flex-nowrap overflow-x-auto app-filter">
-          <li :for={{param, filter, label} <- @filters} class="nav-item">
-            <.link
+        <.no_portfolios :if={@empty and @months == []} />
+
+        <section :if={!(@empty and @months == [])} aria-label="Buchungen">
+          <.tabs id="transaction-filter" label="Filter" class="mb-4">
+            <:tab
+              :for={{param, filter, label} <- @filters}
               patch={~p"/transactions?#{filter_query(param)}"}
-              class={["nav-link text-nowrap", @filter == filter && "active"]}
-              aria-current={@filter == filter && "page"}
+              active={@filter == filter}
             >
               {label}
-            </.link>
-          </li>
-        </ul>
-      </nav>
+            </:tab>
+          </.tabs>
 
-      <.card :if={@months == []}>
-        <p id="transactions-empty" class="mb-0">
-          {if @filter, do: "Keine Buchungen dieser Art.", else: "Noch keine Buchungen."}
-        </p>
-      </.card>
+          <.empty_state
+            :if={@months == [] and @filter != nil}
+            id="transactions-empty"
+            icon="list"
+          >
+            Keine Buchungen dieser Art.
+          </.empty_state>
 
-      <section
-        :for={{month, transactions} <- @months}
-        id={"month-#{Date.to_iso8601(month)}"}
-        aria-labelledby={"month-#{Date.to_iso8601(month)}-title"}
-      >
-        <h2
-          id={"month-#{Date.to_iso8601(month)}-title"}
-          class="small text-uppercase fw-bold text-body-secondary mb-2"
-        >
-          {month_name(month)}
-        </h2>
-        <ul class="list-group mb-4">
-          <.transaction :for={transaction <- transactions} transaction={transaction} />
-        </ul>
-      </section>
+          <.empty_state
+            :if={@months == [] and @filter == nil}
+            id="transactions-empty"
+            layout={:page}
+            plush="receipt"
+            icon="list"
+            title="Noch keine Buchungen"
+          >
+            Erfasse eine Buchung von Hand oder lade den PDF-Beleg deiner Bank hoch.
+            <:action>
+              <.button variant={:primary} icon="plus" phx-click={TransactionDialog.open()}>
+                Buchung erfassen
+              </.button>
+            </:action>
+          </.empty_state>
+
+          <.list :if={@months != []} id="transactions">
+            <%= for {month, transactions} <- @months do %>
+              <.list_heading>
+                <h2 id={"month-#{Date.to_iso8601(month)}"}>{month_name(month)}</h2>
+              </.list_heading>
+              <.transaction
+                :for={transaction <- transactions}
+                transaction={transaction}
+                month={month}
+              />
+            <% end %>
+          </.list>
+        </section>
+      </div>
     </Layouts.app>
     """
   end
 
   attr :transaction, Transaction, required: true
+  attr :month, Date, required: true
 
   defp transaction(assigns) do
     transaction = assigns.transaction
@@ -135,65 +154,64 @@ defmodule ZipfelfolioWeb.TransactionsLive do
     assigns =
       assign(assigns,
         title: title(transaction),
-        editable: Transaction.editable?(transaction),
-        tone: type_tone(transaction.type)
+        editable: Transaction.editable?(transaction)
       )
 
     ~H"""
-    <li
+    <.list_row
       id={"transaction-#{@transaction.id}"}
-      class={[
-        "list-group-item d-flex align-items-center gap-2 gap-sm-3",
-        @editable && "list-group-item-action"
-      ]}
+      title={@title}
+      on_click={if @editable, do: TransactionDialog.edit(@transaction.id)}
+      trailing_on_phone={:title}
+      data-month={Date.to_iso8601(@month)}
     >
-      <span class={[
-        "app-avatar rounded-circle d-flex align-items-center justify-content-center",
-        "bg-#{@tone}-subtle text-#{@tone}-emphasis"
-      ]}>
-        <.icon name={type_icon(@transaction.type)} />
-      </span>
-      <span class="me-auto app-tx-text">
-        <button
-          :if={@editable}
-          type="button"
-          class="app-tx-edit stretched-link d-block fw-semibold text-start"
-          phx-click={TransactionDialog.edit(@transaction.id)}
-        >
-          {@title}<span class="visually-hidden"> bearbeiten</span>
-        </button>
-        <span :if={!@editable} class="d-block fw-semibold">{@title}</span>
-        <span class="small text-body-secondary">{details(@transaction)}</span>
-      </span>
-      <span class="d-flex flex-column flex-sm-row align-items-end align-items-sm-center gap-1 gap-sm-3">
-        <span class={[
-          "fw-bold tabular-nums text-nowrap order-sm-last",
-          amount_tone(@transaction.type)
-        ]}>
-          {signed_amount(@transaction)}
-        </span>
-        <a
-          :if={@transaction.receipt}
-          href={~p"/receipts/#{@transaction.receipt_id}"}
-          target="_blank"
-          rel="noopener"
-          class="badge text-bg-light d-inline-flex align-items-center gap-1 text-decoration-none app-tx-receipt"
-          aria-label={"Beleg #{@transaction.receipt.filename} öffnen"}
-        >
-          <.icon name="file" class="app-icon-sm" />PDF
-        </a>
-      </span>
-      <.icon
-        :if={@editable}
-        name="chevron"
-        class="app-icon-sm text-body-tertiary flex-shrink-0 d-none d-sm-block"
-      />
-    </li>
+      <:leading><.avatar icon={type_icon(@transaction.type)} tone={:base} /></:leading>
+      <span :if={@editable} class="sr-only"> bearbeiten</span>
+      <:meta>{details(@transaction)}</:meta>
+      <:trailing :let={place}>
+        <.receipt_link :if={@transaction.receipt && place == :column} transaction={@transaction} />
+        <.amount
+          value={signed_cents(@transaction)}
+          currency={@transaction.currency}
+          currency_display={Format.currency_display(@transaction.currency)}
+          signed={signed?(@transaction.type)}
+          tone={inflow?(@transaction.type)}
+          class="font-semibold"
+        />
+        <%!-- On phones the amount keeps the title line, the receipt goes below it. --%>
+        <.receipt_link
+          :if={@transaction.receipt && place == :title}
+          transaction={@transaction}
+          id_suffix="-phone"
+        />
+      </:trailing>
+    </.list_row>
+    """
+  end
+
+  attr :transaction, Transaction, required: true
+  attr :id_suffix, :string, default: ""
+
+  defp receipt_link(assigns) do
+    ~H"""
+    <a
+      id={"transaction-#{@transaction.id}-receipt#{@id_suffix}"}
+      href={~p"/receipts/#{@transaction.receipt_id}"}
+      target="_blank"
+      rel="noopener"
+      class={[
+        "relative z-10 inline-flex items-center justify-center rounded-selector",
+        "pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+      ]}
+      aria-label={"Beleg #{@transaction.receipt.filename} öffnen"}
+    >
+      <.badge style={:plain} icon="file-text">PDF</.badge>
+    </a>
     """
   end
 
   defp title(%Transaction{security: %{name: name}} = transaction),
-    do: "#{@labels[transaction.type]} · #{name}"
+    do: join_meta([@labels[transaction.type], name])
 
   defp title(transaction), do: @labels[transaction.type]
 
@@ -205,55 +223,40 @@ defmodule ZipfelfolioWeb.TransactionsLive do
 
   defp type_icon(_type), do: "wallet"
 
-  defp type_tone(type) when type in [:dividend, :interest], do: "success"
-
-  defp type_tone(type)
-       when type in [:buy, :sell, :inbound_delivery, :outbound_delivery, :security_transfer],
-       do: "primary"
-
-  defp type_tone(_type), do: "secondary"
-
-  defp amount_tone(type) when type in @inflows, do: "text-success"
-  defp amount_tone(_type), do: nil
-
   # From the user's money's view: what comes into an account counts plus, what leaves it minus;
   # deliveries and transfers move what is there already.
-  defp signed_amount(%Transaction{type: type, amount: amount, currency: currency}) do
-    sign =
-      cond do
-        type in @inflows -> "+"
-        type in @outflows -> "−"
-        true -> ""
-      end
+  defp signed_cents(%Transaction{type: type, amount: amount}) when type in @outflows, do: -amount
+  defp signed_cents(%Transaction{amount: amount}), do: amount
 
-    sign <> Format.amount(amount) <> "\u00A0" <> Format.currency(currency)
-  end
+  defp inflow?(type), do: type in @inflows
+  defp signed?(type), do: type in @inflows or type in @outflows
 
   defp details(transaction) do
-    [
-      Calendar.strftime(transaction.date_time, "%d.%m.%Y"),
-      where(transaction),
-      shares(transaction),
-      gross(transaction),
-      unit(transaction, :fee, "Gebühren"),
-      unit(transaction, :tax, "Steuern")
-    ]
-    |> Enum.reject(&is_nil/1)
-    |> Enum.join(" · ")
+    join_meta(
+      [Calendar.strftime(transaction.date_time, "%d.%m.%Y")] ++
+        where(transaction) ++
+        [
+          shares(transaction),
+          gross(transaction),
+          unit(transaction, :fee, "Gebühren"),
+          unit(transaction, :tax, "Steuern")
+        ]
+    )
   end
 
   defp where(%Transaction{type: :security_transfer} = transaction),
-    do: "#{name(transaction.portfolio)} → #{name(transaction.other_portfolio)}"
+    do: ["#{portfolio(transaction.portfolio)} → #{portfolio(transaction.other_portfolio)}"]
 
   defp where(%Transaction{type: :cash_transfer} = transaction),
-    do: "#{name(transaction.account)} → #{name(transaction.other_account)}"
+    do: ["#{name(transaction.account)} → #{name(transaction.other_account)}"]
 
   defp where(transaction) do
-    case Enum.reject([transaction.portfolio, transaction.account], &is_nil/1) do
-      [] -> nil
-      sides -> Enum.map_join(sides, " · ", & &1.name)
-    end
+    [transaction.portfolio && Format.portfolio_name(transaction.portfolio)] ++
+      [transaction.account && transaction.account.name]
   end
+
+  defp portfolio(nil), do: "–"
+  defp portfolio(portfolio), do: Format.portfolio_name(portfolio)
 
   defp name(nil), do: "–"
   defp name(record), do: record.name
@@ -309,7 +312,12 @@ defmodule ZipfelfolioWeb.TransactionsLive do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(page_title: "Buchungen", filters: @filters, uploaded: %{})
+     |> assign(
+       page_title: "Buchungen",
+       filters: @filters,
+       uploaded: %{},
+       empty: Portfolios.empty?(socket.assigns.current_scope)
+     )
      |> load_inbox()
      |> allow_upload(:receipts,
        accept: ~w(.pdf),
@@ -430,7 +438,7 @@ defmodule ZipfelfolioWeb.TransactionsLive do
   end
 
   defp load_transactions(socket) do
-    months = Portfolios.transactions_by_month(socket.assigns.current_scope, socket.assigns.filter)
-    assign(socket, :months, months)
+    scope = socket.assigns.current_scope
+    assign(socket, :months, Portfolios.transactions_by_month(scope, socket.assigns.filter))
   end
 end

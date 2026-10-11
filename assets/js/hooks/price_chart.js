@@ -1,4 +1,4 @@
-import { chartHook, cssColor, day, formatDay, reducedMotion, timeAxis, transparent } from "../charts.js"
+import { chartHook, cssColor, inkColor, day, series, formatDay, reducedMotion, timeAxis, transparent } from "../charts.js"
 
 const TRADES = { buy: "Kauf", inbound_delivery: "Einlieferung", sell: "Verkauf", outbound_delivery: "Auslieferung" }
 const PURCHASES = ["buy", "inbound_delivery"]
@@ -16,20 +16,16 @@ export const PriceChart = chartHook("price-chart", ({ currency, dates, prices, t
   if (dates.length === 0) return null
 
   const color = (name) => cssColor(el, name)
-  const [primary, success, danger, muted, grid, background] = [
-    "--felt-primary",
-    "--felt-success-text",
-    "--felt-danger-text",
-    "--felt-secondary-color",
-    "--felt-border-color",
-    "--felt-card-bg",
-  ].map(color)
+  // The price in series 1; purchases and sales in the ink of gains and losses.
+  const primary = series(el, "chart-1").line
+  const [success, danger, background] = ["--color-success-ink", "--color-error-ink", "--color-base-100"].map(color)
+  const [muted, grid] = [inkColor(el, 70), inkColor(el, 10)]
   const days = dates.map(day)
   const last = days.length - 1
   // A trade may lie before the first price, or after the last one.
   const span = [...days, ...trades.map((trade) => day(trade.date))]
   const font = { family: getComputedStyle(el).fontFamily, size: 12 }
-  const narrow = el.clientWidth < 576
+  const compact = el.clientWidth < 576
   const price = (value) => `${priceFormat.format(value)}\u00a0${currency}`
   const dots = (purchases) =>
     trades
@@ -38,8 +34,8 @@ export const PriceChart = chartHook("price-chart", ({ currency, dates, prices, t
   const tradeDots = {
     showLine: false,
     clip: false,
-    pointRadius: narrow ? 4 : 4.5,
-    pointHoverRadius: narrow ? 5 : 6,
+    pointRadius: compact ? 4 : 4.5,
+    pointHoverRadius: compact ? 5 : 6,
   }
 
   return {
@@ -50,8 +46,8 @@ export const PriceChart = chartHook("price-chart", ({ currency, dates, prices, t
           label: "Kurs",
           data: prices.map((value, i) => ({ x: days[i], y: unscaled(value) })),
           borderColor: primary,
-          borderWidth: narrow ? 1.75 : 2.5,
-          backgroundColor: transparent(primary, 0.14),
+          borderWidth: compact ? 1.75 : 2.5,
+          backgroundColor: transparent(el, "var(--color-chart-1-fill)", 0.14),
           fill: "start",
           clip: false,
           pointRadius: (context) => (context.dataIndex === last ? 4 : 0),

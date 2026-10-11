@@ -13,6 +13,12 @@ defmodule ZipfelfolioWeb.FormatTest do
     assert Format.price(nil, "EUR") == "–"
   end
 
+  test "a portfolio without a name, as PP may store one, is „Ohne Namen“" do
+    assert Format.portfolio_name(%{name: "Sparplan"}) == "Sparplan"
+    assert Format.portfolio_name(%{name: ""}) == "Ohne Namen"
+    assert Format.portfolio_name(nil) == "Ohne Namen"
+  end
+
   test "currencies are € for euros, otherwise their code" do
     assert Format.currency("EUR") == "€"
     assert Format.currency("USD") == "USD"
@@ -140,6 +146,11 @@ defmodule ZipfelfolioWeb.FormatTest do
 
   test "dates are German" do
     assert Format.date(~D[2026-10-09]) == "09.10.2026"
+  end
+
+  test "a short date leaves out the year, none is a dash" do
+    assert Format.short_date(~D[2026-03-14]) == "14.03."
+    assert Format.short_date(nil) == "–"
   end
 
   test "a span of days names its months, its year once when it is in one" do

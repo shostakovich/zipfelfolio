@@ -18,7 +18,6 @@ its depot number; sign-in with passkeys or a link by email, container
 and deploy.
 
 - [Issues](https://github.com/shostakovich/zipfelfolio/issues): scope and decisions per feature, milestones v1–v4
-- `mockup/`: click dummy with example data, built with [felt-css](https://felt-css.rocu.de/)
 
 ## Development
 
@@ -47,7 +46,7 @@ Each user enters their Paperless-ngx URL, API token and tag under Einstellungen 
 documents with that tag go into the inbox and get the tag „<tag>-erledigt“ instead.
 
 To choose a model, measure the candidates on real receipts: put the PDFs into `test/fixtures/receipts/private/`,
-which git ignores, in a checkout on a machine that reaches the home server's Ollama. Bootstrap an expected file per
+which git ignores, in a checkout on a machine that reaches the home server's Ollama. Seed an expected file per
 receipt from the most trusted model, then correct every `<name>.expected.json` by hand:
 
 ```sh
@@ -70,12 +69,6 @@ Performance's anonymised importer test texts with expected fields from its test 
 `test/fixtures/receipts/pp/`, which git ignores as they are EPL-licensed; measure them with that folder and
 `--sample 15`. Their price, depot number and reference are not scored.
 
-Click dummy:
-
-```sh
-python3 -m http.server 8077 --directory mockup
-```
-
 ## Before you use this
 
 - This is a personal project, built for my own household (1–2 people, a few portfolios).
@@ -83,9 +76,12 @@ python3 -m http.server 8077 --directory mockup
 
 ## Stack
 
-Elixir, Phoenix LiveView, SQLite, felt-css, Chart.js; one container behind a reverse proxy.
+Elixir, Phoenix LiveView, SQLite, Tailwind CSS with daisyUI and [setzkasten](https://github.com/shostakovich/setzkasten),
+Chart.js; one container behind a reverse proxy.
 
 ## License
 
 Public domain ([The Unlicense](LICENSE)). The FI forecast is inspired by
-[Beyond Rule 4](https://github.com/JackMorrissey/beyond-rule-4) (MIT).
+[Beyond Rule 4](https://github.com/JackMorrissey/beyond-rule-4) (MIT). The Lucide icons in `assets/vendor/lucide` are
+ISC-licensed. The plush images in `priv/static/images/plush` are derived from Noto Emoji 3D (Apache License 2.0),
+see `priv/static/images/plush/NOTICE`.

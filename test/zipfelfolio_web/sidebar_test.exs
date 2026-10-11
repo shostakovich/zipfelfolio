@@ -32,31 +32,42 @@ defmodule ZipfelfolioWeb.SidebarTest do
     )
   end
 
-  test "keeps a retired portfolio that still holds shares until it is empty", ctx do
+  test "lists the views, the active portfolios and accounts, then the settings", ctx do
     retired = portfolio_fixture(ctx.scope, %{name: "Alt", retired: true})
-    security = holding(ctx.scope, retired, 5, 100)
-
-    {:ok, lv, _html} = live(ctx.conn, ~p"/")
-
-    assert lv |> element("#net-worth") |> render() =~ "500 €"
-    assert lv |> element("#side-portfolio-#{retired.id}") |> render() =~ "500,00"
-
-    {:ok, lv, _html} = live(ctx.conn, ~p"/holdings")
-
-    assert has_element?(lv, "#portfolio-#{retired.id}")
-    assert has_element?(lv, "#side-portfolio-#{retired.id}", "Alt")
-
-    transaction_fixture(ctx.scope, today(),
-      type: :outbound_delivery,
-      portfolio_id: retired.id,
-      security_id: security.id,
-      shares: shares(5)
-    )
+    holding(ctx.scope, retired, 5, 100)
+    closed = account_fixture(ctx.scope, %{name: "Geschlossen", retired: true})
+    deposit(ctx.scope, closed, 50)
+    portfolio_fixture(ctx.scope, %{name: "Aktiv"})
+    account_fixture(ctx.scope, %{name: "Tagesgeld"})
 
     {:ok, lv, _html} = live(ctx.conn, ~p"/holdings")
 
-    refute has_element?(lv, "#portfolio-#{retired.id}")
-    refute has_element?(lv, "#side-portfolio-#{retired.id}")
+    labels =
+      lv
+      |> render()
+      |> LazyHTML.from_document()
+      |> LazyHTML.query(~s(aside nav[aria-label="Hauptnavigation"] li))
+      |> Enum.map(&(&1 |> LazyHTML.text() |> String.split() |> hd()))
+
+    assert labels ==
+             ~w(Übersicht Bestand Dividenden Buchungen Performance Depots Aktiv Konten Tagesgeld) ++
+               ["Einstellungen"]
+
+    assert has_element?(lv, "#holdings-portfolio-#{retired.id}")
+    refute has_element?(lv, sidebar_link(~p"/holdings?#{[portfolio: retired.id]}"))
+    refute has_element?(lv, sidebar_link(~p"/holdings?#{[account: closed.id]}"))
+  end
+
+  test "marks „Bestand“ for a retired portfolio or account, which it leaves out", ctx do
+    retired = portfolio_fixture(ctx.scope, %{name: "Alt", retired: true})
+    holding(ctx.scope, retired, 5, 100)
+    closed = account_fixture(ctx.scope, %{name: "Geschlossen", retired: true})
+    deposit(ctx.scope, closed, 50)
+
+    for path <- [~p"/holdings?#{[portfolio: retired.id]}", ~p"/holdings?#{[account: closed.id]}"] do
+      {:ok, lv, _html} = live(ctx.conn, path)
+      assert has_element?(lv, sidebar_link("/holdings") <> "[aria-current=page]")
+    end
   end
 
   describe "the portfolios and accounts" do
@@ -67,59 +78,67 @@ defmodule ZipfelfolioWeb.SidebarTest do
       holding(scope, portfolio, 10, 100)
       savings = account_fixture(scope, %{name: "Tagesgeld"})
       deposit(scope, savings, 1_000)
-      %{account: account, portfolio: portfolio, savings: savings}
+
+      %{
+        account: account,
+        portfolio: portfolio,
+        savings: savings,
+        portfolio_path: ~p"/holdings?#{[portfolio: portfolio.id]}",
+        account_path: ~p"/holdings?#{[portfolio: portfolio.id, account: account.id]}",
+        savings_path: ~p"/holdings?#{[account: savings.id]}"
+      }
     end
 
-    test "list each portfolio with its account, then the accounts of no portfolio", ctx do
+    test "show each portfolio's securities and each account's balance, adding up to net worth",
+         ctx do
       {:ok, lv, _html} = live(ctx.conn, ~p"/")
 
-      assert lv |> element("#side-portfolio-#{ctx.portfolio.id}") |> render() =~ "1.240,00"
-      assert lv |> element("#side-account-#{ctx.account.id}.app-sub") |> render() =~ "240,00"
-      assert lv |> element("#side-account-#{ctx.savings.id}") |> render() =~ "1.000,00"
-      assert lv |> element("#side-portfolios") |> render() =~ "1.240,00"
-      assert lv |> element("#side-accounts") |> render() =~ "1.000,00"
+      assert lv |> element(sidebar_link(ctx.portfolio_path)) |> render() =~ "1.000,00"
+      assert lv |> element(sidebar_link(ctx.account_path)) |> render() =~ "240,00"
+      assert lv |> element(sidebar_link(ctx.savings_path)) |> render() =~ "1.000,00"
       assert lv |> element("#net-worth") |> render() =~ "2.240 €"
+    end
+
+    test "stay out of the icon rail, which keeps the views and the settings", ctx do
+      {:ok, lv, _html} = live(ctx.conn, ~p"/")
+
+      rail = "aside.xl\\:hidden"
+      refute has_element?(lv, "#{rail} a[href='#{ctx.portfolio_path}']")
+      refute has_element?(lv, "#{rail} a[href='#{ctx.savings_path}']")
+      assert has_element?(lv, "#{rail} a[href='/holdings']")
+      assert has_element?(lv, "#{rail} a[href='/users/settings']")
+      assert has_element?(lv, sidebar_link(ctx.portfolio_path))
     end
 
     test "link to the holdings, an account with its row marked", ctx do
       {:ok, lv, _html} = live(ctx.conn, ~p"/")
 
-      for {id, path} <- [
-            {"#side-portfolio-#{ctx.portfolio.id}",
-             ~p"/holdings?#{[portfolio: ctx.portfolio.id]}"},
-            {"#side-account-#{ctx.account.id}",
-             ~p"/holdings?#{[portfolio: ctx.portfolio.id, account: ctx.account.id]}"},
-            {"#side-account-#{ctx.savings.id}", ~p"/holdings?#{[account: ctx.savings.id]}"}
-          ] do
-        assert has_element?(lv, ~s(#{id}[href="#{path}"]))
-      end
-
       {:ok, lv, _html} =
         lv
-        |> element("#side-account-#{ctx.account.id}")
+        |> element(sidebar_link(ctx.account_path))
         |> render_click()
         |> follow_redirect(ctx.conn)
 
-      assert has_element?(lv, "#account-#{ctx.account.id}.table-active")
-      assert has_element?(lv, "#side-account-#{ctx.account.id}.active[aria-current=page]")
-      refute has_element?(lv, "#side-portfolio-#{ctx.portfolio.id}.active")
-      refute has_element?(lv, "#side-holdings.active")
+      assert has_element?(lv, "#account-#{ctx.account.id}[aria-current=true]")
+      assert has_element?(lv, sidebar_link(ctx.account_path) <> "[aria-current=page]")
+      refute has_element?(lv, sidebar_link(ctx.portfolio_path) <> "[aria-current]")
+      refute has_element?(lv, sidebar_link("/holdings") <> "[aria-current]")
     end
 
     test "mark the open portfolio, or the screen", ctx do
-      {:ok, lv, _html} = live(ctx.conn, ~p"/holdings?#{[portfolio: ctx.portfolio.id]}")
+      {:ok, lv, _html} = live(ctx.conn, ctx.portfolio_path)
 
-      assert has_element?(lv, "#side-portfolio-#{ctx.portfolio.id}.active[aria-current=page]")
-      refute has_element?(lv, "#side-holdings.active")
+      assert has_element?(lv, sidebar_link(ctx.portfolio_path) <> "[aria-current=page]")
+      refute has_element?(lv, sidebar_link("/holdings") <> "[aria-current]")
 
       {:ok, lv, _html} = live(ctx.conn, ~p"/holdings")
 
-      assert has_element?(lv, "#side-holdings.active[aria-current=page]")
-      refute has_element?(lv, "#side-portfolio-#{ctx.portfolio.id}.active")
+      assert has_element?(lv, sidebar_link("/holdings") <> "[aria-current=page]")
+      refute has_element?(lv, sidebar_link(ctx.portfolio_path) <> "[aria-current]")
 
       {:ok, lv, _html} = live(ctx.conn, ~p"/")
 
-      assert has_element?(lv, "#side-overview.active[aria-current=page]")
+      assert has_element?(lv, sidebar_link("/") <> "[aria-current=page]")
     end
 
     test "update when new prices arrive, also on a page without prices", ctx do
@@ -131,7 +150,7 @@ defmodule ZipfelfolioWeb.SidebarTest do
 
       MarketData.run_daily()
 
-      assert lv |> element("#side-portfolio-#{ctx.portfolio.id}") |> render() =~ "1.340,00"
+      assert lv |> element(sidebar_link(ctx.portfolio_path)) |> render() =~ "1.100,00"
     end
   end
 
@@ -143,36 +162,36 @@ defmodule ZipfelfolioWeb.SidebarTest do
 
     {:ok, lv, _html} = live(ctx.conn, ~p"/")
 
-    assert has_element?(lv, "#sidebar", "Eigenes Depot")
-    refute has_element?(lv, "#sidebar", "Fremd")
-    refute has_element?(lv, "#side-accounts")
+    sidebar = ~s(aside nav[aria-label="Hauptnavigation"])
+    assert has_element?(lv, sidebar, "Eigenes Depot")
+    refute has_element?(lv, sidebar, "Fremd")
+    refute has_element?(lv, sidebar, "Konten")
   end
 
   test "offers the account menu with passkeys and signing out", ctx do
     {:ok, lv, _html} = live(ctx.conn, ~p"/")
 
-    assert has_element?(lv, "#side-me", ctx.user.email)
-    assert has_element?(lv, ~s(#side-menu a[href="/users/settings#passkeys"]), "Passkeys")
+    assert has_element?(lv, "#account-sidebar summary", ctx.user.email)
 
     assert has_element?(
              lv,
-             ~s(#side-menu a[href="/users/log-out"][data-method=delete]),
+             ~s(#account-sidebar a[href="/users/settings#passkeys"]),
+             "Passkeys"
+           )
+
+    assert has_element?(
+             lv,
+             ~s(#account-sidebar a[href="/users/log-out"][data-method=delete]),
              "Abmelden"
            )
 
-    assert has_element?(lv, "#side-settings", "Einstellungen")
+    assert has_element?(lv, sidebar_link("/users/settings"), "Einstellungen")
   end
 
-  test "applies the collapse stored on this device before the first paint", ctx do
-    [head, _body] = ctx.conn |> get(~p"/") |> html_response(200) |> String.split("</head>")
-
-    # On the root element, outside the LiveView, so that live navigation keeps it.
-    assert head =~ ~r/localStorage\.getItem\("sidebar"\)/
-    assert head =~ ~r/matchMedia\("\(min-width: 1280px\)"\).*classList\.add\("app-rail"\)/s
-
+  test "shows no count on „Buchungen“ while the inbox is empty", ctx do
     {:ok, lv, _html} = live(ctx.conn, ~p"/")
 
-    assert has_element?(lv, "aside#sidebar[phx-hook=Sidebar]")
-    assert has_element?(lv, "#sidebar #side-toggle")
+    assert lv |> element(sidebar_link("/transactions")) |> render() =~
+             ~r/Buchungen\s*<\/span>\s*<\/a>/
   end
 end

@@ -40,8 +40,7 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
 
     assert lv |> element("#net-worth") |> render() =~ "1.020\u00A0€"
 
-    assert lv |> element("#net-worth .text-success") |> render() =~
-             "+20\u00A0€ heute (+2,00\u00A0%)"
+    assert has_element?(lv, "#net-worth .text-success-ink", "+20\u00A0€ heute (+2,00\u00A0%)")
   end
 
   test "shows a loss since yesterday in red", %{conn: conn, scope: scope} do
@@ -52,8 +51,7 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
 
     assert lv |> element("#net-worth") |> render() =~ "975\u00A0€"
 
-    assert lv |> element("#net-worth .text-danger") |> render() =~
-             "−25\u00A0€ heute (−2,50\u00A0%)"
+    assert has_element?(lv, "#net-worth .text-error-ink", "−25\u00A0€ heute (−2,50\u00A0%)")
   end
 
   test "shows a change that rounds to 0 € without a colour", %{conn: conn, scope: scope} do
@@ -62,7 +60,7 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
 
     {:ok, lv, _html} = live(conn, ~p"/")
 
-    assert lv |> element("#net-worth .text-body-secondary") |> render() =~ ~r/>\s*0\s€ heute/u
+    assert has_element?(lv, "#net-worth [class~=\"text-base-content/70\"]", ~r/^0\s€ heute/u)
   end
 
   test "shows the change without a percentage when there was nothing yesterday", ctx do
@@ -76,7 +74,7 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
 
     {:ok, lv, _html} = live(ctx.conn, ~p"/")
 
-    assert lv |> element("#net-worth .text-success") |> render() =~ ~r/\+500\x{00A0}€ heute\s*</u
+    assert has_element?(lv, "#net-worth .text-success-ink", ~r/^\+500\x{00A0}€ heute$/u)
   end
 
   test "updates when new prices arrive", %{conn: conn, scope: scope} do
@@ -107,7 +105,7 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
     test "shows net worth against invested capital for six months", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/")
 
-      assert has_element?(lv, "#period a.active[aria-current]", "6 M")
+      assert has_element?(lv, "#period a[aria-current]", "6\u00A0M")
       assert_push_event(lv, "net-worth-chart", %{dates: dates} = chart)
       assert dates == Enum.to_list(Date.range(Date.shift(today(), month: -6), today()))
       assert List.last(chart.net_worth) == money(1_510)
@@ -127,14 +125,14 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
 
       {:ok, lv, _html} = live(conn, ~p"/?period=ytd")
 
-      assert has_element?(lv, "#period a.active", "YTD")
+      assert has_element?(lv, "#period a[aria-current]", "YTD")
       assert_push_event(lv, "net-worth-chart", %{dates: [^first | _]})
     end
 
     test "shows everything since the first transaction as Max", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/?period=max")
 
-      assert has_element?(lv, "#period a.active", "Max")
+      assert has_element?(lv, "#period a[aria-current]", "Max")
       assert_push_event(lv, "net-worth-chart", %{dates: [first | _] = dates})
       assert first == Date.shift(today(), year: -2)
       assert List.last(dates) == today()
@@ -143,7 +141,7 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
     test "falls back to six months for an unknown period", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/?period=decade")
 
-      assert has_element?(lv, "#period a.active", "6 M")
+      assert has_element?(lv, "#period a[aria-current]", "6\u00A0M")
     end
 
     test "updates when new prices arrive", %{conn: conn} do
@@ -161,20 +159,20 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
     test "shows TTWROR and IRR for the period", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/")
 
-      assert lv |> element("#ttwror .stat-label") |> render() =~ "TTWROR · 6 M"
-      assert lv |> element("#ttwror .stat-value.text-success") |> render() =~ "+0,67\u00A0%"
-      assert lv |> element("#irr .stat-label") |> render() =~ "IZF · 6 M"
+      assert lv |> element("#ttwror .stat-title") |> render() =~ "TTWROR\u2060\u00A0· 6\u00A0M"
+      assert lv |> element("#ttwror .stat-value.text-success-ink") |> render() =~ "+0,67\u00A0%"
+      assert lv |> element("#irr .stat-title") |> render() =~ "IZF\u2060\u00A0· 6\u00A0M"
 
-      assert lv |> element("#irr .stat-value.text-success") |> render() =~
+      assert lv |> element("#irr .stat-value.text-success-ink") |> render() =~
                ~r/\+\d+,\d\d\x{00A0}%/u
 
-      assert lv |> element("#irr") |> render() =~ "p.\u00A0a. · geldgewichtet"
+      assert lv |> element("#irr") |> render() =~ "p.\u00A0a.\u2060\u00A0· geldgewichtet"
 
       lv |> element("#period a", "Max") |> render_click()
 
-      assert lv |> element("#ttwror .stat-label") |> render() =~ "TTWROR · Max"
+      assert lv |> element("#ttwror .stat-title") |> render() =~ "TTWROR\u2060\u00A0· Max"
       assert lv |> element("#ttwror .stat-value") |> render() =~ "+0,67\u00A0%"
-      assert lv |> element("#irr .stat-label") |> render() =~ "IZF · Max"
+      assert lv |> element("#irr .stat-title") |> render() =~ "IZF\u2060\u00A0· Max"
     end
 
     test "updates the returns when new prices arrive", %{conn: conn} do
@@ -183,7 +181,7 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
       Repo.update_all(Security, set: [latest_close: price(97)])
       send(lv.pid, :market_data_updated)
 
-      assert lv |> element("#ttwror .stat-value.text-danger") |> render() =~ "−1,00\u00A0%"
+      assert lv |> element("#ttwror .stat-value.text-error-ink") |> render() =~ "−1,00\u00A0%"
     end
   end
 
@@ -210,7 +208,7 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
 
     {:ok, lv, _html} = live(conn, ~p"/")
 
-    assert lv |> element("#dividends .stat-label") |> render() =~ "Dividenden #{today().year}"
+    assert lv |> element("#dividends .stat-title") |> render() =~ "Dividenden #{today().year}"
     assert lv |> element("#dividends .stat-value") |> render() =~ "50\u00A0€"
   end
 
@@ -248,8 +246,8 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
             reduce: 0,
             do: (sum -> sum + gross)
 
-      assert lv |> element("#dividends") |> render() =~
-               "erwartet #{Format.euros(money(30 + rest))} im Jahr"
+      expected = Regex.escape(Format.euros(money(30 + rest)))
+      assert has_element?(lv, "#dividends .stat-desc", ~r/erwartet\s+#{expected} im Jahr/u)
     end
 
     test "lists the next dividends, gross, each marked announced or forecast", ctx do
@@ -266,7 +264,7 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
       assert forecast =~ "~100,00\u00A0€"
 
       assert has_element?(lv, "#upcoming-dividends a[href='/dividends?amount=gross']", "Kalender")
-      assert lv |> element("#upcoming-dividends .card-footer") |> render() =~ "~150\u00A0€"
+      assert lv |> element("#upcoming-dividends-total") |> render() =~ "~150\u00A0€"
     end
 
     test "keep when the period changes and update when new market data arrives", ctx do
@@ -312,7 +310,7 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
 
   describe "Depots" do
     # 240 € on the reference account since last year, 10 shares delivered yesterday at 100 €,
-    # 102 € today: 1,260 € on 1,240 € since 31 December.
+    # 102 € today: the securities are worth 1,020 €, +2,0 % on 1,000 €.
     setup %{scope: scope} do
       account = account_fixture(scope, %{name: "Konto Langfristig"})
 
@@ -344,17 +342,21 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
       )
     end
 
-    test "lists each portfolio with its value and TTWROR since 1 January", ctx do
+    test "lists each portfolio with its securities' value and TTWROR since 1 January", ctx do
       {:ok, lv, _html} = live(ctx.conn, ~p"/")
 
       row = lv |> element("#portfolio-#{ctx.portfolio.id}") |> render()
 
       assert row =~ "Langfristig"
-      assert row =~ "1\u00A0Wertpapier · Konto\u00A0240,00\u00A0€"
-      assert row =~ "1.260,00\u00A0€"
+      assert row =~ "1\u00A0Wertpapier\u2060\u00A0· Konto\u00A0240,00\u00A0€"
+      assert row =~ "1.020,00\u00A0€"
 
-      assert lv |> element("#portfolio-#{ctx.portfolio.id} .text-success") |> render() =~
-               "+1,6\u00A0% YTD"
+      assert lv
+             |> element(
+               "#portfolio-#{ctx.portfolio.id} [class~='max-md:hidden'] .text-success-ink"
+             )
+             |> render() =~
+               "+2,0\u00A0% YTD"
     end
 
     test "shows a portfolio without shares as cash only and hides retired ones once empty", ctx do
@@ -392,6 +394,6 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
     {:ok, lv, _html} = live(conn, ~p"/")
 
     refute has_element?(lv, "#net-worth")
-    assert has_element?(lv, "a[href='/settings/import']", "Import aus Portfolio Performance")
+    assert has_element?(lv, "a[href='/settings/import']", "Aus Portfolio Performance importieren")
   end
 end

@@ -53,10 +53,10 @@ defmodule ZipfelfolioWeb.DividendsLiveTest do
 
     {:ok, lv, _html} = live(conn, ~p"/dividends")
 
-    assert lv |> element("#this-year .stat-label") |> render() =~ "#{this_year()} bisher"
+    assert lv |> element("#this-year .stat-title") |> render() =~ "#{this_year()} bisher"
     assert lv |> element("#this-year .stat-value") |> render() =~ "82\u00A0€"
-    assert lv |> element("#this-year") |> render() =~ "#{this_year() - 1} gesamt 40\u00A0€"
-    assert has_element?(lv, "#amount a.active", "Netto")
+    assert has_element?(lv, "#this-year .stat-desc", "#{this_year() - 1} gesamt 40\u00A0€")
+    assert has_element?(lv, "#amount a[aria-current]", "Netto")
   end
 
   test "switches to gross, which survives a reload", %{conn: conn, scope: scope} do
@@ -68,9 +68,9 @@ defmodule ZipfelfolioWeb.DividendsLiveTest do
 
     {:ok, lv, _html} = live(conn, ~p"/dividends?amount=gross")
 
-    assert has_element?(lv, "#amount a.active", "Brutto")
+    assert has_element?(lv, "#amount a[aria-current]", "Brutto")
     assert lv |> element("#this-year .stat-value") |> render() =~ "100\u00A0€"
-    assert lv |> element("#this-year") |> render() =~ "#{this_year() - 1} gesamt 50\u00A0€"
+    assert has_element?(lv, "#this-year .stat-desc", "#{this_year() - 1} gesamt 50\u00A0€")
   end
 
   test "the tab survives a reload and keeps the amount", %{conn: conn, scope: scope} do
@@ -82,10 +82,10 @@ defmodule ZipfelfolioWeb.DividendsLiveTest do
 
     {:ok, lv, _html} = live(conn, ~p"/dividends?tab=received&amount=gross")
 
-    assert has_element?(lv, "#dividend-tabs a.active", "Erhalten")
+    assert has_element?(lv, "#dividend-tabs a[aria-current]", "Erhalten")
     assert has_element?(lv, "#received")
     refute has_element?(lv, "#per-month")
-    assert has_element?(lv, "#amount a.active", "Brutto")
+    assert has_element?(lv, "#amount a[aria-current]", "Brutto")
   end
 
   test "switching tab or amount keeps the dividends; new market data reloads them", ctx do
@@ -124,6 +124,11 @@ defmodule ZipfelfolioWeb.DividendsLiveTest do
     assert this =~ "82\u00A0€"
     assert this =~ "bis #{today().day}."
     assert this =~ "noch offen" or today().month == 12
+    # A month still to come says so to a screen reader instead of being an empty cell.
+    assert has_element?(lv, "#year-#{this_year()} td .sr-only", "noch offen") or
+             today().month == 12
+
+    refute has_element?(lv, "#year-#{this_year() - 1} td .sr-only", "noch offen")
     assert last =~ "40\u00A0€"
     assert empty =~ "–"
     assert first =~ "12\u00A0€"
@@ -136,7 +141,8 @@ defmodule ZipfelfolioWeb.DividendsLiveTest do
 
     {:ok, lv, _html} = live(ctx.conn, ~p"/dividends?tab=received")
 
-    row = lv |> element("#received tbody tr[data-date='#{this_year()}-01-01']") |> render()
+    row =
+      lv |> element("#received tbody tr:has(time[datetime='#{this_year()}-01-01'])") |> render()
 
     assert row =~ "All\u2011World"
     assert row =~ ~s(datetime="#{this_year()}-01-01")
@@ -146,6 +152,24 @@ defmodule ZipfelfolioWeb.DividendsLiveTest do
     assert row =~ "0,50\u00A0€"
     assert row =~ "81,50\u00A0€"
     assert lv |> element("#this-year .stat-value") |> render() =~ "82\u00A0€"
+  end
+
+  test "shows the payments of the last two years, older years by their totals", ctx do
+    security = seed(ctx.scope)
+    old = this_year() - 3
+    dividend_fixture(ctx.scope, security, Date.new!(old, 3, 31), 12.34)
+
+    {:ok, lv, _html} = live(ctx.conn, ~p"/dividends?tab=received")
+
+    assert has_element?(lv, "#received-years-#{old} th", "#{old}")
+
+    assert has_element?(
+             lv,
+             "#received-years-#{old} tr[hidden]:has(time[datetime='#{old}-03-31'])"
+           )
+
+    refute has_element?(lv, "#received-years-#{this_year()} tr[hidden]")
+    assert has_element?(lv, "#received-all", "Zahlungen älterer Jahre anzeigen")
   end
 
   test "counts and lists a dividend booked without a security", ctx do
@@ -161,7 +185,9 @@ defmodule ZipfelfolioWeb.DividendsLiveTest do
 
     assert lv |> element("#this-year .stat-value") |> render() =~ "87\u00A0€"
 
-    assert lv |> element("#received tbody tr[data-date='#{this_year()}-01-02']") |> render() =~
+    assert lv
+           |> element("#received tbody tr:has(time[datetime='#{this_year()}-01-02'])")
+           |> render() =~
              "Ohne Wertpapier"
   end
 
@@ -184,7 +210,8 @@ defmodule ZipfelfolioWeb.DividendsLiveTest do
 
     {:ok, lv, _html} = live(conn, ~p"/dividends")
 
-    assert render(lv) =~ "Noch keine Dividenden gebucht und keine erwartet."
+    assert has_element?(lv, "#dividends-empty h2", "Noch keine Dividenden")
+    assert has_element?(lv, "#dividends-empty img[src^='/images/plush/coins']")
     refute has_element?(lv, "#this-year")
   end
 
@@ -213,7 +240,7 @@ defmodule ZipfelfolioWeb.DividendsLiveTest do
 
       {:ok, lv, _html} = live(ctx.conn, ~p"/dividends")
 
-      assert has_element?(lv, "#dividend-tabs a.active", "Kalender")
+      assert has_element?(lv, "#dividend-tabs a[aria-current]", "Kalender")
       refute has_element?(lv, "#per-month")
 
       entry = lv |> element("#calendar li[data-pay-date='#{pay_date}']") |> render()
@@ -224,7 +251,7 @@ defmodule ZipfelfolioWeb.DividendsLiveTest do
       assert entry =~ "50,00\u00A0€"
       assert entry =~ "brutto"
 
-      assert lv |> element("#calendar-#{Calendar.strftime(pay_date, "%Y-%m")} h2") |> render() =~
+      assert lv |> element("h2#calendar-#{Calendar.strftime(pay_date, "%Y-%m")}") |> render() =~
                "50,00\u00A0€"
     end
 
@@ -242,7 +269,7 @@ defmodule ZipfelfolioWeb.DividendsLiveTest do
       assert entry =~ "Prognose"
       assert entry =~ "~163,00\u00A0€"
       refute entry =~ "brutto"
-      refute lv |> element(".app-kpis") |> render() =~ "brutto"
+      refute lv |> element("#key-figures") |> render() =~ "brutto"
 
       {:ok, lv, _html} = live(ctx.conn, ~p"/dividends?amount=gross")
 
@@ -285,12 +312,12 @@ defmodule ZipfelfolioWeb.DividendsLiveTest do
       assert lv |> element("#next-dividend .stat-value") |> render() =~ "brutto"
       assert lv |> element("#next-12-months .stat-value") |> render() =~ "teils brutto"
       assert lv |> element("#yield .stat-value") |> render() =~ "teils brutto"
-      assert lv |> element("#coming-months-title") |> render() =~ "teils brutto"
+      assert lv |> element("#coming-months h2") |> render() =~ "teils brutto"
 
       {:ok, lv, _html} = live(ctx.conn, ~p"/dividends?amount=gross")
 
-      refute lv |> element(".app-kpis") |> render() =~ "brutto"
-      refute lv |> element("#coming-months-title") |> render() =~ "teils brutto"
+      refute lv |> element("#key-figures") |> render() =~ "brutto"
+      refute lv |> element("#coming-months h2") |> render() =~ "teils brutto"
     end
 
     test "says when nothing is expected", ctx do
@@ -300,6 +327,8 @@ defmodule ZipfelfolioWeb.DividendsLiveTest do
 
       assert render(lv) =~ "keine Dividende angekündigt oder zu erwarten"
       assert lv |> element("#next-dividend") |> render() =~ "keine erwartet"
+      # Twelve empty months add nothing to the empty calendar.
+      refute has_element?(lv, "#coming-months")
     end
   end
 
@@ -309,10 +338,10 @@ defmodule ZipfelfolioWeb.DividendsLiveTest do
     assert render(lv) =~ "Import aus Portfolio Performance"
   end
 
-  test "marks the dividends in the sidebar and the tab bar", %{conn: conn} do
+  test "marks the dividends in the sidebar and the dock", %{conn: conn} do
     {:ok, lv, _html} = live(conn, ~p"/dividends")
 
-    assert has_element?(lv, "#side-dividends.active[aria-current=page]")
-    assert has_element?(lv, "#tab-dividends.active[aria-current=page]")
+    assert has_element?(lv, sidebar_link("/dividends") <> "[aria-current=page]")
+    assert has_element?(lv, ~s(nav.dock a[href="/dividends"][aria-current=page]))
   end
 end

@@ -141,7 +141,7 @@ defmodule ZipfelfolioWeb.SecuritiesLiveTest do
 
     {:ok, lv, _html} = live(conn, ~p"/settings/securities")
 
-    assert save_feed(lv, security, "yahoo", "") =~ "muss ausgefüllt werden"
+    assert save_feed(lv, security, "yahoo", "") =~ "Muss ausgefüllt werden"
     assert Repo.reload!(security).symbol == "VGWL.DE"
   end
 
@@ -159,7 +159,11 @@ defmodule ZipfelfolioWeb.SecuritiesLiveTest do
     assert [{~D[2026-10-07], 16_650_000_000, :manual}] = prices_of(security)
     assert lv |> element("#security-#{security.id}") |> render() =~ "07.10.2026"
 
-    lv |> element("#security-#{security.id} button", "Löschen") |> render_click()
+    confirm_click(
+      lv,
+      "#security-#{security.id} [id^=manual-price-row-][id$=-delete]",
+      "Kurs vom 07.10.2026 löschen?"
+    )
 
     assert prices_of(security) == []
   end
@@ -178,17 +182,21 @@ defmodule ZipfelfolioWeb.SecuritiesLiveTest do
     )
 
     {:ok, lv, _html} = live(conn, ~p"/settings/securities")
-    assert lv |> element("#side-portfolio-#{portfolio.id}") |> render() =~ "1.000,00"
+
+    assert lv |> element(sidebar_link(~p"/holdings?#{[portfolio: portfolio.id]}")) |> render() =~
+             "1.000,00"
 
     lv
     |> form("#manual-price-#{security.id}", price: %{date: Date.to_iso8601(today), close: "120"})
     |> render_submit()
 
-    assert lv |> element("#side-portfolio-#{portfolio.id}") |> render() =~ "1.200,00"
+    assert lv |> element(sidebar_link(~p"/holdings?#{[portfolio: portfolio.id]}")) |> render() =~
+             "1.200,00"
 
-    lv |> element("#security-#{security.id} button", "Löschen") |> render_click()
+    confirm_click(lv, "#security-#{security.id} [id^=manual-price-row-][id$=-delete]")
 
-    assert lv |> element("#side-portfolio-#{portfolio.id}") |> render() =~ "1.000,00"
+    assert lv |> element(sidebar_link(~p"/holdings?#{[portfolio: portfolio.id]}")) |> render() =~
+             "1.000,00"
   end
 
   test "deleting a manual price lets Yahoo fill that day again", %{conn: conn} do
@@ -201,7 +209,7 @@ defmodule ZipfelfolioWeb.SecuritiesLiveTest do
     end)
 
     {:ok, lv, _html} = live(conn, ~p"/settings/securities")
-    lv |> element("#security-#{security.id} button", "Löschen") |> render_click()
+    confirm_click(lv, "#security-#{security.id} [id^=manual-price-row-][id$=-delete]")
     await_background_fetches()
 
     assert_received {:chart, "VGWL.DE", ~D[2026-10-07]}
@@ -219,7 +227,7 @@ defmodule ZipfelfolioWeb.SecuritiesLiveTest do
       |> form("#manual-price-#{security.id}", price: %{date: "2026-10-05", close: "1"})
       |> render_submit()
 
-    assert html =~ "hat schon einen Kurs aus Portfolio Performance"
+    assert html =~ "Hat schon einen Kurs aus Portfolio Performance"
   end
 
   describe "benchmark" do
