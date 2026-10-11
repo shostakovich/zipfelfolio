@@ -22,8 +22,8 @@ CI runs the same plus `mix assets.deploy`. Erlang/Elixir versions: `.tool-versio
 - DB tests run synchronously with `pool_size: 1` (SQLite is busy otherwise).
 - Context functions take `%Scope{}`: a user sees only their own portfolios, accounts and transactions; nothing is
   shared between users except securities and prices.
-- UI: felt-css with Bootstrap class names via `core_components`. A felt.css bug becomes an issue in
-  `shostakovich/felt-css`, the app keeps plain Bootstrap markup.
+- UI: setzkasten components (Tailwind 4, daisyUI 5) via `use Setzkasten`; app-specific styles only in
+  `assets/css/app.css`. A gap other apps share goes into setzkasten, not around it in the app.
 - Passkeys (`Zipfelfolio.WebAuthn`) check origin and RP ID from the endpoint URL, so they work on
   `localhost` and `https://folio.rocu.de`, not on a LAN IP. Every check has a breaking test in
   `test/zipfelfolio/web_authn_test.exs` using `FakeAuthenticator`; a new check gets one too.
