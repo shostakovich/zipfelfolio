@@ -133,9 +133,11 @@ defmodule Zipfelfolio.Portfolios do
     `Performance.benchmark_ttwror/3`; nil when they picked none
   - `dividends`: this year's up to `today`, before taxes and fees
   - `portfolios`: the portfolios by name, retired ones only while they hold shares, each with
-    `account`, its reference account as in the sidebar (nil when an earlier one settles against
-    it too, or once it is retired and empty), its `balance` in euros, the number of `securities`
-    held, the `value` of the securities and the account, and the `ttwror` of both since 1 January
+    `account`, its reference account as in the sidebar (nil when another portfolio owns it, see
+    below, or once it is retired and empty), its `balance` in euros, the number of `securities`
+    held, the `value` of the securities and the account, and the `ttwror` of both since 1 January.
+    An account several portfolios settle against belongs to the first active one by name, to a
+    retired one only when no active one settles against it.
   """
   def overview(%Scope{} = scope, period, today) do
     transactions = list_transactions(scope)
@@ -290,10 +292,12 @@ defmodule Zipfelfolio.Portfolios do
   end
 
   # The portfolio each reference account of `portfolios` belongs to, as `%{account_id =>
-  # portfolio_id}`: an account several of them settle against belongs to the first. The screens
-  # list the portfolios by name, so it is the first by name.
+  # portfolio_id}`: an account several of them settle against belongs to the first active one, to
+  # a retired one only when no active one settles against it. The screens list the portfolios by
+  # name, so it is the first by name, as in the sidebar.
   defp reference_account_owners(portfolios) do
-    for %{reference_account_id: account_id, id: id} <- Enum.reverse(portfolios),
+    for %{reference_account_id: account_id, id: id} <-
+          portfolios |> Enum.sort_by(& &1.retired) |> Enum.reverse(),
         account_id != nil,
         into: %{},
         do: {account_id, id}
@@ -307,7 +311,7 @@ defmodule Zipfelfolio.Portfolios do
   - `portfolio`: the chosen one of them, nil for all
   - `groups`: each portfolio shown with its `holdings` by value and its reference account in
     `accounts`. For all portfolios, an account several settle against appears under the first
-    (as in the overview), and the accounts of no portfolio follow in a group without portfolio.
+    active one (as in the overview and the sidebar), and the accounts of no portfolio follow in a group without portfolio.
     Each group has the `value` of its rows and the `purchase_value` and `gain` of its holdings.
   - `total`: `value`, `purchase_value` and `gain` of the groups shown, the `dividends` of their
     holdings and the `securities_value` they make up

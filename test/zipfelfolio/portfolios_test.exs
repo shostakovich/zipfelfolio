@@ -186,6 +186,24 @@ defmodule Zipfelfolio.PortfoliosTest do
       assert {b_row.portfolio.id, b_row.account, b_row.value} == {b.id, nil, money(102)}
     end
 
+    test "gives an account a retired portfolio settles against too the active one", ctx do
+      account = account_fixture(ctx.scope, %{name: "K"})
+      deposit(ctx.scope, account, @friday, 50)
+      Repo.update!(change(ctx.portfolio, reference_account_id: account.id))
+      retired = portfolio_fixture(ctx.scope, %{name: "Alt", retired: true})
+      Repo.update!(change(retired, reference_account_id: account.id))
+      shares_fixture(ctx.scope, retired, 1)
+
+      assert [alt, langfristig] = Portfolios.overview(ctx.scope, :max, @saturday).portfolios
+      assert {alt.portfolio.id, alt.account} == {retired.id, nil}
+      assert {langfristig.account, langfristig.balance} == {account, money(50)}
+
+      assert [%{account: ^account, portfolio: %{id: id}}] =
+               Portfolios.sidebar(ctx.scope, @saturday).accounts
+
+      assert id == ctx.portfolio.id
+    end
+
     test "gives nothing but zeros without any transaction", ctx do
       assert %{
                net_worth: 0,
