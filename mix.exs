@@ -39,6 +39,16 @@ defmodule Zipfelfolio.MixProject do
       # Swoosh's SMTP adapter.
       {:gen_smtp, "~> 1.2"},
       {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
+      {:tailwind, "~> 0.5", runtime: Mix.env() == :dev},
+      {:daisyui,
+       github: "saadeghi/daisyui",
+       tag: "v5.5.20",
+       sparse: "packages/bundle",
+       app: false,
+       compile: false,
+       depth: 1},
+      # The UI's components and themes (DECISIONS.md, 0005)
+      {:setzkasten, github: "shostakovich/setzkasten"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:lazy_html, ">= 0.1.0", only: :test}
     ]
@@ -50,11 +60,14 @@ defmodule Zipfelfolio.MixProject do
       "ecto.setup": ["ecto.create", "ecto.migrate"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
-      "assets.setup": ["esbuild.install --if-missing"],
-      "assets.build": ["compile", "esbuild zipfelfolio", "esbuild zipfelfolio_css"],
+      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
+      "assets.build": ["compile", "tailwind zipfelfolio", "esbuild zipfelfolio"],
       "assets.deploy": [
+        # compile first: app.js imports phoenix-colocated/zipfelfolio and the CSS its colocated
+        # styles, which the LiveView compiler writes while compiling (fresh checkouts, CI)
+        "compile",
+        "tailwind zipfelfolio --minify",
         "esbuild zipfelfolio --minify",
-        "esbuild zipfelfolio_css --minify",
         "phx.digest"
       ]
     ]

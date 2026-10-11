@@ -13,7 +13,7 @@ config :zipfelfolio, ZipfelfolioWeb.Endpoint,
   secret_key_base: "LskGY5/9tttiiNgHNnTehHMtdpAwqP7TysuHPsLz5alTW9d1NZgzzS5t2HPoka81",
   watchers: [
     esbuild: {Esbuild, :install_and_run, [:zipfelfolio, ~w(--sourcemap=inline --watch)]},
-    esbuild_css: {Esbuild, :install_and_run, [:zipfelfolio_css, ~w(--sourcemap=inline --watch)]}
+    tailwind: {Tailwind, :install_and_run, [:zipfelfolio, ~w(--watch)]}
   ]
 
 config :zipfelfolio, dev_routes: true
