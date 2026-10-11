@@ -43,6 +43,12 @@ defmodule Zipfelfolio.Portfolios do
   def list_portfolios(%Scope{} = scope),
     do: Repo.all(from p in Portfolio, where: p.user_id == ^scope.user.id, order_by: p.name)
 
+  @doc "Whether the user has neither a portfolio nor an account yet, as before the first import."
+  def empty?(%Scope{} = scope) do
+    not Repo.exists?(from p in Portfolio, where: p.user_id == ^scope.user.id) and
+      not Repo.exists?(from a in Account, where: a.user_id == ^scope.user.id)
+  end
+
   @doc "The user's active portfolios by name with their reference accounts, for their depot numbers."
   def list_active_portfolios(%Scope{} = scope) do
     Repo.all(

@@ -373,8 +373,7 @@ defmodule ZipfelfolioWeb.PerformanceLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    scope = socket.assigns.current_scope
-    empty = Portfolios.list_portfolios(scope) == [] and Portfolios.list_accounts(scope) == []
+    empty = Portfolios.empty?(socket.assigns.current_scope)
 
     {:ok, assign(socket, page_title: "Performance", empty: empty)}
   end

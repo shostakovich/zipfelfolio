@@ -32,6 +32,15 @@ defmodule Zipfelfolio.PortfoliosTest do
     user_scope_fixture(user)
   end
 
+  test "empty?/1 holds until the user has a portfolio or an account of their own", ctx do
+    other = user_scope_fixture()
+    refute Portfolios.empty?(ctx.scope)
+    assert Portfolios.empty?(other)
+
+    account_fixture(other)
+    refute Portfolios.empty?(other)
+  end
+
   describe "overview/3" do
     # 10 shares delivered on Friday for 1,000 €, closing at 100 € that day and at 102 € today.
     defp shares_fixture(scope, portfolio, count \\ 10) do
