@@ -42,9 +42,9 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
                 <div class="me-auto">
                   <div class="fw-semibold">{passkey.name}</div>
                   <div class="small text-body-secondary">
-                    angelegt {date(passkey.inserted_at)}
+                    angelegt {Format.date(passkey.inserted_at)}
                     <span :if={passkey.last_used_at}>
-                      · zuletzt genutzt {date(passkey.last_used_at)}
+                      · zuletzt genutzt {Format.date(passkey.last_used_at)}
                     </span>
                   </div>
                 </div>
@@ -341,6 +341,4 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
 
   defp assign_passkeys(socket),
     do: assign(socket, :passkeys, Users.list_passkeys(socket.assigns.current_scope.user))
-
-  defp date(datetime), do: Calendar.strftime(datetime, "%d.%m.%Y")
 end

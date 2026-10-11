@@ -159,6 +159,22 @@ defmodule ZipfelfolioWeb.UserLive.SettingsTest do
       assert Zipfelfolio.Users.list_passkeys(user) == []
     end
 
+    test "dates a passkey in local time", %{conn: conn, user: user} do
+      created = ~U[2026-03-14 23:30:00.000000Z]
+      used = ~U[2026-06-30 23:30:00.000000Z]
+
+      user
+      |> passkey_fixture()
+      |> Ecto.Changeset.change(inserted_at: created, last_used_at: used)
+      |> Zipfelfolio.Repo.update!()
+
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+
+      local = &(&1 |> Zipfelfolio.LocalTime.from_utc() |> Calendar.strftime("%d.%m.%Y"))
+      assert has_element?(lv, "[id^=passkey-]", "angelegt #{local.(created)}")
+      assert has_element?(lv, "[id^=passkey-]", "zuletzt genutzt #{local.(used)}")
+    end
+
     test "cannot delete another user's passkey", %{conn: conn} do
       passkey = passkey_fixture(user_fixture())
       {:ok, lv, _html} = live(conn, ~p"/users/settings")
