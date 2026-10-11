@@ -150,7 +150,7 @@ defmodule Zipfelfolio.PortfoliosTest do
       assert Portfolios.overview(ctx.scope, :six_months, @saturday).dividends == money(20)
     end
 
-    test "lists the portfolios with their value and TTWROR since 1 January", ctx do
+    test "lists the portfolios with their securities' value and TTWROR since 1 January", ctx do
       account = account_fixture(ctx.scope, %{name: "Konto Langfristig"})
       portfolio = Repo.update!(change(ctx.portfolio, reference_account_id: account.id))
       deposit(ctx.scope, account, ~D[2025-06-01], 240)
@@ -162,11 +162,31 @@ defmodule Zipfelfolio.PortfoliosTest do
 
       assert [langfristig, sparplan] = Portfolios.overview(ctx.scope, :max, @saturday).portfolios
 
-      assert %{account: ^account, balance: 24_000, securities: 1, value: 126_000} = langfristig
+      # The securities alone, as in the sidebar: the account's 240 € are its balance.
+      assert %{account: ^account, balance: 24_000, securities: 1, value: 102_000} = langfristig
       assert langfristig.portfolio.id == portfolio.id
-      assert_in_delta langfristig.ttwror, 1_260 / 1_240 - 1, 1.0e-12
+      assert_in_delta langfristig.ttwror, 102 / 100 - 1, 1.0e-12
 
-      assert %{account: ^savings, securities: 0, value: 150_000, ttwror: +0.0} = sparplan
+      assert %{account: ^savings, balance: 150_000, securities: 0, value: 0, ttwror: +0.0} =
+               sparplan
+    end
+
+    test "counts a dividend paid into the reference account for the depot's TTWROR", ctx do
+      account = account_fixture(ctx.scope)
+      portfolio = Repo.update!(change(ctx.portfolio, reference_account_id: account.id))
+      security = shares_fixture(ctx.scope, portfolio)
+
+      transaction_fixture(ctx.scope, @saturday,
+        type: :dividend,
+        account_id: account.id,
+        security_id: security.id,
+        amount: money(10)
+      )
+
+      assert [row] = Portfolios.overview(ctx.scope, :max, @saturday).portfolios
+      # The securities alone are worth 1,020 €; the 10 € dividend counts for them.
+      assert row.value == money(1_020)
+      assert_in_delta row.ttwror, (1_020 + 10) / 1_000 - 1, 1.0e-12
     end
 
     test "counts an account two portfolios settle against for the first of them", ctx do
@@ -182,7 +202,7 @@ defmodule Zipfelfolio.PortfoliosTest do
       assert [a_row, b_row, _langfristig] =
                Portfolios.overview(ctx.scope, :max, @saturday).portfolios
 
-      assert {a_row.portfolio.id, a_row.account, a_row.value} == {a.id, account, money(50)}
+      assert {a_row.portfolio.id, a_row.account, a_row.balance} == {a.id, account, money(50)}
       assert {b_row.portfolio.id, b_row.account, b_row.value} == {b.id, nil, money(102)}
     end
 

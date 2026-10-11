@@ -312,7 +312,7 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
 
   describe "Depots" do
     # 240 € on the reference account since last year, 10 shares delivered yesterday at 100 €,
-    # 102 € today: 1,260 € on 1,240 € since 31 December.
+    # 102 € today: the securities are worth 1,020 €, +2,0 % on 1,000 €.
     setup %{scope: scope} do
       account = account_fixture(scope, %{name: "Konto Langfristig"})
 
@@ -344,17 +344,17 @@ defmodule ZipfelfolioWeb.OverviewLiveTest do
       )
     end
 
-    test "lists each portfolio with its value and TTWROR since 1 January", ctx do
+    test "lists each portfolio with its securities' value and TTWROR since 1 January", ctx do
       {:ok, lv, _html} = live(ctx.conn, ~p"/")
 
       row = lv |> element("#portfolio-#{ctx.portfolio.id}") |> render()
 
       assert row =~ "Langfristig"
       assert row =~ "1\u00A0Wertpapier · Konto\u00A0240,00\u00A0€"
-      assert row =~ "1.260,00\u00A0€"
+      assert row =~ "1.020,00\u00A0€"
 
       assert lv |> element("#portfolio-#{ctx.portfolio.id} .text-success") |> render() =~
-               "+1,6\u00A0% YTD"
+               "+2,0\u00A0% YTD"
     end
 
     test "shows a portfolio without shares as cash only and hides retired ones once empty", ctx do

@@ -135,9 +135,10 @@ defmodule Zipfelfolio.Portfolios do
   - `portfolios`: the portfolios by name, retired ones only while they hold shares, each with
     `account`, its reference account as in the sidebar (nil when another portfolio owns it, see
     below, or once it is retired and empty), its `balance` in euros, the number of `securities`
-    held, the `value` of the securities and the account, and the `ttwror` of both since 1 January.
-    An account several portfolios settle against belongs to the first active one by name, to a
-    retired one only when no active one settles against it.
+    held, the `value` of the securities (as in the sidebar) and their `ttwror` since 1 January, as PP
+    figures a portfolio without its reference account. An account several portfolios settle
+    against belongs to the first active one by name, to a retired one only when no active one
+    settles against it.
   """
   def overview(%Scope{} = scope, period, today) do
     transactions = list_transactions(scope)
@@ -260,7 +261,6 @@ defmodule Zipfelfolio.Portfolios do
   defp portfolios_overview(scope, transactions, accounts, market, %Date.Range{last: today} = year) do
     holdings = Valuation.holdings(transactions, today)
     portfolios = shown_portfolios(scope, holdings)
-    owners = reference_account_owners(portfolios)
 
     rows = %{
       holdings: value_rows(holdings, market, today),
@@ -268,9 +268,9 @@ defmodule Zipfelfolio.Portfolios do
     }
 
     for %{portfolio: %Portfolio{} = portfolio} = group <- holding_groups(portfolios, nil, rows) do
-      # Its reference account counts towards the returns even once it is retired and empty.
-      account_ids = for {account_id, owner_id} <- owners, owner_id == portfolio.id, do: account_id
-      filter = Filter.new([portfolio], account_ids, transactions)
+      # The securities alone: purchases and sales are money in and out, dividends on the
+      # reference account count for them.
+      filter = Filter.new([portfolio], [], transactions)
       index = Performance.index(transactions, accounts, market, filter, year)
       account_row = List.first(group.accounts)
 
