@@ -265,8 +265,8 @@ defmodule ZipfelfolioWeb.Layouts do
   attr :sidebar, :map, required: true
   attr :current, :any, required: true
 
-  # Each portfolio with its reference account indented below, then the accounts of no portfolio;
-  # the totals add up to net worth.
+  # The active portfolios with their securities, then the active accounts; the totals add up to net
+  # worth.
   defp side_money(assigns) do
     ~H"""
     <div :if={@sidebar.portfolios != []} id="side-portfolios" class="app-side-h">
@@ -283,17 +283,6 @@ defmodule ZipfelfolioWeb.Layouts do
         >
           <.chip portfolio={row.portfolio} />
         </.money_link>
-        <.money_link
-          :if={row.account}
-          id={"side-account-#{row.account.account.id}"}
-          class="app-sub"
-          navigate={Sidebar.account_path(row.portfolio, row.account.account)}
-          name={row.account.account.name}
-          value={row.account.value}
-          active={@current == {:holdings, row.portfolio.id, row.account.account.id}}
-        >
-          <.icon name="wallet" />
-        </.money_link>
       <% end %>
     </nav>
     <div :if={@sidebar.accounts != []} id="side-accounts" class="app-side-h">
@@ -303,10 +292,10 @@ defmodule ZipfelfolioWeb.Layouts do
       <.money_link
         :for={row <- @sidebar.accounts}
         id={"side-account-#{row.account.id}"}
-        navigate={Sidebar.account_path(nil, row.account)}
+        navigate={Sidebar.account_path(row.portfolio, row.account)}
         name={row.account.name}
         value={row.value}
-        active={@current == {:holdings, nil, row.account.id}}
+        active={match?({:holdings, _, _}, @current) and elem(@current, 2) == row.account.id}
       >
         <.wallet_chip />
       </.money_link>

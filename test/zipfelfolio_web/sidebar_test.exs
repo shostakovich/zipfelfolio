@@ -32,31 +32,17 @@ defmodule ZipfelfolioWeb.SidebarTest do
     )
   end
 
-  test "keeps a retired portfolio that still holds shares until it is empty", ctx do
+  test "leaves out a retired portfolio that still holds shares, which the holdings show", ctx do
     retired = portfolio_fixture(ctx.scope, %{name: "Alt", retired: true})
-    security = holding(ctx.scope, retired, 5, 100)
-
-    {:ok, lv, _html} = live(ctx.conn, ~p"/")
-
-    assert lv |> element("#net-worth") |> render() =~ "500 €"
-    assert lv |> element("#side-portfolio-#{retired.id}") |> render() =~ "500,00"
+    holding(ctx.scope, retired, 5, 100)
+    closed = account_fixture(ctx.scope, %{name: "Geschlossen", retired: true})
+    deposit(ctx.scope, closed, 50)
 
     {:ok, lv, _html} = live(ctx.conn, ~p"/holdings")
 
     assert has_element?(lv, "#portfolio-#{retired.id}")
-    assert has_element?(lv, "#side-portfolio-#{retired.id}", "Alt")
-
-    transaction_fixture(ctx.scope, today(),
-      type: :outbound_delivery,
-      portfolio_id: retired.id,
-      security_id: security.id,
-      shares: shares(5)
-    )
-
-    {:ok, lv, _html} = live(ctx.conn, ~p"/holdings")
-
-    refute has_element?(lv, "#portfolio-#{retired.id}")
     refute has_element?(lv, "#side-portfolio-#{retired.id}")
+    refute has_element?(lv, "#side-account-#{closed.id}")
   end
 
   describe "the portfolios and accounts" do
@@ -70,14 +56,14 @@ defmodule ZipfelfolioWeb.SidebarTest do
       %{account: account, portfolio: portfolio, savings: savings}
     end
 
-    test "list each portfolio with its account, then the accounts of no portfolio", ctx do
+    test "list each portfolio with its securities, then every account", ctx do
       {:ok, lv, _html} = live(ctx.conn, ~p"/")
 
-      assert lv |> element("#side-portfolio-#{ctx.portfolio.id}") |> render() =~ "1.240,00"
-      assert lv |> element("#side-account-#{ctx.account.id}.app-sub") |> render() =~ "240,00"
+      assert lv |> element("#side-portfolio-#{ctx.portfolio.id}") |> render() =~ "1.000,00"
+      assert lv |> element("#side-account-#{ctx.account.id}") |> render() =~ "240,00"
       assert lv |> element("#side-account-#{ctx.savings.id}") |> render() =~ "1.000,00"
-      assert lv |> element("#side-portfolios") |> render() =~ "1.240,00"
-      assert lv |> element("#side-accounts") |> render() =~ "1.000,00"
+      assert lv |> element("#side-portfolios") |> render() =~ "1.000,00"
+      assert lv |> element("#side-accounts") |> render() =~ "1.240,00"
       assert lv |> element("#net-worth") |> render() =~ "2.240 €"
     end
 
@@ -131,7 +117,7 @@ defmodule ZipfelfolioWeb.SidebarTest do
 
       MarketData.run_daily()
 
-      assert lv |> element("#side-portfolio-#{ctx.portfolio.id}") |> render() =~ "1.340,00"
+      assert lv |> element("#side-portfolio-#{ctx.portfolio.id}") |> render() =~ "1.100,00"
     end
   end
 

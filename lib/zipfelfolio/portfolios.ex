@@ -547,38 +547,45 @@ defmodule Zipfelfolio.Portfolios do
 
   @doc """
   What the sidebar shows on `today`, valued as the holdings screen values all portfolios, amounts
-  in euro cents:
+  in euro cents; nothing retired, whatever it still holds:
 
-  - `portfolios`: the portfolios by name, retired ones only while they hold shares, each with its
-    `value` (its securities and its reference account) and its reference `account` as
-    `%{account: account, value: cents}`, nil when it has none or an earlier one settles against
-    it too
-  - `accounts`: the accounts of no portfolio as `%{account: account, value: cents}`, retired ones
-    only while they hold money
+  - `portfolios`: the active portfolios by name, each with the `value` of its securities
+  - `accounts`: the active accounts by name, reference accounts too, each with its `value` and the
+    active `portfolio` it is the reference account of (the first by name if several settle
+    against it), nil for none
+
+  With nothing retired the values add up to net worth.
   """
   def sidebar(%Scope{} = scope, today) do
     transactions = list_transactions(scope)
     accounts = list_accounts(scope)
     market = load_market(transactions, accounts, today, :since_date)
     holdings = Valuation.holdings(transactions, today)
-
-    rows = %{
-      holdings: value_rows(holdings, market, today),
-      accounts: account_rows(accounts, Valuation.balances(transactions, today), market, today)
-    }
-
-    {portfolio_groups, account_groups} =
-      scope
-      |> shown_portfolios(holdings)
-      |> holding_groups(nil, rows)
-      |> Enum.split_with(& &1.portfolio)
+    balances = Valuation.balances(transactions, today)
+    portfolios = scope |> list_portfolios() |> Enum.reject(& &1.retired)
+    owners = reference_account_owners(portfolios)
+    by_id = Map.new(portfolios, &{&1.id, &1})
 
     %{
       portfolios:
-        Enum.map(portfolio_groups, fn group ->
-          %{portfolio: group.portfolio, value: group.value, account: List.first(group.accounts)}
-        end),
-      accounts: Enum.flat_map(account_groups, & &1.accounts)
+        for portfolio <- portfolios do
+          value =
+            holdings
+            |> Enum.filter(&(&1.portfolio_id == portfolio.id))
+            |> Enum.sum_by(&Valuation.value(&1, market, today))
+
+          %{portfolio: portfolio, value: value}
+        end,
+      accounts:
+        for account <- accounts, not account.retired do
+          balance = Map.get(balances, account.id, 0)
+
+          %{
+            account: account,
+            value: Market.to_euros(market, balance, account.currency, today),
+            portfolio: by_id[owners[account.id]]
+          }
+        end
     }
   end
 
