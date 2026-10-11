@@ -18,7 +18,6 @@ its depot number; sign-in with passkeys or a link by email, container
 and deploy.
 
 - [Issues](https://github.com/shostakovich/zipfelfolio/issues): scope and decisions per feature, milestones v1–v4
-- `mockup/`: click dummy with example data, built with [felt-css](https://felt-css.rocu.de/)
 
 ## Development
 
@@ -69,12 +68,6 @@ without real ones. For more banks' layouts, `--fetch-pp comdirect,scalablecapita
 Performance's anonymised importer test texts with expected fields from its test asserts into
 `test/fixtures/receipts/pp/`, which git ignores as they are EPL-licensed; measure them with that folder and
 `--sample 15`. Their price, depot number and reference are not scored.
-
-Click dummy:
-
-```sh
-python3 -m http.server 8077 --directory mockup
-```
 
 ## Before you use this
 
