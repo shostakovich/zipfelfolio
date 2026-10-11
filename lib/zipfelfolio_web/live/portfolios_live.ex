@@ -17,26 +17,21 @@ defmodule ZipfelfolioWeb.PortfoliosLive do
       sidebar={@sidebar}
       current={:portfolios}
     >
-      <.header>Depots</.header>
+      <.header back={~p"/users/settings"} back_label="Einstellungen">
+        Depotnummern
+        <:subtitle>Belege finden ihr Depot über die Depotnummer; nur die Ziffern zählen.</:subtitle>
+      </.header>
 
-      <.card :if={@active_portfolios == []}>
-        <p class="mb-0">
-          Noch keine Depots. Sie kommen mit dem <.link navigate={~p"/settings/import"}>Import aus Portfolio Performance</.link>.
-        </p>
-      </.card>
+      <.no_portfolios :if={@active_portfolios == []} />
 
-      <section :if={@active_portfolios != []} id="depot-numbers" aria-labelledby="depot-numbers-title">
-        <h2 id="depot-numbers-title" class="app-sheet-h"><span>Depotnummern</span></h2>
-        <ul class="list-group mb-2">
+      <section :if={@active_portfolios != []} id="depot-numbers" aria-label="Depotnummern">
+        <.list>
           <.depot_number_row
             :for={portfolio <- @active_portfolios}
             portfolio={portfolio}
             form={@editing == portfolio.id && @depot_number_form}
           />
-        </ul>
-        <p class="small text-body-secondary mx-1">
-          Belege finden ihr Depot über die Depotnummer; nur die Ziffern zählen.
-        </p>
+        </.list>
       </section>
     </Layouts.app>
     """
@@ -47,60 +42,67 @@ defmodule ZipfelfolioWeb.PortfoliosLive do
 
   defp depot_number_row(%{form: false} = assigns) do
     ~H"""
-    <li id={"depot-number-#{@portfolio.id}"} class="list-group-item d-flex align-items-start">
-      <Layouts.chip portfolio={@portfolio} />
-      <span class="me-auto app-depot-number-text">
-        <span class="d-block text-truncate">{@portfolio.name}</span>
-        <span class="d-block small text-body-secondary">
-          <%= for {part, index} <- Enum.with_index(depot_number_details(@portfolio)) do %>
-            <span :if={index > 0}> · </span><span class="text-nowrap">{part}</span>
-          <% end %>
-        </span>
-      </span>
-      <button
-        type="button"
-        class="btn btn-sm flex-shrink-0 align-self-center"
-        phx-click="edit_depot_number"
-        phx-value-id={@portfolio.id}
-        aria-label={"#{depot_number_action(@portfolio)}: Depotnummer von „#{@portfolio.name}“"}
-      >
-        {depot_number_action(@portfolio)}
-      </button>
-    </li>
+    <.list_row id={"depot-number-#{@portfolio.id}"} title={Format.portfolio_name(@portfolio)}>
+      <:leading><.icon name="briefcase" class="size-5 text-base-content/70" /></:leading>
+      <:meta>
+        <span :for={{part, index} <- Enum.with_index(depot_number_details(@portfolio))}><.meta_sep :if={
+          index > 0
+        } /><span class="whitespace-nowrap">{part}</span></span>
+      </:meta>
+      <:trailing>
+        <.button
+          size={:sm}
+          phx-click="edit_depot_number"
+          phx-value-id={@portfolio.id}
+          aria-label={"#{depot_number_action(@portfolio)}: Depotnummer von „#{Format.portfolio_name(@portfolio)}“"}
+        >
+          {depot_number_action(@portfolio)}
+        </.button>
+      </:trailing>
+    </.list_row>
     """
   end
 
   defp depot_number_row(assigns) do
     ~H"""
-    <li id={"depot-number-#{@portfolio.id}"} class="list-group-item d-flex align-items-start">
-      <Layouts.chip portfolio={@portfolio} />
+    <li id={"depot-number-#{@portfolio.id}"} class="list-row items-start">
+      <.icon name="briefcase" class="mt-0.5 size-5 text-base-content/70" />
       <.form
         for={@form}
         id="depot-number-form"
-        class="flex-grow-1 app-depot-number-text"
+        class="list-col-grow min-w-0"
         phx-change="validate_depot_number"
         phx-submit="save_depot_number"
         phx-window-keydown="cancel_depot_number"
         phx-key="Escape"
       >
-        <label class="form-label fw-normal mb-1" for={@form[:depot_number].id}>
-          Depotnummer von „{@portfolio.name}“
-        </label>
-        <div class="d-flex flex-column flex-sm-row align-items-sm-start gap-2">
-          <.input
-            field={@form[:depot_number]}
-            wrapper_class="flex-grow-1"
-            class="tabular-nums"
-            inputmode="numeric"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="z. B. 123 456 7890"
-            phx-mounted={JS.focus()}
-          />
-          <div class="d-flex gap-2">
-            <.button phx-disable-with="Speichert …">Speichern</.button>
-            <button type="button" class="btn" phx-click="cancel_depot_number">Abbrechen</button>
+        <p class="font-medium wrap-anywhere">{Format.portfolio_name(@portfolio)}</p>
+        <div class="flex flex-col sm:flex-row sm:items-start sm:gap-2">
+          <div class="sm:max-w-md sm:flex-1">
+            <.input
+              field={@form[:depot_number]}
+              label={"Depotnummer von „#{Format.portfolio_name(@portfolio)}“"}
+              inline
+              class="tabular-nums"
+              inputmode="numeric"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="z. B. 123 456 7890"
+              phx-mounted={JS.focus()}
+            >
+              <.button
+                type="submit"
+                variant={:primary}
+                class="join-item"
+                phx-disable-with="Speichert …"
+              >
+                Speichern
+              </.button>
+            </.input>
           </div>
+          <.button variant={:ghost} class="sm:mt-1" phx-click="cancel_depot_number">
+            Abbrechen
+          </.button>
         </div>
       </.form>
     </li>
@@ -127,7 +129,7 @@ defmodule ZipfelfolioWeb.PortfoliosLive do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(page_title: "Depots", editing: nil, depot_number_form: nil)
+     |> assign(page_title: "Depotnummern", editing: nil, depot_number_form: nil)
      |> load_active_portfolios()}
   end
 
@@ -165,7 +167,7 @@ defmodule ZipfelfolioWeb.PortfoliosLive do
 
         {:noreply,
          socket
-         |> put_flash(:info, "Depotnummer von „#{portfolio.name}“ gespeichert.")
+         |> put_flash(:info, "Depotnummer von „#{Format.portfolio_name(portfolio)}“ gespeichert.")
          |> assign(editing: nil, depot_number_form: nil)
          |> load_active_portfolios()}
 

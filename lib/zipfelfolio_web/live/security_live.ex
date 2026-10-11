@@ -4,15 +4,14 @@ defmodule ZipfelfolioWeb.SecurityLive do
   import ZipfelfolioWeb.{AllocationComponents, DividendComponents}
 
   alias Zipfelfolio.{ExchangeRates, LocalTime, MarketData, Portfolios, Securities}
-  alias ZipfelfolioWeb.{AttributeValue, Format, Sidebar}
+  alias ZipfelfolioWeb.{AttributeValue, Format, Periods, Sidebar}
 
-  # URL parameter, period and button label; the first is the default.
+  # URL parameter, period, button label and its accessible name; the first is the default.
   @periods [
-    {"1y", :one_year, "1 J"},
-    {"5y", :five_years, "5 J"},
-    {"max", :max, "Max"}
+    {"1y", :one_year, "1\u00A0J", "1 Jahr"},
+    {"5y", :five_years, "5\u00A0J", "5 Jahre"},
+    {"max", :max, "Max", "Max, seit dem ersten Kurs"}
   ]
-  @period_params Map.new(@periods, fn {param, period, _label} -> {param, period} end)
 
   # Composition tab, also its URL parameter, and label; the first is the default.
   @composition_tabs [regions: "Regionen", sectors: "Sektoren"]
@@ -20,7 +19,7 @@ defmodule ZipfelfolioWeb.SecurityLive do
   # The distributions shown until all are asked for.
   @recent_distributions 8
 
-  # The sidebar marks „Bestand“, which the page belongs to, as in the click dummy.
+  # The sidebar marks „Bestand“, which the page belongs to.
   @current {:holdings, nil, nil}
 
   @impl true
@@ -30,11 +29,10 @@ defmodule ZipfelfolioWeb.SecurityLive do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} sidebar={@sidebar} current={@current}>
       <.header>Wertpapier nicht gefunden</.header>
-      <.card>
-        <p class="mb-0">
-          Unter dieser Adresse gibt es kein Wertpapier. Zurück zum <.link navigate={~p"/holdings"}>Bestand</.link>.
-        </p>
-      </.card>
+      <.empty_state icon="layers">
+        Unter dieser Adresse gibt es kein Wertpapier.
+        <:action><.button navigate={~p"/holdings"} size={:sm}>Zum Bestand</.button></:action>
+      </.empty_state>
     </Layouts.app>
     """
   end
@@ -44,73 +42,59 @@ defmodule ZipfelfolioWeb.SecurityLive do
 
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} sidebar={@sidebar} current={@current}>
-      <.link navigate={~p"/holdings"} class="d-inline-flex align-items-center gap-1 small mb-2">
-        <.icon name="back" class="app-icon-sm" />Bestand
-      </.link>
-      <.header class="flex-wrap align-items-end">
+      <.header back={~p"/holdings"} back_label="Bestand">
         {@security.name}
         <:subtitle>{subtitle(@security)}</:subtitle>
-        <:actions :if={@price}>
-          <div id="price" class="text-sm-end text-nowrap tabular-nums">
-            <div class="fs-3 fw-bold">{Format.price(@price, @security.currency)}</div>
+        <:actions>
+          <div :if={@price} id="price" class="whitespace-nowrap tabular-nums sm:text-end">
+            <div class="text-2xl font-bold">{Format.price(@price, @security.currency)}</div>
             <div
               :if={@price_yesterday}
-              class={["small", tone(change_note(@price, @price_yesterday, @security.currency))]}
+              class={["text-sm", tone(change_note(@price, @price_yesterday, @security.currency))]}
             >
               {change_note(@price, @price_yesterday, @security.currency)}
             </div>
           </div>
+          <.segmented
+            id="period"
+            label="Zeitraum"
+            size={:sm}
+            value={@period}
+            block={:phone}
+            class="self-center"
+            options={Periods.options(@periods, &security_path(@security, &1, @composition_tab))}
+          />
         </:actions>
       </.header>
 
-      <div class="row g-4 mb-4">
-        <div class="col-lg-8">
-          <section class="card h-100" aria-labelledby="chart-title">
-            <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-              <h2 class="app-card-title mb-0" id="chart-title">Kurs</h2>
-              <nav id="period" class="btn-group btn-group-sm" aria-label="Zeitraum">
-                <.link
-                  :for={{_param, period, label} <- @periods}
-                  patch={security_path(@security, period, @composition_tab)}
-                  class={["btn btn-outline-secondary", @period == period && "active"]}
-                  aria-current={@period == period && "true"}
-                >
-                  {label}
-                </.link>
-              </nav>
+      <%!-- One grid for both rows, so the columns line up. --%>
+      <div class="grid items-start gap-x-10 gap-y-8 lg:grid-cols-[3fr_2fr]">
+        <.chart_card
+          id="price-history"
+          title="Kurs"
+          hook={@chart.prices != [] && "PriceChart"}
+          height={:lg}
+          summary={
+            if @chart.prices == [],
+              do: "Keine Kurse in diesem Zeitraum",
+              else: "Kursverlauf #{period_text(@period)}"
+          }
+          class="min-w-0"
+        >
+          <.empty_state id="price-chart-empty" icon="trending-up">
+            Keine Kurse in diesem Zeitraum.
+          </.empty_state>
+          <:legend :if={@chart.prices != [] and @chart.trades != []}>
+            <div id="price-chart-legend" class="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <.legend items={[%{label: "Kauf", color: :success}, %{label: "Verkauf", color: :error}]} />
+              <span class="text-xs text-base-content/70">
+                zum Preis je Stück vor Gebühren und Steuern
+              </span>
             </div>
-            <div class="card-body">
-              <p :if={@chart.prices == []} id="price-chart-empty" class="text-body-secondary mb-0">
-                Keine Kurse in diesem Zeitraum.
-              </p>
-              <div
-                class={@chart.prices == [] && "d-none"}
-                role="img"
-                aria-label={"Kursverlauf #{period_text(@period)}"}
-              >
-                <div id="price-chart" class="app-chart" phx-hook="PriceChart" phx-update="ignore">
-                  <canvas></canvas>
-                </div>
-              </div>
-            </div>
-            <div
-              :if={@chart.prices != [] and @chart.trades != []}
-              id="price-chart-legend"
-              class="card-footer small text-body-secondary"
-            >
-              <span class="text-nowrap"><span class="app-dot"></span> Kauf</span>
-              <span class="text-nowrap ms-2"><span class="app-dot app-dot-sale"></span> Verkauf</span>
-              · zum Preis je Stück vor Gebühren und Steuern
-            </div>
-          </section>
-        </div>
-        <div class="col-lg-4">
-          <.holding holdings={@holdings} total={@total} />
-        </div>
-      </div>
-
-      <div class="row g-4">
-        <div class="col-lg-7 d-flex flex-column gap-4">
+          </:legend>
+        </.chart_card>
+        <.holding holdings={@holdings} total={@total} />
+        <div class="flex min-w-0 flex-col gap-8">
           <.upcoming_payments :if={@upcoming != []} upcoming={@upcoming} />
           <.distributions distributions={@distributions} />
           <.composition
@@ -121,7 +105,7 @@ defmodule ZipfelfolioWeb.SecurityLive do
             isin={@security.isin}
           />
         </div>
-        <div class="col-lg-5 d-flex flex-column gap-4">
+        <div class="flex min-w-0 flex-col gap-8">
           <.profile profile={@profile} security={@security} costs_per_year={@costs_per_year} />
           <.sources
             security={@security}
@@ -141,49 +125,36 @@ defmodule ZipfelfolioWeb.SecurityLive do
   # Over all portfolios, then per portfolio when it is in several.
   defp holding(assigns) do
     ~H"""
-    <section id="holding" class="card h-100" aria-labelledby="holding-title">
-      <div class="card-header">
-        <h2 class="app-card-title mb-0" id="holding-title">Position</h2>
-      </div>
-      <p :if={@holdings == []} class="card-body text-body-secondary mb-0">Nicht im Bestand.</p>
-      <dl
-        :if={@holdings != []}
-        class="row align-content-start flex-grow-0 mb-0 card-body tabular-nums"
-      >
-        <dt class="col-6 fw-normal text-body-secondary">Stück</dt>
-        <dd class="col-6 text-end">{Format.shares(@total.shares)}</dd>
-        <dt class="col-6 fw-normal text-body-secondary">Wert</dt>
-        <dd class="col-6 text-end fw-semibold text-nowrap">{Format.euros(@total.value, 2)}</dd>
-        <dt class="col-6 fw-normal text-body-secondary">Einstand</dt>
-        <dd class="col-6 text-end text-nowrap">{Format.euros(@total.purchase_value, 2)}</dd>
-        <dt class="col-6 fw-normal text-body-secondary">Gewinn</dt>
-        <dd class={["col-6 text-end text-nowrap mb-0", tone(Format.signed_euros(@total.gain, 2))]}>
-          {Format.signed_euros(@total.gain, 2)}
-          <div :if={@total.purchase_value > 0} class="small">
-            {@total.gain |> Format.percent_of(@total.purchase_value) |> Format.signed_percent(1)}
-          </div>
-        </dd>
-      </dl>
-      <div :if={length(@holdings) > 1} id="holding-portfolios" class="list-group list-group-flush">
-        <.link
-          :for={row <- @holdings}
-          id={"holding-#{row.portfolio.id}"}
-          navigate={Sidebar.portfolio_path(row.portfolio)}
-          class="list-group-item list-group-item-action d-flex align-items-center gap-2"
+    <section id="holding" aria-labelledby="holding-title">
+      <.section_heading id="holding-title">Position</.section_heading>
+      <.empty_state :if={@holdings == []} icon="briefcase">Nicht im Bestand.</.empty_state>
+      <.description_list :if={@holdings != []} class="border-t border-base-content/10">
+        <:item label="Stück">{Format.shares(@total.shares)}</:item>
+        <:item label="Wert"><.amount value={@total.value} class="font-semibold" /></:item>
+        <:item label="Einstand"><.amount value={@total.purchase_value} /></:item>
+        <:item label="Gewinn">
+          <.gain gain={@total.gain} purchase_value={@total.purchase_value} />
+        </:item>
+      </.description_list>
+      <%!-- From sm the rows start at the facts' edge. --%>
+      <.list :if={length(@holdings) > 1} id="holding-portfolios" class="mt-4 sm:[&>li]:px-0">
+        <.list_row
+          :for={entry <- @holdings}
+          id={"holding-#{entry.portfolio.id}"}
+          title={Format.portfolio_name(entry.portfolio)}
+          navigate={Sidebar.portfolio_path(entry.portfolio)}
+          trailing_on_phone={:title}
         >
-          <Layouts.chip portfolio={row.portfolio} />
-          <span class="me-auto">
-            <span class="d-block fw-semibold">{row.portfolio.name}</span>
-            <span class="small text-body-secondary">{Format.shares(row.shares)} Stück</span>
-          </span>
-          <span class="text-end text-nowrap tabular-nums">
-            <span class="d-block fw-semibold">{Format.euros(row.value, 2)}</span>
-            <span class={["small", tone(Format.signed_euros(row.gain, 2))]}>
-              {Format.signed_euros(row.gain, 2)}
-            </span>
-          </span>
-        </.link>
-      </div>
+          <:leading><.icon name="briefcase" class="size-5 text-base-content/70" /></:leading>
+          <:meta>{Format.shares(entry.shares)} Stück</:meta>
+          <:trailing>
+            <div class="text-end">
+              <.amount value={entry.value} class="font-semibold" />
+              <div class="text-sm"><.amount value={entry.gain} signed tone /></div>
+            </div>
+          </:trailing>
+        </.list_row>
+      </.list>
     </section>
     """
   end
@@ -194,67 +165,37 @@ defmodule ZipfelfolioWeb.SecurityLive do
     assigns = assign(assigns, places: per_share_places(assigns.upcoming))
 
     ~H"""
-    <section
-      id="upcoming-payments"
-      class="card app-dividend-card"
-      aria-labelledby="upcoming-payments-title"
-    >
-      <div class="card-header d-flex flex-wrap align-items-baseline justify-content-between gap-2">
-        <h2 class="app-card-title mb-0" id="upcoming-payments-title">Nächste Zahlungen</h2>
-        <span class="small text-body-secondary text-nowrap">
-          nächste 12 Monate <span class="tabular-nums">{expected_total(@upcoming, :gross, 2)}</span>
-        </span>
-      </div>
-      <ul class="list-group list-group-flush app-payment-list">
-        <li
-          :for={dividend <- @upcoming}
-          class="list-group-item app-payment"
-          data-kind={dividend.kind}
-        >
-          <span class="tabular-nums">
-            {Format.date(dividend.pay_date)}<span
-              :if={dividend.ex_date}
-              class="text-body-secondary text-nowrap"
-            > · Ex‑Tag {short_date(dividend.ex_date)}</span>
+    <section id="upcoming-payments" aria-labelledby="upcoming-payments-title">
+      <.section_heading id="upcoming-payments-title">
+        Nächste Zahlungen
+        <:actions>
+          <span class="text-sm whitespace-nowrap text-base-content/70">
+            nächste 12 Monate <span class="tabular-nums">{expected_total(@upcoming, :gross, 2)}</span>
           </span>
-          <span class="fw-semibold text-end text-nowrap tabular-nums">
-            {expected(dividend, :gross, 2)}
-          </span>
-          <span class="small text-body-secondary text-nowrap tabular-nums">
+        </:actions>
+      </.section_heading>
+      <.table id="upcoming-payment-rows" rows={@upcoming} size={:sm}>
+        <:col :let={dividend} label="Zahltag">
+          <time class="tabular-nums" datetime={Date.to_iso8601(dividend.pay_date)}>
+            {Format.date(dividend.pay_date)}
+          </time>
+          <.cell_sub hide_from={:sm} class="tabular-nums">
             {Format.shares(dividend.shares)}&nbsp;Stück × {per_share(dividend, @places)}
-          </span>
-          <.kind_tag kind={dividend.kind} />
-        </li>
-      </ul>
-      <div class="table-responsive app-payment-table">
-        <table class="table table-sm align-middle text-nowrap mb-0 app-card-table app-dividend-table">
-          <thead class="small fw-semibold text-body-secondary">
-            <tr>
-              <th scope="col" class="app-col-date">Zahltag</th>
-              <th scope="col" class="app-col-ex-date">Ex-Tag</th>
-              <th scope="col"><span class="visually-hidden">Art</span></th>
-              <th scope="col" class="text-end app-col-per-share">je Anteil</th>
-              <th scope="col" class="text-end app-col-shares">Stück</th>
-              <th scope="col" class="text-end app-col-amount">Brutto</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              :for={dividend <- @upcoming}
-              data-kind={dividend.kind}
-              data-pay-date={Date.to_iso8601(dividend.pay_date)}
-            >
-              <td class="tabular-nums app-pay-date">{Format.date(dividend.pay_date)}</td>
-              <td class="tabular-nums text-body-secondary">{short_date(dividend.ex_date)}</td>
-              <td><.kind_tag kind={dividend.kind} /></td>
-              <td class="text-end tabular-nums">{per_share(dividend, @places)}</td>
-              <td class="text-end tabular-nums">{Format.shares(dividend.shares)}</td>
-              <td class="text-end tabular-nums">{expected(dividend, :gross, 2)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="card-footer small text-body-secondary"><.forecast_note gross /></div>
+          </.cell_sub>
+        </:col>
+        <:col :let={dividend} label="Ex-Tag" show_from={:sm}>
+          <span class="tabular-nums text-base-content/70">{Format.short_date(dividend.ex_date)}</span>
+        </:col>
+        <:col :let={dividend} label="Art"><.kind_tag kind={dividend.kind} /></:col>
+        <:col :let={dividend} label="je Anteil" align={:end} show_from={:sm}>
+          {per_share(dividend, @places)}
+        </:col>
+        <:col :let={dividend} label="Stück" align={:end} show_from={:sm}>
+          {Format.shares(dividend.shares)}
+        </:col>
+        <:col :let={dividend} label="Brutto" align={:end}>{expected(dividend, :gross, 2)}</:col>
+      </.table>
+      <p class="mt-2 max-w-prose text-sm text-base-content/70"><.forecast_note gross /></p>
     </section>
     """
   end
@@ -265,9 +206,6 @@ defmodule ZipfelfolioWeb.SecurityLive do
   defp per_share(dividend, places),
     do: Format.price(dividend.per_share, dividend.currency, places)
 
-  defp short_date(nil), do: "–"
-  defp short_date(date), do: Calendar.strftime(date, "%d.%m.")
-
   defp per_share_places(rows) do
     for(%{per_share: per_share} when per_share != nil <- rows, do: Format.price_places(per_share))
     |> Enum.max(fn -> 2 end)
@@ -275,11 +213,18 @@ defmodule ZipfelfolioWeb.SecurityLive do
 
   attr :distributions, :list, required: true, doc: "see `Distributions.of/3`"
 
+  # The newest until all are asked for; the older rows stay hidden until then.
   defp distributions(assigns) do
     distributions = assigns.distributions
 
     assigns =
       assign(assigns,
+        rows:
+          distributions
+          |> Enum.with_index()
+          |> Enum.map(fn {entry, index} ->
+            Map.put(entry, :older, index >= @recent_distributions)
+          end),
         ex_dates: Enum.any?(distributions, & &1.ex_date),
         total: Enum.sum_by(distributions, & &1.gross),
         recent: @recent_distributions,
@@ -287,62 +232,55 @@ defmodule ZipfelfolioWeb.SecurityLive do
       )
 
     ~H"""
-    <section id="distributions" class="card app-dividend-card" aria-labelledby="distributions-title">
-      <div class="card-header d-flex flex-wrap align-items-baseline justify-content-between gap-2">
-        <h2 class="app-card-title mb-0" id="distributions-title">Ausschüttungen je Anteil</h2>
-        <span :if={@distributions != []} class="small text-body-secondary text-nowrap">
-          bisher gesamt <span class="tabular-nums">{Format.euros(@total, 2)}</span>
-        </span>
-      </div>
-      <p :if={@distributions == []} class="card-body text-body-secondary mb-0">
+    <section id="distributions" aria-labelledby="distributions-title">
+      <.section_heading id="distributions-title">
+        Ausschüttungen je Anteil
+        <:actions :if={@distributions != []}>
+          <span id="distributions-total" class="text-sm whitespace-nowrap text-base-content/70">
+            bisher gesamt <span class="tabular-nums">{Format.euros(@total, 2)}</span>
+          </span>
+        </:actions>
+      </.section_heading>
+      <.empty_state :if={@distributions == []} icon="coins">
         Keine Ausschüttungen gebucht.
-      </p>
-      <div :if={@distributions != []} class="table-responsive">
-        <table class="table table-sm align-middle text-nowrap mb-0 app-card-table app-dividend-table">
-          <thead class="small fw-semibold text-body-secondary">
-            <tr>
-              <th scope="col" class={@ex_dates && "app-col-date"}>Zahltag</th>
-              <th :if={@ex_dates} scope="col" class="d-none d-sm-table-cell">Ex-Tag</th>
-              <th scope="col" class="text-end app-col-per-share">je Anteil</th>
-              <th scope="col" class="text-end d-none d-sm-table-cell app-col-shares">Stück</th>
-              <th scope="col" class="text-end app-col-amount">Brutto</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              :for={{row, index} <- Enum.with_index(@distributions)}
-              class={index >= @recent && "d-none"}
-              data-older={index >= @recent}
-            >
-              <td class="tabular-nums app-pay-date">{Format.date(row.date)}</td>
-              <td :if={@ex_dates} class="tabular-nums text-body-secondary d-none d-sm-table-cell">
-                {short_date(row.ex_date)}
-              </td>
-              <td class="text-end tabular-nums">
-                {Format.price(row.per_share, row.currency, @places)}
-              </td>
-              <td class="text-end tabular-nums d-none d-sm-table-cell">
-                {if row.shares > 0, do: Format.shares(row.shares), else: "–"}
-              </td>
-              <td class="text-end tabular-nums">{Format.euros(row.gross, 2)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      </.empty_state>
+      <.table
+        :if={@distributions != []}
+        id="distribution-rows"
+        rows={@rows}
+        size={:sm}
+        row_attrs={&%{hidden: &1.older}}
+      >
+        <:col :let={entry} label="Zahltag">
+          <time class="tabular-nums" datetime={Date.to_iso8601(entry.date)}>
+            {Format.date(entry.date)}
+          </time>
+        </:col>
+        <:col :let={entry} :if={@ex_dates} label="Ex-Tag" show_from={:sm}>
+          <span class="tabular-nums text-base-content/70">{Format.short_date(entry.ex_date)}</span>
+        </:col>
+        <:col :let={entry} label="je Anteil" align={:end}>
+          {Format.price(entry.per_share, entry.currency, @places)}
+        </:col>
+        <:col :let={entry} label="Stück" align={:end} show_from={:sm}>
+          {if entry.shares > 0, do: Format.shares(entry.shares), else: "–"}
+        </:col>
+        <:col :let={entry} label="Brutto" align={:end}><.amount value={entry.gross} /></:col>
+      </.table>
       <div
         :if={@distributions != []}
-        class="card-footer small text-body-secondary d-flex flex-wrap justify-content-between gap-2"
+        class="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm text-base-content/70"
       >
         <span>Aus deinen gebuchten Dividenden, vor Steuern und Gebühren.</span>
-        <button
+        <.button
           :if={length(@distributions) > @recent}
           id="distributions-all"
-          type="button"
-          class="btn btn-link btn-sm p-0 fw-normal text-nowrap text-decoration-none app-quiet-link"
-          phx-click={JS.remove_class("d-none", to: "#distributions tr[data-older]") |> JS.hide()}
+          variant={:ghost}
+          size={:sm}
+          phx-click={JS.remove_attribute("hidden", to: "#distribution-rows tr[hidden]") |> JS.hide()}
         >
-          Alle {length(@distributions)} anzeigen<.icon name="chevron" class="app-icon-sm" />
-        </button>
+          Alle {length(@distributions)} anzeigen<.icon name="chevron-down" />
+        </.button>
       </div>
     </section>
     """
@@ -359,23 +297,21 @@ defmodule ZipfelfolioWeb.SecurityLive do
     assigns = assign(assigns, :shown, assigns.available and assigns.composition != nil)
 
     ~H"""
-    <section id="composition" class="card" aria-label="Zusammensetzung">
-      <div class="card-header">
-        <.card_tabs :if={@shown} label="Zusammensetzung nach" tabs={@tabs} />
-        <h2 :if={!@shown} class="app-card-title mb-0">Zusammensetzung</h2>
-      </div>
-      <div class="card-body">
-        <.missing_key :if={!@available} />
-        <p :if={@available and !@composition} class="text-body-secondary mb-0">
-          {if @isin in [nil, ""],
-            do: "Ohne ISIN fragt zipfelfolio DivvyDiary nicht nach Ländern und Sektoren.",
-            else: "Von DivvyDiary liegen für dieses Wertpapier keine Länder und Sektoren vor."}
-        </p>
-        <.composition_bars :if={@shown} id="composition-rows" rows={Map.fetch!(@composition, @tab)} />
-      </div>
-      <div :if={@shown} class="card-footer small text-body-secondary">
+    <section id="composition" aria-labelledby="composition-title">
+      <.section_heading id="composition-title">Zusammensetzung</.section_heading>
+      <.tabs :if={@shown} label="Zusammensetzung nach" class="mb-4">
+        <:tab :for={tab <- @tabs} patch={tab.path} active={tab.active}>{tab.label}</:tab>
+      </.tabs>
+      <.missing_key :if={!@available} />
+      <.empty_state :if={@available and !@composition} icon="layers">
+        {if @isin in [nil, ""],
+          do: "Ohne ISIN fragt zipfelfolio DivvyDiary nicht nach Ländern und Sektoren.",
+          else: "Von DivvyDiary liegen für dieses Wertpapier keine Länder und Sektoren vor."}
+      </.empty_state>
+      <.composition_bars :if={@shown} id="composition-rows" rows={Map.fetch!(@composition, @tab)} />
+      <p :if={@shown} class="mt-4 text-sm text-base-content/70">
         Länder und Sektoren von DivvyDiary, Stand {Format.date(@composition.as_of)}.
-      </div>
+      </p>
     </section>
     """
   end
@@ -390,19 +326,14 @@ defmodule ZipfelfolioWeb.SecurityLive do
     assigns = assign(assigns, :rows, profile_rows(assigns))
 
     ~H"""
-    <section id="profile" class="card" aria-labelledby="profile-title">
-      <div class="card-header">
-        <h2 class="app-card-title mb-0" id="profile-title">Steckbrief</h2>
-      </div>
-      <p :if={@rows == []} class="card-body text-body-secondary mb-0">
+    <section id="profile" aria-labelledby="profile-title">
+      <.section_heading id="profile-title">Steckbrief</.section_heading>
+      <.empty_state :if={@rows == []} icon="file-text">
         Keine Angaben aus Portfolio Performance.
-      </p>
-      <dl :if={@rows != []} class="row mb-0 card-body small">
-        <%= for {label, value} <- @rows do %>
-          <dt class="col-5 fw-normal text-body-secondary">{label}</dt>
-          <dd class="col-7 text-end text-break"><.attribute value={value} /></dd>
-        <% end %>
-      </dl>
+      </.empty_state>
+      <.description_list :if={@rows != []} class="border-t border-base-content/10">
+        <:item :for={{label, value} <- @rows} label={label}><.attribute value={value} /></:item>
+      </.description_list>
     </section>
     """
   end
@@ -421,13 +352,18 @@ defmodule ZipfelfolioWeb.SecurityLive do
     attributes =
       for {type, value} <- profile.attributes,
           shown = AttributeValue.display(type, value, security.currency),
-          do: {type.name, shown}
+          do: {attribute_label(type), shown}
 
     ter ++ fund_size ++ attributes
   end
 
   defp ter(ter, nil), do: Format.ter(ter)
-  defp ter(ter, per_year), do: "#{Format.ter(ter)} · #{Format.euros(per_year)} im Jahr"
+  defp ter(ter, per_year), do: join_meta([Format.ter(ter), "#{Format.euros(per_year)} im Jahr"])
+
+  # PP names its built-in attributes in the language the file was created in; its English
+  # default for the vendor reads in German here. A name the user chose stays.
+  defp attribute_label(%{pp_id: "vendor", name: "Vendor"}), do: "Anbieter"
+  defp attribute_label(type), do: type.name
 
   attr :value, :any, required: true, doc: "see `AttributeValue.display/3`"
 
@@ -440,7 +376,7 @@ defmodule ZipfelfolioWeb.SecurityLive do
     assigns = assign(assigns, label: label, url: url)
 
     ~H"""
-    <a href={@url} target="_blank" rel="noopener noreferrer">{@label}</a>
+    <a href={@url} target="_blank" rel="noopener noreferrer" class="link">{@label}</a>
     """
   end
 
@@ -459,56 +395,46 @@ defmodule ZipfelfolioWeb.SecurityLive do
 
   defp sources(assigns) do
     ~H"""
-    <section id="sources" class="card" aria-labelledby="sources-title">
-      <div class="card-header">
-        <h2 class="app-card-title mb-0" id="sources-title">Datenquellen</h2>
-      </div>
-      <ul class="list-group list-group-flush small">
-        <li class="list-group-item d-flex gap-2">
-          <span class="me-auto">Kurse</span>
-          <span :if={@security.quote_feed == :yahoo} class="text-end">
-            <span class="d-block">Yahoo · <code>{@security.symbol}</code></span>
-            <span :if={@security.fetch_error} class="d-block text-danger">
+    <section id="sources" aria-labelledby="sources-title">
+      <.section_heading id="sources-title">Datenquellen</.section_heading>
+      <.description_list class="border-t border-base-content/10">
+        <:item label="Kurse">
+          <div :if={@security.quote_feed == :yahoo}>
+            <p>Yahoo<.meta_sep /><code>{@security.symbol}</code></p>
+            <p :if={@security.fetch_error} class="font-normal text-error-ink">
               {@security.fetch_error}
-            </span>
-            <span :if={!@security.fetch_error} class="d-block text-body-secondary">
+            </p>
+            <p :if={!@security.fetch_error} class="font-normal text-base-content/70">
               {fetched(@security.fetched_at)}
-            </span>
-          </span>
-          <span :if={@security.quote_feed == :manual} class="text-end">
-            <span class="d-block">Manuell</span>
-            <span class="d-block text-body-secondary">aus Portfolio Performance oder von Hand</span>
-          </span>
-        </li>
-        <li :if={@security.currency != "EUR"} class="list-group-item d-flex gap-2">
-          <span class="me-auto">Wechselkurs {@security.currency}</span>
-          <span class="text-end">
-            <span class="d-block">EZB{@exchange_rate && " · #{Format.rate(@exchange_rate.rate)}"}</span>
-            <span class="d-block text-body-secondary">
-              {if @exchange_rate,
-                do: "Stand #{Format.date(@exchange_rate.date)}",
-                else: "noch kein Kurs"}
-            </span>
-          </span>
-        </li>
-        <li class="list-group-item d-flex gap-2">
-          <span class="me-auto">Länder und Sektoren</span>
-          <span class="text-end">
-            <span class="d-block">DivvyDiary</span>
-            <span class="d-block text-body-secondary">
-              {composition_source(@available, @composition, @security.isin)}
-            </span>
-          </span>
-        </li>
-      </ul>
-      <div class="card-footer">
-        <.link
-          navigate={"#{~p"/settings/securities"}#security-#{@security.id}"}
-          class="btn btn-sm btn-outline-secondary"
-        >
-          Kursquelle ändern
-        </.link>
-      </div>
+            </p>
+          </div>
+          <div :if={@security.quote_feed == :manual}>
+            <p>Manuell</p>
+            <p class="font-normal text-base-content/70">aus Portfolio Performance oder von Hand</p>
+          </div>
+        </:item>
+        <:item :if={@security.currency != "EUR"} label={"Wechselkurs #{@security.currency}"}>
+          <p>{join_meta(["EZB", @exchange_rate && Format.rate(@exchange_rate.rate)])}</p>
+          <p class="font-normal text-base-content/70">
+            {if @exchange_rate,
+              do: "Stand #{Format.date(@exchange_rate.date)}",
+              else: "noch kein Kurs"}
+          </p>
+        </:item>
+        <:item label="Länder und Sektoren">
+          <p>DivvyDiary</p>
+          <p class="font-normal text-base-content/70">
+            {composition_source(@available, @composition, @security.isin)}
+          </p>
+        </:item>
+      </.description_list>
+      <.button
+        navigate={"#{~p"/settings/securities"}#security-#{@security.id}"}
+        size={:sm}
+        class="mt-4"
+      >
+        Kursquelle ändern
+      </.button>
     </section>
     """
   end
@@ -534,12 +460,10 @@ defmodule ZipfelfolioWeb.SecurityLive do
 
   # The security page with `period` and the composition `tab`, the defaults left out.
   defp security_path(security, period, tab) do
-    {param, _period, _label} = List.keyfind(@periods, period, 1)
-
     query =
       Enum.filter(
         [
-          period: period != :one_year && param,
+          period: period != :one_year && Periods.param(@periods, period),
           composition: tab != :regions && Atom.to_string(tab)
         ],
         &elem(&1, 1)
@@ -548,11 +472,8 @@ defmodule ZipfelfolioWeb.SecurityLive do
     ~p"/securities/#{security}?#{query}"
   end
 
-  defp subtitle(security) do
-    [security.isin, security.wkn && "WKN #{security.wkn}", security.currency]
-    |> Enum.reject(&(&1 in [nil, ""]))
-    |> Enum.join(" · ")
-  end
+  defp subtitle(security),
+    do: join_meta([security.isin, security.wkn && "WKN #{security.wkn}", security.currency])
 
   defp change_note(price, yesterday, currency) do
     change = price - yesterday
@@ -586,7 +507,7 @@ defmodule ZipfelfolioWeb.SecurityLive do
     |> then(&{:noreply, &1})
   end
 
-  defp period(param), do: Map.get(@period_params, param, :one_year)
+  defp period(param), do: Periods.parse(@periods, param, :one_year)
 
   defp composition_tab("sectors"), do: :sectors
   defp composition_tab(_default), do: :regions

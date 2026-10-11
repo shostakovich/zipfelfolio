@@ -14,7 +14,8 @@ defmodule ZipfelfolioWeb.DividendsLive do
   ]
   @amounts [{"net", :net, "Netto"}, {"gross", :gross, "Brutto"}]
 
-  @year_colours ~w(taupe mustard now)
+  # The chart series of the years shown, the oldest first: this year 1, the year before 2.
+  @year_colours ~w(chart-8 chart-2 chart-1)
   @recent_years 2
 
   @impl true
@@ -28,51 +29,48 @@ defmodule ZipfelfolioWeb.DividendsLive do
       sidebar={@sidebar}
       current={:dividends}
     >
-      <.header class="flex-wrap">
+      <.header>
         Dividenden
-        <:subtitle :if={any?(assigns)}>
-          {subtitle(@tab)}
-        </:subtitle>
+        <:subtitle :if={any?(assigns)}>{subtitle(@tab)}</:subtitle>
         <:actions :if={any?(assigns)}>
-          <nav id="amount" class="btn-group btn-group-sm align-self-start mt-1" aria-label="Betrag">
-            <.link
-              :for={{_param, amount, label} <- @amounts}
-              patch={dividends_path(@tab, amount)}
-              class={["btn btn-outline-secondary", @amount == amount && "active"]}
-              aria-current={@amount == amount && "true"}
-            >
-              {label}
-            </.link>
-          </nav>
+          <.segmented
+            id="amount"
+            label="Betrag"
+            size={:sm}
+            value={@amount}
+            options={
+              for {_param, amount, label} <- @amounts,
+                  do: {label, amount, dividends_path(@tab, amount)}
+            }
+          />
         </:actions>
       </.header>
 
-      <.card :if={@empty}>
-        <p class="mb-0">
-          Noch keine Depots. Sie kommen mit dem <.link navigate={~p"/settings/import"}>Import aus Portfolio Performance</.link>.
-        </p>
-      </.card>
+      <.no_portfolios :if={@empty} />
 
-      <.card :if={!@empty and !any?(assigns)}>
-        <p class="mb-0">Noch keine Dividenden gebucht und keine erwartet.</p>
-      </.card>
+      <.empty_state
+        :if={!@empty and !any?(assigns)}
+        id="dividends-empty"
+        layout={:page}
+        plush="coins"
+        icon="coins"
+        title="Noch keine Dividenden"
+      >
+        Hier erscheinen gebuchte Dividenden und die der nächsten 12&nbsp;Monate.
+      </.empty_state>
 
       <%= if any?(assigns) do %>
         <.key_figures dividends={@dividends} amount={@amount} today={@today} />
 
-        <nav id="dividend-tabs" aria-label="Ansicht">
-          <ul class="nav nav-tabs mb-3">
-            <li :for={{_param, tab, label} <- @tabs} class="nav-item">
-              <.link
-                patch={dividends_path(tab, @amount)}
-                class={["nav-link", @tab == tab && "active"]}
-                aria-current={@tab == tab && "true"}
-              >
-                {label}
-              </.link>
-            </li>
-          </ul>
-        </nav>
+        <.tabs id="dividend-tabs" label="Ansicht" class="mt-8 mb-6">
+          <:tab
+            :for={{_param, tab, label} <- @tabs}
+            patch={dividends_path(tab, @amount)}
+            active={@tab == tab}
+          >
+            {label}
+          </:tab>
+        </.tabs>
 
         <.calendar
           :if={@tab == :calendar}
@@ -81,9 +79,7 @@ defmodule ZipfelfolioWeb.DividendsLive do
           amount={@amount}
         />
         <%= if @tab != :calendar and @dividends.received == [] do %>
-          <.card>
-            <p class="mb-0">Noch keine Dividenden gebucht.</p>
-          </.card>
+          <.empty_state icon="coins">Noch keine Dividenden gebucht.</.empty_state>
         <% else %>
           <.per_month
             :if={@tab == :months}
@@ -110,56 +106,56 @@ defmodule ZipfelfolioWeb.DividendsLive do
       )
 
     ~H"""
-    <div class="card app-kpis mb-4">
-      <.stat
-        id="next-12-months"
-        class="app-kpi"
-        label="Nächste 12 Monate"
-        value={Format.euros(@dividends.total[@amount])}
-      >
-        <:prefix :if={@partly_gross}><.partly_gross /></:prefix>
-        <:note class="text-body-secondary text-nowrap">
-          Ø {Format.euros(div(@dividends.total[@amount], 12))}<span class="d-none d-sm-inline"> pro Monat</span><span class="d-sm-none">/Monat</span>
+    <div id="key-figures" class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <.stat id="next-12-months" label="Nächste 12 Monate" size={:sm}>
+        <.quiet :if={@partly_gross}><.partly_gross /></.quiet>
+        <.amount value={@dividends.total[@amount]} decimals={0} />
+        <:note>
+          <span class="whitespace-nowrap">
+            Ø
+            <.amount value={div(@dividends.total[@amount], 12)} decimals={0} /><span class="max-sm:hidden"> pro Monat</span><span class="sm:hidden">/Monat</span>
+          </span>
         </:note>
       </.stat>
-      <.stat
-        id="this-year"
-        class="app-kpi"
-        label={"#{@today.year} bisher"}
-        value={Format.euros(@dividends.this_year[@amount])}
-      >
-        <:note class="text-body-secondary text-nowrap">
-          {@today.year - 1} gesamt {Format.euros(@dividends.last_year[@amount])}
+      <.stat id="this-year" label={"#{@today.year} bisher"} size={:sm}>
+        <.amount value={@dividends.this_year[@amount]} decimals={0} />
+        <:note>
+          {@today.year - 1} gesamt <.amount value={@dividends.last_year[@amount]} decimals={0} />
         </:note>
       </.stat>
-      <.stat
-        id="yield"
-        class="app-kpi"
-        label="Rendite auf Wert"
-        value={yield(@dividends.total[@amount], @dividends.value)}
-      >
-        <:prefix :if={@partly_gross}><.partly_gross /></:prefix>
-        <:note class="text-body-secondary text-nowrap">
-          auf Einstand {yield(@dividends.total[@amount], @dividends.purchase_value)}
+      <.stat id="yield" label="Rendite auf Wert" size={:sm}>
+        <.quiet :if={@partly_gross}><.partly_gross /></.quiet>
+        {yield(@dividends.total[@amount], @dividends.value)}
+        <:note>
+          <span class="whitespace-nowrap">
+            auf Einstand {yield(@dividends.total[@amount], @dividends.purchase_value)}
+          </span>
         </:note>
       </.stat>
-      <.stat
-        id="next-dividend"
-        class="app-kpi"
-        label="Nächste Dividende"
-        value={if @next, do: expected(@next, @amount, 0), else: "–"}
-      >
-        <:prefix :if={@next && @amount == :net && @next.net_is_gross}>
+      <.stat id="next-dividend" label="Nächste Dividende" size={:sm}>
+        <.quiet :if={@next && @amount == :net && @next.net_is_gross}>
           <span title="Noch keine Dividende gebucht, aus der sich Steuern schätzen ließen">
             brutto
           </span>
-        </:prefix>
-        <:note :if={@next} class="text-body-secondary app-kpi-name">
-          <.pay_date date={@next.pay_date} /> · {security_name(@next.security)}
+        </.quiet>
+        {if @next, do: expected(@next, @amount, 0), else: "–"}
+        <:note>
+          <span :if={@next} class="line-clamp-2">
+            <.pay_date date={@next.pay_date} /><.meta_sep />{security_name(@next.security)}
+          </span>
+          <span :if={!@next}>keine erwartet</span>
         </:note>
-        <:note :if={!@next} class="text-body-secondary">keine erwartet</:note>
       </.stat>
     </div>
+    """
+  end
+
+  slot :inner_block, required: true
+
+  # A remark before a key figure's value, such as „brutto“.
+  defp quiet(assigns) do
+    ~H"""
+    <span class="text-sm font-normal text-base-content/70">{render_slot(@inner_block)}</span>
     """
   end
 
@@ -169,98 +165,93 @@ defmodule ZipfelfolioWeb.DividendsLive do
 
   defp calendar(assigns) do
     groups = Enum.chunk_by(assigns.upcoming, &{&1.pay_date.year, &1.pay_date.month})
-    assigns = assign(assigns, groups: groups)
+    amount = assigns.amount
+
+    # Twelve empty months say nothing the empty calendar does not say already.
+    chart? = Enum.any?(assigns.months, &(&1.announced[amount] + &1.forecast[amount] > 0))
+    assigns = assign(assigns, groups: groups, chart?: chart?)
 
     ~H"""
-    <div class="row g-4 mb-4">
-      <div class="col-lg-7">
-        <section id="calendar" aria-label="Kalender">
-          <.card :if={@groups == []}>
-            <p class="mb-0">
-              In den nächsten 12 Monaten ist keine Dividende angekündigt oder zu erwarten.
-            </p>
-          </.card>
-          <div
-            :for={[%{pay_date: first} | _] = dividends <- @groups}
-            id={"calendar-#{Calendar.strftime(first, "%Y-%m")}"}
-            class="mb-4"
-          >
-            <h2 class="app-calendar-month">
-              <span>{Format.month_name(first)} {first.year}</span>
-              <span class="app-calendar-total">
-                <.partly_gross :if={partly_gross?(dividends, @amount)} class="fw-normal" />
-                <span class="tabular-nums">{expected_total(dividends, @amount, 2)}</span>
-              </span>
-            </h2>
-            <ul class="list-group">
-              <li
-                :for={dividend <- dividends}
-                class="list-group-item app-upcoming"
-                data-pay-date={Date.to_iso8601(dividend.pay_date)}
-                data-kind={dividend.kind}
+    <div class={["grid items-start gap-x-10 gap-y-8", @chart? && "xl:grid-cols-[3fr_2fr]"]}>
+      <section id="calendar" aria-label="Kalender">
+        <.empty_state :if={@groups == []} icon="coins">
+          In den nächsten 12 Monaten ist keine Dividende angekündigt oder zu erwarten.
+        </.empty_state>
+        <.list :if={@groups != []}>
+          <%= for [%{pay_date: first} | _] = dividends <- @groups do %>
+            <.list_heading>
+              <h2
+                id={"calendar-#{Calendar.strftime(first, "%Y-%m")}"}
+                class="flex flex-wrap items-baseline justify-between gap-x-3"
               >
-                <.security_link security={dividend.security} class="app-upcoming-name" />
-                <span class="app-upcoming-amount text-nowrap">
+                <span>{Format.month_name(first)} {first.year}</span>
+                <span class="tabular-nums">
+                  <.partly_gross :if={partly_gross?(dividends, @amount)} class="font-normal" />
+                  {expected_total(dividends, @amount, 2)}
+                </span>
+              </h2>
+            </.list_heading>
+            <.list_row
+              :for={dividend <- dividends}
+              title={security_title(dividend.security)}
+              navigate={security_path(dividend.security)}
+              data-pay-date={Date.to_iso8601(dividend.pay_date)}
+              data-kind={dividend.kind}
+            >
+              <:meta>
+                <span class="whitespace-nowrap">Zahltag <.pay_date date={dividend.pay_date} /></span><span
+                  :if={dividend.ex_date}
+                  class="whitespace-nowrap"
+                ><.meta_sep />Ex‑Tag <.pay_date date={dividend.ex_date} /></span><.meta_sep /><span class="whitespace-nowrap">{Format.shares(
+                  dividend.shares
+                )}&nbsp;Stück × {per_share(dividend)}</span>
+              </:meta>
+              <:trailing>
+                <.kind_tag kind={dividend.kind} />
+                <span class="font-semibold tabular-nums whitespace-nowrap">
                   <span
                     :if={@amount == :net and dividend.net_is_gross}
-                    class="small fw-normal text-body-secondary"
+                    class="text-sm font-normal text-base-content/70"
                     title="Noch keine Dividende gebucht, aus der sich Steuern schätzen ließen"
                   >
                     brutto
                   </span>
-                  <span class="tabular-nums">{expected(dividend, @amount, 2)}</span>
+                  {expected(dividend, @amount, 2)}
                 </span>
-                <span class="app-upcoming-meta small text-body-secondary">
-                  <span class="app-upcoming-dates">
-                    <span class="text-nowrap">Zahltag <.pay_date date={dividend.pay_date} /></span>
-                    <span :if={dividend.ex_date} class="text-nowrap">
-                      Ex‑Tag <.pay_date date={dividend.ex_date} />
-                    </span>
-                  </span>
-                  <span class="app-upcoming-shares text-nowrap">
-                    {Format.shares(dividend.shares)}&nbsp;Stück × {per_share(dividend)}
-                  </span>
-                </span>
-                <.kind_tag kind={dividend.kind} class="app-upcoming-tag" />
-              </li>
-            </ul>
-          </div>
-        </section>
-      </div>
-      <div class="col-lg-5">
-        <section
-          id="coming-months"
-          class="card app-sticky-lg"
-          aria-labelledby="coming-months-title"
-        >
-          <div class="card-header d-flex flex-wrap align-items-center justify-content-between row-gap-1 column-gap-3">
-            <h2 class="app-card-title mb-0" id="coming-months-title">
-              Nächste 12 Monate · {amount_label(@amount)}<span class="d-sm-none"> in €</span>
-              <.partly_gross
-                :if={partly_gross?(@upcoming, @amount)}
-                class="small fw-normal text-body-secondary"
-              />
-            </h2>
-            <span class="small text-body-secondary d-flex gap-3">
-              <span class="text-nowrap"><span class="app-swatch app-swatch-now"></span> angekündigt</span>
-              <span class="text-nowrap"><span class="app-swatch app-swatch-forecast"></span> Prognose</span>
-            </span>
-          </div>
-          <div class="card-body pb-2 pb-sm-3">
-            <div role="img" aria-label={coming_months_label(@months, @amount)}>
-              <div
-                id="coming-months-chart"
-                class="app-chart app-chart-sm"
-                phx-hook="UpcomingDividendChart"
-                phx-update="ignore"
-              >
-                <canvas></canvas>
-              </div>
-            </div>
-          </div>
-          <div class="card-footer small text-body-secondary"><.forecast_note /></div>
-        </section>
-      </div>
+              </:trailing>
+            </.list_row>
+          <% end %>
+        </.list>
+      </section>
+      <.chart_card
+        :if={@chart?}
+        id="coming-months"
+        title={coming_months_title(@upcoming, @amount)}
+        hook="UpcomingDividendChart"
+        summary={coming_months_label(@months, @amount)}
+        class="xl:sticky xl:top-6"
+      >
+        <:legend>
+          <%!-- As <.legend>, which has no marker for a series' fill mixed lighter. --%>
+          <ul class="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+            <li class="flex items-center gap-1.5">
+              <span
+                class="size-2.5 rounded-full border border-chart-1 bg-chart-1-fill"
+                aria-hidden="true"
+              ></span>
+              angekündigt
+            </li>
+            <li class="flex items-center gap-1.5">
+              <span
+                class="size-2.5 rounded-full border border-chart-1 bg-chart-1-fill/35"
+                aria-hidden="true"
+              ></span>
+              Prognose
+            </li>
+          </ul>
+          <p class="text-sm text-base-content/70"><.forecast_note /></p>
+        </:legend>
+      </.chart_card>
     </div>
     """
   end
@@ -287,221 +278,166 @@ defmodule ZipfelfolioWeb.DividendsLive do
 
   defp per_month(assigns) do
     colours = assigns.years |> chart_years() |> year_colours()
-    months = Enum.map(1..12, &Format.month_abbr/1)
-    assigns = assign(assigns, months: months, colours: colours, colour: Map.new(colours))
+
+    assigns =
+      assign(assigns,
+        months: Enum.with_index(Enum.map(1..12, &Format.month_abbr/1)),
+        colours: colours,
+        colour: Map.new(colours)
+      )
 
     ~H"""
-    <section id="per-month" class="card mb-4" aria-labelledby="per-month-title">
-      <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-        <h2 class="app-card-title mb-0" id="per-month-title">
-          Dividenden pro Monat · {amount_label(@amount)}<span class="d-sm-none"> in €</span>
-        </h2>
-        <span class="small text-body-secondary d-flex gap-3">
-          <span :for={{year, colour} <- @colours} class="text-nowrap">
-            <span class={"app-swatch app-swatch-#{colour}"}></span> {year}
-          </span>
-        </span>
-      </div>
-      <div class="card-body pb-2 pb-sm-3">
-        <div role="img" aria-label={"Dividenden pro Monat für #{chart_label(@colours)}"}>
-          <div id="dividend-chart" class="app-chart" phx-hook="DividendChart" phx-update="ignore">
-            <canvas></canvas>
-          </div>
-        </div>
-      </div>
-      <div class="table-responsive border-top">
-        <table class="table table-sm align-middle text-nowrap mb-0 app-card-table app-year-table">
-          <thead class="small fw-semibold text-body-secondary">
-            <tr>
-              <th scope="col"><span class="app-swatch invisible"></span> Jahr</th>
-              <th :for={month <- @months} scope="col" class="text-end d-none d-md-table-cell">
-                {month}
-              </th>
-              <th scope="col" class="text-end">Gesamt</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={year <- @years} id={"year-#{year.year}"}>
-              <% {paid, open} = split_open(year, @amount, @today) %>
-              <th scope="row" class="tabular-nums">
-                <span class={["app-swatch", swatch(@colour[year.year])]}></span>
-                {year.year}
-                <span
-                  :if={year.year == @today.year}
-                  class="small fw-normal text-body-secondary ms-1 d-md-none"
-                >
-                  {so_far(@today)}
-                </span>
-              </th>
-              <td
-                :for={month <- paid}
-                class={[
-                  "text-end tabular-nums d-none d-md-table-cell",
-                  month[@amount] == 0 && "text-body-tertiary"
-                ]}
-              >
-                {month_amount(month[@amount])}
-              </td>
-              <td
-                :if={open > 0}
-                colspan={open}
-                class="small text-body-tertiary text-center d-none d-md-table-cell"
-                aria-label={"#{so_far(@today)}, Rest des Jahres noch offen"}
-              >
-                {so_far(@today)} · noch offen
-              </td>
-              <td class="text-end tabular-nums fw-semibold">{Format.euros(year[@amount])}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <div id="per-month" class="flex flex-col gap-8">
+      <.chart_card
+        id="dividend"
+        title={join_meta(["Dividenden pro Monat", amount_label(@amount)])}
+        hook="DividendChart"
+        height={:lg}
+        summary={"Dividenden pro Monat für #{chart_label(@colours)}"}
+      >
+        <:legend>
+          <.legend items={
+            for {year, colour} <- @colours, do: %{label: to_string(year), color: series(colour)}
+          } />
+        </:legend>
+      </.chart_card>
+
+      <section aria-labelledby="years-title">
+        <.section_heading id="years-title">Jahre</.section_heading>
+        <.table id="years" rows={@years} row_id={&"year-#{&1.year}"} size={:sm}>
+          <:col :let={year} label="Jahr">
+            <span class="inline-flex items-center gap-2 font-medium tabular-nums">
+              <span class={["size-2.5 rounded-full", swatch(@colour[year.year])]} aria-hidden="true"></span>
+              {year.year}
+            </span>
+            <.cell_sub :if={year.year == @today.year}>
+              {so_far(@today)}<span :if={open?(year, @amount, @today)}><.meta_sep />noch offen</span>
+            </.cell_sub>
+          </:col>
+          <:col
+            :let={year}
+            :for={{month, index} <- @months}
+            label={month}
+            align={:end}
+            show_from={:md}
+          >
+            <% amount = month_cell(year, index, @amount, @today) %>
+            <span :if={is_nil(amount)} class="sr-only">noch offen</span>
+            <span :if={amount == 0} class="text-base-content/70">–</span>
+            <.amount :if={amount not in [nil, 0]} value={amount} decimals={0} />
+          </:col>
+          <:col :let={year} label="Gesamt" align={:end}>
+            <.amount value={year[@amount]} decimals={0} class="font-semibold" />
+          </:col>
+        </.table>
+      </section>
+    </div>
     """
   end
 
   attr :received, :list, required: true, doc: "see `Dividends.received/2`"
 
+  # A group per year; the older years show their totals, their payments stay hidden until asked
+  # for.
   defp received(assigns) do
-    groups = Enum.chunk_by(assigns.received, & &1.date.year)
-    assigns = assign(assigns, groups: Enum.with_index(groups), recent: @recent_years)
+    groups =
+      assigns.received
+      |> Enum.chunk_by(& &1.date.year)
+      |> Enum.with_index()
+      |> Enum.map(fn {[%{date: %{year: year}} | _] = rows, index} ->
+        older = index >= @recent_years
+
+        %{
+          id: Integer.to_string(year),
+          label: year_label(%{year: year, rows: rows}),
+          rows: Enum.map(rows, &Map.put(&1, :older, older))
+        }
+      end)
+
+    assigns = assign(assigns, groups: groups, recent: @recent_years)
 
     ~H"""
-    <section id="received" class="card mb-4" aria-label="Erhaltene Dividenden">
-      <div class="table-responsive">
-        <table class="table align-middle mb-0 app-card-table app-received">
-          <thead class="small fw-semibold text-body-secondary">
-            <tr>
-              <th scope="col" class="d-none d-sm-table-cell">Zahltag</th>
-              <th scope="col">
-                <span class="d-flex justify-content-between gap-3">
-                  Wertpapier <span class="d-sm-none">Netto</span>
-                </span>
-              </th>
-              <th scope="col" class="text-end d-none d-lg-table-cell">Stück</th>
-              <th scope="col" class="text-end d-none d-sm-table-cell">Brutto</th>
-              <th scope="col" class="text-end d-none d-md-table-cell">Steuern</th>
-              <th scope="col" class="text-end d-none d-md-table-cell">Gebühren</th>
-              <th scope="col" class="text-end d-none d-sm-table-cell">Netto</th>
-            </tr>
-          </thead>
-          <tbody
-            :for={{[%{date: %{year: year}} | _] = rows, index} <- @groups}
-            id={"received-#{year}"}
-            class={index >= @recent && "d-none"}
-            data-older={index >= @recent}
-          >
-            <tr class="app-received-year d-sm-none">
-              <th scope="rowgroup">
-                <span class="d-flex flex-wrap align-items-baseline column-gap-3">
-                  <span class="text-nowrap tabular-nums">
-                    {year}
-                    <span class="small fw-normal text-body-secondary ms-2">
-                      brutto {Format.euros(sum(rows, :gross), 2)}
-                    </span>
-                  </span>
-                  <span class="text-nowrap tabular-nums ms-auto">
-                    <span class="small fw-normal text-body-secondary">netto</span>
-                    {Format.euros(sum(rows, :net), 2)}
-                  </span>
-                </span>
-              </th>
-            </tr>
-            <tr class="app-received-year d-none d-sm-table-row">
-              <th scope="rowgroup">{year}</th>
-              <td></td>
-              <td class="d-none d-lg-table-cell"></td>
-              <td class="text-end text-nowrap tabular-nums">
-                {Format.euros(sum(rows, :gross), 2)}
-              </td>
-              <td class="text-end text-nowrap tabular-nums d-none d-md-table-cell">
-                {deduction(sum(rows, :taxes))}
-              </td>
-              <td class="text-end text-nowrap tabular-nums d-none d-md-table-cell">
-                {deduction(sum(rows, :fees))}
-              </td>
-              <td class="text-end text-nowrap tabular-nums">
-                {Format.euros(sum(rows, :net), 2)}
-              </td>
-            </tr>
-            <tr :for={row <- rows} data-date={Date.to_iso8601(row.date)}>
-              <td class="text-nowrap tabular-nums d-none d-sm-table-cell">
-                <.pay_date date={row.date} />
-              </td>
-              <td>
-                <div class="app-received-phone d-sm-none">
-                  <.security_link security={row.security} class="app-received-name" />
-                  <span class="text-body-secondary text-nowrap tabular-nums">
-                    <.pay_date date={row.date} /> · {shares(row.shares)}
-                  </span>
-                  <span class="text-end text-nowrap tabular-nums fw-semibold">
-                    {Format.euros(row.net, 2)}
-                  </span>
-                  <div class="small text-body-secondary text-nowrap tabular-nums">
-                    <div>Steuern {Format.euros(row.taxes, 2)}</div>
-                    <div :if={row.fees != 0}>Gebühren {Format.euros(row.fees, 2)}</div>
-                  </div>
-                  <span class="small text-body-secondary text-end text-nowrap tabular-nums">
-                    brutto {Format.euros(row.gross, 2)}
-                  </span>
-                </div>
-                <div class="d-none d-sm-block">
-                  <.security_link security={row.security} />
-                  <div class="small text-body-secondary tabular-nums d-lg-none mt-1">
-                    <span class="text-nowrap">{shares(row.shares)}</span>
-                    <span class="d-md-none">&nbsp;·</span>
-                    <span class="text-nowrap d-md-none">Steuern {Format.euros(row.taxes, 2)}</span>
-                    <span :if={row.fees != 0} class="d-md-none">&nbsp;·</span>
-                    <span :if={row.fees != 0} class="text-nowrap d-md-none">
-                      Gebühren {Format.euros(row.fees, 2)}
-                    </span>
-                  </div>
-                </div>
-              </td>
-              <td class="text-end text-nowrap tabular-nums d-none d-lg-table-cell">
-                {share_count(row.shares)}
-              </td>
-              <td class="text-end text-nowrap tabular-nums d-none d-sm-table-cell">
-                {Format.euros(row.gross, 2)}
-              </td>
-              <td class={[
-                "text-end text-nowrap tabular-nums d-none d-md-table-cell",
-                muted(row.taxes)
-              ]}>
-                {deduction(row.taxes)}
-              </td>
-              <td class={["text-end text-nowrap tabular-nums d-none d-md-table-cell", muted(row.fees)]}>
-                {deduction(row.fees)}
-              </td>
-              <td class="text-end text-nowrap tabular-nums fw-semibold d-none d-sm-table-cell">
-                {Format.euros(row.net, 2)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div :if={length(@groups) > @recent} class="card-footer p-0 text-center">
-        <button
-          id="received-all"
-          type="button"
-          class="btn btn-link text-decoration-none w-100 app-more"
-          phx-click={
-            JS.remove_class("d-none", to: "#received tbody[data-older]")
-            |> JS.hide(to: "#received .card-footer")
-          }
-        >
-          Ältere Jahre anzeigen ({length(@groups) - @recent})
-        </button>
-      </div>
+    <section id="received" aria-label="Erhaltene Dividenden">
+      <.table id="received-years" groups={@groups} row_attrs={&%{hidden: &1.older}}>
+        <:col :let={entry} label="Zahltag" show_from={:sm}>
+          <.pay_date date={entry.date} />
+        </:col>
+        <:col :let={entry} label="Wertpapier">
+          <.security_link security={entry.security} />
+          <.cell_sub hide_from={:md} class="tabular-nums">
+            <span class="sm:hidden"><.pay_date date={entry.date} /><.meta_sep /></span><span class="whitespace-nowrap">{shares(
+              entry.shares
+            )}</span><.meta_sep /><span class="whitespace-nowrap">Steuern {Format.euros(
+              entry.taxes,
+              2
+            )}</span><span
+              :if={entry.fees != 0}
+              class="whitespace-nowrap"
+            ><.meta_sep />Gebühren {Format.euros(entry.fees, 2)}</span>
+          </.cell_sub>
+          <.cell_sub show_from={:md} hide_from={:lg} class="tabular-nums">
+            {shares(entry.shares)}
+          </.cell_sub>
+        </:col>
+        <:col :let={entry} label="Stück" align={:end} show_from={:lg}>
+          {share_count(entry.shares)}
+        </:col>
+        <:col :let={entry} label="Brutto" align={:end} show_from={:sm}>
+          <.amount value={entry.gross} />
+        </:col>
+        <:col :let={entry} label="Steuern" align={:end} show_from={:md}>
+          <span class={muted(entry.taxes)}>{deduction(entry.taxes)}</span>
+        </:col>
+        <:col :let={entry} label="Gebühren" align={:end} show_from={:md}>
+          <span class={muted(entry.fees)}>{deduction(entry.fees)}</span>
+        </:col>
+        <:col :let={entry} label="Netto" align={:end}>
+          <.amount value={entry.net} class="font-semibold" />
+          <.cell_sub hide_from={:sm}>brutto <.amount value={entry.gross} /></.cell_sub>
+        </:col>
+      </.table>
+      <.button
+        :if={length(@groups) > @recent}
+        id="received-all"
+        variant={:ghost}
+        class="mt-2 w-full"
+        phx-click={JS.remove_attribute("hidden", to: "#received-years tr[hidden]") |> JS.hide()}
+      >
+        Zahlungen älterer Jahre anzeigen<.icon name="chevron-down" />
+      </.button>
     </section>
     """
   end
 
-  defp split_open(%{year: year, months: months}, amount, %Date{year: year} = today) do
-    paid = if Enum.at(months, today.month - 1)[amount] > 0, do: today.month, else: today.month - 1
-    {Enum.take(months, paid), 12 - paid}
+  attr :year, :integer, required: true
+  attr :rows, :list, required: true
+
+  # A year's group row: the year with its gross and net total.
+  defp year_label(assigns) do
+    ~H"""
+    <span class="flex flex-wrap items-baseline justify-between gap-x-4">
+      <span class="tabular-nums">{@year}</span>
+      <span class="font-normal tabular-nums">
+        brutto <.amount value={sum(@rows, :gross)} /><.meta_sep />netto
+        <.amount value={sum(@rows, :net)} class="font-semibold" />
+      </span>
+    </span>
+    """
   end
 
-  defp split_open(%{months: months}, _amount, _today), do: {months, 0}
+  # The months of this year paid so far: up to this month if anything came in yet, else the one
+  # before.
+  defp paid_months(%{year: year, months: months}, amount, %Date{year: year} = today),
+    do: if(Enum.at(months, today.month - 1)[amount] > 0, do: today.month, else: today.month - 1)
+
+  defp paid_months(_year, _amount, _today), do: 12
+
+  defp open?(year, amount, today), do: paid_months(year, amount, today) < 12
+
+  # A month's amount, nil for one still to come.
+  defp month_cell(year, index, amount, today) do
+    if index < paid_months(year, amount, today), do: Enum.at(year.months, index)[amount]
+  end
 
   defp so_far(today), do: "bis #{today.day}. #{Format.month_abbr(today)}"
 
@@ -509,14 +445,22 @@ defmodule ZipfelfolioWeb.DividendsLive do
 
   defp pay_date(assigns) do
     ~H"""
-    <time datetime={Date.to_iso8601(@date)}>{Calendar.strftime(@date, "%d.%m.")}</time>
+    <time datetime={Date.to_iso8601(@date)}>{Format.short_date(@date)}</time>
     """
   end
 
   defp sum(rows, key), do: Enum.sum_by(rows, &Map.fetch!(&1, key))
 
+  @swatches %{
+    "chart-1" => "border border-chart-1 bg-chart-1-fill",
+    "chart-2" => "border border-chart-2 bg-chart-2-fill",
+    "chart-8" => "border border-chart-8 bg-chart-8-fill"
+  }
+
+  defp series("chart-" <> n), do: String.to_integer(n)
+
   defp swatch(nil), do: "invisible"
-  defp swatch(colour), do: "app-swatch-#{colour}"
+  defp swatch(colour), do: Map.fetch!(@swatches, colour)
 
   defp deduction(0), do: "–"
   defp deduction(cents), do: Format.euros(cents, 2)
@@ -532,6 +476,11 @@ defmodule ZipfelfolioWeb.DividendsLive do
 
   defp yield(_cents, 0), do: "–"
   defp yield(cents, whole), do: cents |> Format.percent_of(whole) |> Format.percent()
+
+  defp coming_months_title(upcoming, amount) do
+    title = join_meta(["Nächste 12 Monate", amount_label(amount)])
+    if partly_gross?(upcoming, amount), do: title <> ", teils brutto", else: title
+  end
 
   defp coming_months_label(months, amount) do
     "Erwartete Dividenden " <>
@@ -549,9 +498,6 @@ defmodule ZipfelfolioWeb.DividendsLive do
 
   defp share_count(0), do: "–"
   defp share_count(shares), do: Format.shares(shares)
-
-  defp month_amount(0), do: "–"
-  defp month_amount(cents), do: Format.euros(cents)
 
   defp chart_years(years), do: years |> Enum.take(length(@year_colours)) |> Enum.reverse()
 
@@ -621,7 +567,7 @@ defmodule ZipfelfolioWeb.DividendsLive do
           for {year, {_year, colour}} <- Enum.zip(years, year_colours(years)) do
             %{
               year: year.year,
-              colour: "--app-year-#{colour}",
+              colour: colour,
               amounts: Enum.map(year.months, & &1[assigns.amount])
             }
           end

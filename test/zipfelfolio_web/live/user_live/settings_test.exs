@@ -73,7 +73,7 @@ defmodule ZipfelfolioWeb.UserLive.SettingsTest do
         })
 
       assert result =~ "E-Mail ändern"
-      assert result =~ "braucht ein @ und keine Leerzeichen"
+      assert result =~ "Braucht ein @ und keine Leerzeichen"
     end
 
     test "renders errors with invalid data (phx-submit)", %{conn: conn, user: user} do
@@ -87,7 +87,7 @@ defmodule ZipfelfolioWeb.UserLive.SettingsTest do
         |> render_submit()
 
       assert result =~ "E-Mail ändern"
-      assert result =~ "ist unverändert"
+      assert result =~ "Ist unverändert"
     end
   end
 
@@ -154,7 +154,7 @@ defmodule ZipfelfolioWeb.UserLive.SettingsTest do
       assert html =~ "Passkey hinzugefügt."
       assert has_element?(lv, "#passkey-#{passkey.id}", "Testgerät")
 
-      lv |> element("#passkey-#{passkey.id} button", "Löschen") |> render_click()
+      confirm_click(lv, "#passkey-#{passkey.id}-delete", "Passkey „Testgerät“ löschen?")
       refute has_element?(lv, "#passkey-#{passkey.id}")
       assert Zipfelfolio.Users.list_passkeys(user) == []
     end
@@ -192,10 +192,10 @@ defmodule ZipfelfolioWeb.UserLive.SettingsTest do
     # The parts of a status line, each kept on one line.
     defp status(lv, id) do
       lv
-      |> element("#{id} .small")
+      |> element("#{id} [data-detail]")
       |> render()
       |> LazyHTML.from_fragment()
-      |> LazyHTML.query(".text-nowrap")
+      |> LazyHTML.query("[data-part]")
       |> Enum.map(&LazyHTML.text/1)
     end
 
@@ -204,7 +204,7 @@ defmodule ZipfelfolioWeb.UserLive.SettingsTest do
 
     test "connects the user's Paperless and never shows the token again", %{conn: conn} = ctx do
       {:ok, lv, _html} = live(conn, ~p"/users/settings")
-      assert has_element?(lv, "#paperless-status", "Nicht verbunden")
+      assert has_element?(lv, "#paperless-status [data-status]", "Nicht verbunden")
       refute has_element?(lv, "#paperless-form button", "Trennen")
 
       result =
@@ -216,6 +216,8 @@ defmodule ZipfelfolioWeb.UserLive.SettingsTest do
 
       assert result =~ "Paperless gespeichert"
       refute result =~ "geheim123"
+
+      assert has_element?(lv, "#paperless-status [data-status]", "Verbunden")
 
       assert status(lv, "#paperless-status") ==
                ["Tag „zipfelfolio“,", "danach „zipfelfolio-erledigt“ ·", "noch nicht abgefragt"]
@@ -229,7 +231,7 @@ defmodule ZipfelfolioWeb.UserLive.SettingsTest do
       assert Users.get_user!(ctx.user.id).paperless_token == "geheim123"
       assert has_element?(lv, "#paperless-status", "Tag „belege“")
 
-      lv |> element("#paperless-form button", "Trennen") |> render_click()
+      confirm_click(lv, "#paperless-disconnect", "Paperless trennen?")
       assert has_element?(lv, "#paperless-status", "Nicht verbunden")
       assert Users.get_user!(ctx.user.id).paperless_token == nil
     end
@@ -277,17 +279,18 @@ defmodule ZipfelfolioWeb.UserLive.SettingsTest do
 
       result = save_paperless(lv, %{"paperless_url" => "paperless.local"})
 
-      assert result =~ "braucht http:// oder https:// und einen Host"
-      assert has_element?(lv, "#paperless-form .invalid-feedback", "muss ausgefüllt werden")
+      assert result =~ "Braucht http:// oder https:// und einen Host"
+      assert has_element?(lv, ~s(#paperless-form p[id$="-error-0"]), "Muss ausgefüllt werden")
       assert has_element?(lv, "#paperless-status", "Nicht verbunden")
     end
 
     test "names the recognition model, or that there is none", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/users/settings")
-      assert has_element?(lv, "#recognition-status", "Kein Modell eingerichtet")
+      assert has_element?(lv, "#recognition-status [data-status]", "Kein Modell")
 
       Zipfelfolio.FakeModel.stub(fn _text -> {:ok, "{}"} end)
       {:ok, lv, _html} = live(conn, ~p"/users/settings")
+      assert has_element?(lv, "#recognition-status [data-status]", "Eingerichtet")
       assert ["Testmodell ·", "Text aus Paperless," | _rest] = status(lv, "#recognition-status")
     end
   end

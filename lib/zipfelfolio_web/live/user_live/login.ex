@@ -7,46 +7,46 @@ defmodule ZipfelfolioWeb.UserLive.Login do
   def render(assigns) do
     ~H"""
     <Layouts.auth flash={@flash}>
-      <.card title="Anmelden">
-        <p :if={@current_scope} class="text-body-secondary">
-          Für Änderungen am Konto meldest du dich bitte noch einmal an.
-        </p>
+      <h2 class="mb-4 text-center text-lg font-semibold">Anmelden</h2>
+      <p :if={@current_scope} class="mb-4 text-center text-sm text-base-content/70">
+        Für Änderungen am Konto meldest du dich bitte noch einmal an.
+      </p>
 
-        <button
-          type="button"
-          id="passkey-login"
-          class="btn btn-primary w-100"
-          phx-hook="PasskeyLogin"
-          data-form="passkey-form"
-        >
-          Mit Passkey anmelden
-        </button>
-        <.form for={%{}} as={:passkey} id="passkey-form" action={~p"/users/log-in"}></.form>
+      <.button
+        id="passkey-login"
+        variant={:primary}
+        icon="key-round"
+        class="w-full"
+        phx-hook="PasskeyLogin"
+        data-form="passkey-form"
+      >
+        Mit Passkey anmelden
+      </.button>
+      <.form for={%{}} as={:passkey} id="passkey-form" action={~p"/users/log-in"}></.form>
 
-        <hr class="my-4" />
+      <div class="divider my-6 text-sm text-base-content/70">oder</div>
 
-        <p class="small text-body-secondary">
-          Neues Gerät oder kein Passkey zur Hand? Wir schicken dir einen Anmeldelink.
-        </p>
-        <.form for={@form} id="login-form" phx-submit="send_link">
-          <.input
-            readonly={!!@current_scope}
-            field={@form[:email]}
-            type="email"
-            label="E-Mail"
-            autocomplete="username"
-            spellcheck="false"
-            required
-          />
-          <.button variant="outline-primary" class="w-100" phx-disable-with="Wird gesendet …">
-            Anmeldelink senden
-          </.button>
-        </.form>
+      <p class="text-sm text-base-content/70">
+        Neues Gerät oder kein Passkey zur Hand? Wir schicken dir einen Anmeldelink.
+      </p>
+      <.form for={@form} id="login-form" phx-submit="send_link">
+        <.input
+          readonly={!!@current_scope}
+          field={@form[:email]}
+          type="email"
+          label="E-Mail"
+          autocomplete="username"
+          spellcheck="false"
+          required
+        />
+        <.button type="submit" class="mt-2 w-full" phx-disable-with="Wird gesendet …">
+          Anmeldelink senden
+        </.button>
+      </.form>
 
-        <p :if={local_mail_adapter?()} class="small text-body-secondary mt-3 mb-0">
-          Entwicklung: Mails landen im <.link href="/dev/mailbox">Postfach</.link>.
-        </p>
-      </.card>
+      <p :if={local_mail_adapter?()} class="mt-6 text-center text-sm text-base-content/70">
+        Entwicklung: Mails landen im <.link href="/dev/mailbox" class="link">Postfach</.link>.
+      </p>
     </Layouts.auth>
     """
   end

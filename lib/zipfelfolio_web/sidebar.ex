@@ -1,8 +1,8 @@
 defmodule ZipfelfolioWeb.Sidebar do
   @moduledoc """
-  The portfolios and accounts with their values that the sidebar, and on the phone the „Depots“
-  screen, list on every page of a signed-in user. An `on_mount` hook assigns them as `@sidebar`
-  and loads them again when new prices arrive.
+  The portfolios and accounts with their values that the sidebar lists on every page of a
+  signed-in user. An `on_mount` hook assigns them as `@sidebar` and loads them again when new
+  prices arrive.
 
   The hook subscribes the page to the market data and refreshes stale quotes, so a LiveView that
   shows prices itself only handles `:market_data_updated`, which reaches it after the sidebar.

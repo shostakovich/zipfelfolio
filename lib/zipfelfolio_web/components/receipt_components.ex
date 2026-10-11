@@ -4,10 +4,8 @@ defmodule ZipfelfolioWeb.ReceiptComponents do
   prüfen“ its checks and its text with the recognised values marked.
   """
   use Phoenix.Component
-
   use ZipfelfolioWeb, :verified_routes
-
-  import ZipfelfolioWeb.CoreComponents, only: [icon: 1]
+  use Setzkasten
 
   alias Zipfelfolio.Portfolios.Receipt
   alias Zipfelfolio.Receipts.{Check, Checks, Correction, Fields}
@@ -22,28 +20,21 @@ defmodule ZipfelfolioWeb.ReceiptComponents do
   @doc "The inbox: a row per receipt with what it needs next."
   def inbox(assigns) do
     ~H"""
-    <section id="inbox" class="card mb-4" aria-labelledby="inbox-title">
-      <div class="card-header d-flex align-items-center gap-2">
-        <.icon name="inbox" />
-        <h2 id="inbox-title" class="h6 mb-0 me-auto">Eingang</h2>
-        <span class="small text-body-secondary text-end">
-          {count(@receipts)}
-          <span :if={@polled_at} id="inbox-polled">
-            · <span class="d-none d-sm-inline">zuletzt</span> abgefragt {polled(@polled_at)}
+    <section id="inbox" aria-labelledby="inbox-title">
+      <.section_heading id="inbox-title" count={length(@receipts)}>
+        Eingang
+        <:actions>
+          <span :if={@polled_at} id="inbox-polled" class="text-sm text-base-content/70">
+            zuletzt abgefragt {Format.recent(@polled_at)}
           </span>
-        </span>
-      </div>
-      <ul class="list-group list-group-flush">
+        </:actions>
+      </.section_heading>
+      <.list>
         <.inbox_row :for={receipt <- @receipts} receipt={receipt} names={@names} />
-      </ul>
+      </.list>
     </section>
     """
   end
-
-  defp polled(polled_at), do: Format.recent(polled_at)
-
-  defp count([_one]), do: "1 Beleg"
-  defp count(receipts), do: "#{length(receipts)} Belege"
 
   attr :receipt, Receipt, required: true
   attr :names, :map, required: true
@@ -52,61 +43,54 @@ defmodule ZipfelfolioWeb.ReceiptComponents do
     assigns = assign(assigns, state: state(assigns.receipt))
 
     ~H"""
-    <li
-      id={"receipt-#{@receipt.id}"}
-      class="list-group-item d-flex flex-wrap align-items-center gap-2 gap-sm-3 app-inbox-row"
-    >
-      <span class={[
-        "app-avatar rounded-circle d-flex align-items-center justify-content-center flex-shrink-0",
-        avatar_tone(@state)
-      ]}>
+    <.list_row id={"receipt-#{@receipt.id}"} title={title(@receipt, @names)} data-state={@state}>
+      <:leading>
+        <.avatar icon={state_icon(@state)} tone={:base} loading={@state == :recognising} />
+      </:leading>
+      <:meta>
+        <span class="flex flex-wrap items-center gap-x-2 whitespace-normal">
+          <.badge id={"receipt-#{@receipt.id}-status"} tone={status_tone(@state)}>
+            {status(@state)}
+          </.badge>
+          <span class="min-w-0">{detail(@receipt, @state)}</span>
+        </span>
         <span
-          :if={@state == :recognising}
-          class="spinner-border spinner-border-sm"
-          aria-hidden="true"
-        ></span>
-        <.icon :if={@state != :recognising} name={state_icon(@state)} />
-      </span>
-      <span class="me-auto app-inbox-text">
-        <span class="d-block fw-semibold text-truncate">{title(@receipt, @names)}</span>
-        <span class="small d-block text-body-secondary">{detail(@receipt, @state)}</span>
-        <span :if={@state == :warning} class="small d-block text-warning-emphasis">
+          :if={@state == :warning}
+          id={"receipt-#{@receipt.id}-warning"}
+          class="block whitespace-normal text-base-content"
+        >
           {warning(@receipt)}
         </span>
-      </span>
-      <.inbox_action receipt={@receipt} state={@state} />
-    </li>
+      </:meta>
+      <:trailing :if={@state != :recognising}>
+        <.inbox_action receipt={@receipt} state={@state} />
+      </:trailing>
+    </.list_row>
     """
   end
 
   attr :receipt, Receipt, required: true
   attr :state, :atom, required: true
 
-  defp inbox_action(%{state: :recognising} = assigns), do: ~H""
-
+  # Discarding is no delete: uploading the PDF again brings it back.
   defp inbox_action(%{state: state} = assigns) when state in [:unsupported, :duplicate] do
     ~H"""
-    <button
-      type="button"
-      class="btn btn-sm btn-outline-secondary app-inbox-action"
+    <.button
+      size={:sm}
       phx-click="discard"
       phx-value-id={@receipt.id}
       aria-label={"#{@receipt.filename} verwerfen"}
     >
       Verwerfen
-    </button>
+    </.button>
     """
   end
 
   defp inbox_action(assigns) do
     ~H"""
-    <button
-      type="button"
-      class={["btn btn-sm app-inbox-action", action_class(@state)]}
-      phx-click={TransactionDialog.open_receipt(@receipt.id)}
-    >
+    <.button size={:sm} phx-click={TransactionDialog.open_receipt(@receipt.id)}>
       {action_label(@state, @receipt)}
-    </button>
+    </.button>
     """
   end
 
@@ -131,19 +115,23 @@ defmodule ZipfelfolioWeb.ReceiptComponents do
     )
   end
 
-  defp avatar_tone(:passed), do: "bg-success-subtle text-success-emphasis"
-  defp avatar_tone(:warning), do: "bg-warning-subtle text-warning-emphasis"
-  defp avatar_tone(_state), do: "bg-secondary-subtle text-secondary-emphasis"
+  defp status(:recognising), do: "Wird erkannt"
+  defp status(:unsupported), do: "Nicht unterstützt"
+  defp status(:unrecognised), do: "Nicht erkannt"
+  defp status(:duplicate), do: "Doppelt"
+  defp status(:warning), do: "Bitte prüfen"
+  defp status(:passed), do: "Geprüft"
+
+  defp status_tone(:passed), do: :success
+  defp status_tone(state) when state in [:unrecognised, :duplicate, :warning], do: :warning
+  defp status_tone(_state), do: :neutral
 
   defp state_icon(:passed), do: "check"
-  defp state_icon(:warning), do: "alert"
+  defp state_icon(:warning), do: "triangle-alert"
   defp state_icon(:duplicate), do: "copy"
-  defp state_icon(:unsupported), do: "file"
-  defp state_icon(:unrecognised), do: "file"
-
-  defp action_class(:passed), do: "btn-success"
-  defp action_class(:warning), do: "btn-outline-warning"
-  defp action_class(:unrecognised), do: "btn-outline-primary"
+  defp state_icon(:unsupported), do: "file-text"
+  defp state_icon(:unrecognised), do: "file-text"
+  defp state_icon(:recognising), do: "file-text"
 
   defp action_label(:unrecognised, _receipt), do: "Erfassen"
 
@@ -160,30 +148,27 @@ defmodule ZipfelfolioWeb.ReceiptComponents do
   def passed?(%Receipt{checks: checks}), do: problems(checks) == []
 
   defp title(%Receipt{fields: %Fields{kind: kind} = fields}, names) when is_map_key(@kinds, kind),
-    do: Enum.join([@kinds[kind], names[fields.isin] || fields.security_name], " · ")
+    do: join_meta([@kinds[kind], names[fields.isin] || fields.security_name])
 
   defp title(receipt, _names), do: receipt.filename
 
-  defp detail(receipt, :recognising), do: join([source(receipt), "wird erkannt …"])
-  defp detail(receipt, :unsupported), do: join([source(receipt), "nicht unterstützt"])
-
-  defp detail(receipt, :unrecognised),
-    do: join([source(receipt), "nicht erkannt, bitte von Hand erfassen"])
+  defp detail(receipt, :recognising), do: source(receipt)
+  defp detail(receipt, :unsupported), do: source(receipt)
+  defp detail(receipt, :unrecognised), do: join_meta([source(receipt), "bitte von Hand erfassen"])
 
   defp detail(receipt, :duplicate) do
     check = Enum.find(receipt.checks, &(&1.name == :reference))
 
-    join([
+    join_meta([
       date(receipt.fields),
       source(receipt),
       "gleiche Referenznummer wie die Buchung vom #{Format.date(check.booked_on)}"
     ])
   end
 
-  defp detail(receipt, :warning), do: join(figures(receipt.fields) ++ [source(receipt)])
+  defp detail(receipt, :warning), do: join_meta(figures(receipt.fields) ++ [source(receipt)])
 
-  defp detail(receipt, :passed),
-    do: join(figures(receipt.fields) ++ [source(receipt), "alle Prüfungen bestanden"])
+  defp detail(receipt, :passed), do: join_meta(figures(receipt.fields) ++ [source(receipt)])
 
   defp source(%Receipt{paperless_id: nil}), do: "Upload"
   defp source(%Receipt{paperless_id: id}), do: "Paperless ##{id}"
@@ -191,7 +176,7 @@ defmodule ZipfelfolioWeb.ReceiptComponents do
   defp figures(fields) do
     [
       date(fields),
-      fields.shares && "#{decimal(fields.shares)} Stück",
+      fields.shares && "#{Format.rate(fields.shares)} Stück",
       fields.amount && "#{Format.decimal(fields.amount, 2)} €"
     ]
   end
@@ -199,8 +184,6 @@ defmodule ZipfelfolioWeb.ReceiptComponents do
   defp warning(receipt), do: receipt.checks |> problems() |> hd() |> check_text(receipt.fields)
 
   defp date(%Fields{date: date}), do: date && Format.date(date)
-
-  defp join(parts), do: parts |> Enum.reject(&is_nil/1) |> Enum.join(" · ")
 
   @doc "What the dialog says the receipt is: its Paperless document or file, kind and date."
   def receipt_subtitle(%Receipt{fields: fields} = receipt) do
@@ -213,7 +196,7 @@ defmodule ZipfelfolioWeb.ReceiptComponents do
           nil
       end
 
-    join([if(receipt.paperless_id, do: source(receipt), else: receipt.filename), kind])
+    join_meta([if(receipt.paperless_id, do: source(receipt), else: receipt.filename), kind])
   end
 
   attr :receipt, Receipt, required: true
@@ -224,19 +207,21 @@ defmodule ZipfelfolioWeb.ReceiptComponents do
       assign(assigns, :pieces, ReceiptText.pieces(assigns.receipt.text, assigns.receipt.fields))
 
     ~H"""
-    <div class="d-flex align-items-center gap-2 mb-2 app-receipt-head">
-      <span class="small text-body-secondary me-auto">Text des Belegs</span>
-      <a
+    <div class="mb-2 flex min-h-8 items-center justify-between gap-2">
+      <h3 class="text-sm text-base-content/70">Text des Belegs</h3>
+      <.button
         id="receipt-pdf"
         href={~p"/receipts/#{@receipt.id}"}
         target="_blank"
         rel="noopener"
-        class="btn btn-sm d-inline-flex align-items-center gap-1"
+        variant={:ghost}
+        size={:sm}
+        icon="file-text"
       >
-        <.icon name="file" class="app-icon-sm" /> PDF öffnen
-      </a>
+        PDF öffnen
+      </.button>
     </div>
-    <div :if={@pieces != []} class="app-receipt-sheet">
+    <div :if={@pieces != []} class="rounded-box border border-base-content/10 bg-base-100 p-4">
       <pre
         id="receipt-text"
         class="app-receipt-lines"
@@ -244,9 +229,9 @@ defmodule ZipfelfolioWeb.ReceiptComponents do
         aria-label="Text des Belegs"
       ><%= for piece <- @pieces do %><.piece piece={piece} /><% end %></pre>
     </div>
-    <p :if={@pieces == []} id="receipt-text" class="alert alert-light mb-0">
+    <.alert :if={@pieces == []} id="receipt-text" tone={:neutral}>
       Das PDF hat keinen lesbaren Text. Bitte die Werte aus dem PDF übernehmen.
-    </p>
+    </.alert>
     """
   end
 
@@ -258,39 +243,34 @@ defmodule ZipfelfolioWeb.ReceiptComponents do
   @doc "The receipt's checks, or why there are none."
   def checklist(%{receipt: %Receipt{fields: nil}} = assigns) do
     ~H"""
-    <div class="small text-body-secondary mb-2 app-receipt-head d-flex align-items-center">
-      Prüfungen
-    </div>
-    <div id="receipt-checks" class="alert alert-light small d-flex gap-2 mb-3">
-      <.icon name="alert" class="app-icon-sm flex-shrink-0 mt-1" />
-      <span>Nicht erkannt. Bitte die Werte aus dem Beleg übernehmen.</span>
-    </div>
+    <h3 class="mb-2 text-sm text-base-content/70">Prüfungen</h3>
+    <.alert id="receipt-checks" tone={:warning} class="mb-4">
+      Nicht erkannt. Bitte die Werte aus dem Beleg übernehmen.
+    </.alert>
     """
   end
 
   def checklist(assigns) do
     ~H"""
-    <div class="small text-body-secondary mb-2 app-receipt-head d-flex align-items-center">
-      Prüfungen
-    </div>
-    <ul id="receipt-checks" class="list-group mb-3 small" aria-label="Prüfungen">
+    <h3 id="receipt-checks-title" class="mb-2 text-sm text-base-content/70">Prüfungen</h3>
+    <.list
+      id="receipt-checks"
+      flush
+      aria-labelledby="receipt-checks-title"
+      class="mb-4 rounded-box border border-base-content/10 text-sm"
+    >
       <li
         :for={check <- @receipt.checks}
         id={"receipt-check-#{check.name}"}
-        class={[
-          "list-group-item d-flex gap-2 align-items-start py-2",
-          check_problem?(check) && "list-group-item-warning"
-        ]}
+        class="list-row items-start gap-3 py-2"
+        data-problem={check_problem?(check)}
       >
-        <.icon name={check_icon(check)} class={["app-icon-sm flex-shrink-0 mt-1", check_tone(check)]} />
-        <span>
-          <span class="visually-hidden">{check_result(check)}: </span>{check_text(
-            check,
-            @receipt.fields
-          )}
-        </span>
+        <.icon name={check_icon(check)} class={["mt-0.5 shrink-0", check_tone(check)]} />
+        <p class="list-col-grow">
+          <span class="sr-only">{check_result(check)}: </span>{check_text(check, @receipt.fields)}
+        </p>
       </li>
-    </ul>
+    </.list>
     """
   end
 
@@ -313,13 +293,15 @@ defmodule ZipfelfolioWeb.ReceiptComponents do
 
   defp check_problem?(check), do: problems([check]) != []
 
-  defp check_icon(%Check{result: :passed}), do: "check"
-  defp check_icon(_check), do: "alert"
+  defp check_icon(%Check{result: :passed}), do: "circle-check"
+  defp check_icon(%Check{name: :reference, result: :missing}), do: "info"
+  defp check_icon(%Check{name: :reference, result: :failed}), do: "circle-alert"
+  defp check_icon(_check), do: "triangle-alert"
 
-  defp check_tone(%Check{result: :passed}), do: "text-success"
-  defp check_tone(%Check{name: :reference, result: :missing}), do: "text-body-tertiary"
-  defp check_tone(%Check{result: :failed, name: :reference}), do: "text-danger"
-  defp check_tone(_check), do: "text-warning"
+  defp check_tone(%Check{result: :passed}), do: "text-success-ink"
+  defp check_tone(%Check{name: :reference, result: :missing}), do: "text-base-content/70"
+  defp check_tone(%Check{name: :reference, result: :failed}), do: "text-error-ink"
+  defp check_tone(_check), do: nil
 
   defp check_result(%Check{result: :passed}), do: "bestanden"
   defp check_result(%Check{name: :reference, result: :missing}), do: "Hinweis"
@@ -358,7 +340,8 @@ defmodule ZipfelfolioWeb.ReceiptComponents do
     do: "Keine ISIN erkannt"
 
   defp check_text(%Check{name: :depot, result: :passed} = check, fields),
-    do: "Depot #{Format.masked(fields.depot_number)} gehört zu „#{check.portfolio_name}“"
+    do:
+      "Depot #{Format.masked(fields.depot_number)} gehört zu „#{Format.portfolio_name(check.portfolio_name)}“"
 
   defp check_text(%Check{name: :depot, result: :failed}, fields),
     do:
@@ -376,9 +359,4 @@ defmodule ZipfelfolioWeb.ReceiptComponents do
 
   defp check_text(%Check{name: :reference, result: :missing}, _fields),
     do: "Keine Referenznummer erkannt"
-
-  defp decimal(decimal) do
-    normalized = Decimal.normalize(decimal)
-    Format.decimal(normalized, max(-normalized.exp, 0))
-  end
 end

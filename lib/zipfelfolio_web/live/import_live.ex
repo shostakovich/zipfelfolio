@@ -25,70 +25,72 @@ defmodule ZipfelfolioWeb.ImportLive do
       sidebar={@sidebar}
       current={:settings}
     >
-      <.header>
+      <.header back={~p"/users/settings"} back_label="Einstellungen">
         Import aus Portfolio Performance
-        <:actions>
-          <.link navigate={~p"/users/settings"} class="btn btn-sm btn-outline-secondary">
-            Einstellungen
-          </.link>
-        </:actions>
       </.header>
 
-      <div class="row g-4">
-        <div class="col-lg-7">
-          <.card title="Datei importieren">
-            <p>
-              Übernimmt Wertpapiere, Kurse, Depots, Konten, Buchungen, Sparpläne und Klassifizierungen.
-              Ein erneuter Import gleicht alles an die Datei an; was du in zipfelfolio eingestellt
-              hast, etwa die Kursquelle, bleibt.
-            </p>
-            <div :if={@own_transactions?} class="alert alert-warning" role="alert">
-              Du hast schon Buchungen in zipfelfolio erfasst. Sie bleiben erhalten; stehen sie auch
-              in Portfolio Performance, sind sie danach doppelt.
-            </div>
-            <form id="import-form" phx-submit="import" phx-change="validate">
-              <label class="form-label" for={@uploads.pp_file.ref}>
-                PP-Datei (.portfolio, Binärformat)
-              </label>
-              <.live_file_input upload={@uploads.pp_file} class="form-control mb-2" />
-              <p
-                :for={error <- upload_errors(@uploads.pp_file) ++ entry_errors(@uploads.pp_file)}
-                class="text-danger small"
-              >
-                {upload_error(error)}
-              </p>
+      <div class="grid gap-x-12 gap-y-8 lg:grid-cols-2">
+        <section aria-labelledby="import-file-title">
+          <.section_heading id="import-file-title">Datei importieren</.section_heading>
+          <p class="mb-4 max-w-prose text-sm">
+            Übernimmt Wertpapiere, Kurse, Depots, Konten, Buchungen, Sparpläne und Klassifizierungen.
+            Ein erneuter Import gleicht alles an die Datei an; was du in zipfelfolio eingestellt
+            hast, etwa die Kursquelle, bleibt.
+          </p>
+          <.alert :if={@own_transactions?} tone={:warning} class="mb-4">
+            Du hast schon Buchungen in zipfelfolio erfasst. Sie bleiben erhalten; stehen sie auch
+            in Portfolio Performance, sind sie danach doppelt.
+          </.alert>
+          <form id="import-form" phx-submit="import" phx-change="validate">
+            <fieldset class="fieldset min-w-0">
+              <label class="fieldset-legend" for={@uploads.pp_file.ref}>PP-Datei</label>
+              <.live_file_input
+                upload={@uploads.pp_file}
+                class={[
+                  "file-input w-full",
+                  file_errors(@uploads.pp_file) != [] && "file-input-error"
+                ]}
+                aria-invalid={file_errors(@uploads.pp_file) != [] && "true"}
+                aria-describedby={
+                  field_describedby(@uploads.pp_file.ref, file_errors(@uploads.pp_file), true)
+                }
+              />
+              <.field_error id={@uploads.pp_file.ref} errors={file_errors(@uploads.pp_file)} />
+              <.field_help id={@uploads.pp_file.ref}>
+                Die Datei .portfolio im Binärformat, unverschlüsselt.
+              </.field_help>
+            </fieldset>
+            <.action_bar class="mt-4">
               <.button
+                type="submit"
+                variant={:primary}
                 phx-disable-with="Wird importiert …"
                 disabled={@uploads.pp_file.entries == []}
               >
                 Importieren
               </.button>
-            </form>
-          </.card>
-        </div>
+            </.action_bar>
+          </form>
+        </section>
 
-        <div :if={@summary} class="col-lg-5">
-          <.card title="Ergebnis" id="import-summary">
-            <table class="table table-sm mb-0">
-              <thead>
-                <tr>
-                  <th scope="col"></th>
-                  <th scope="col" class="text-end">neu</th>
-                  <th scope="col" class="text-end">geändert</th>
-                  <th scope="col" class="text-end">gelöscht</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr :for={{kind, label} <- labels()} id={"summary-#{kind}"}>
-                  <th scope="row" class="fw-normal">{label}</th>
-                  <td class="text-end">{@summary[kind].created}</td>
-                  <td class="text-end">{@summary[kind].updated}</td>
-                  <td class="text-end">{@summary[kind].deleted}</td>
-                </tr>
-              </tbody>
-            </table>
-          </.card>
-        </div>
+        <section :if={@summary} id="import-summary" aria-labelledby="import-summary-title">
+          <.section_heading id="import-summary-title">Ergebnis</.section_heading>
+          <.table
+            id="import-summary-rows"
+            rows={labels()}
+            row_id={fn {kind, _label} -> "summary-#{kind}" end}
+            size={:sm}
+          >
+            <:col :let={{_kind, label}} label="Bereich">{label}</:col>
+            <:col :let={{kind, _label}} label="neu" align={:end}>{@summary[kind].created}</:col>
+            <:col :let={{kind, _label}} label="geändert" align={:end}>
+              {@summary[kind].updated}
+            </:col>
+            <:col :let={{kind, _label}} label="gelöscht" align={:end}>
+              {@summary[kind].deleted}
+            </:col>
+          </.table>
+        </section>
       </div>
     </Layouts.app>
     """
@@ -139,7 +141,10 @@ defmodule ZipfelfolioWeb.ImportLive do
 
   defp labels, do: @labels
 
-  defp entry_errors(upload), do: Enum.flat_map(upload.entries, &upload_errors(upload, &1))
+  defp file_errors(upload) do
+    (upload_errors(upload) ++ Enum.flat_map(upload.entries, &upload_errors(upload, &1)))
+    |> Enum.map(&upload_error/1)
+  end
 
   defp upload_error(:too_large), do: "Die Datei ist zu groß."
   defp upload_error(:too_many_files), do: "Bitte nur eine Datei wählen."

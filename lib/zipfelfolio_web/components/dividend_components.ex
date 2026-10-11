@@ -4,19 +4,27 @@ defmodule ZipfelfolioWeb.DividendComponents do
 
   use ZipfelfolioWeb, :verified_routes
 
+  import Setzkasten.Components.Feedback, only: [badge: 1]
+
   alias ZipfelfolioWeb.Format
 
   attr :kind, :atom, required: true, values: [:announced, :forecast]
   attr :class, :any, default: nil
 
+  @doc """
+  Whether a dividend's date is fixed or estimated, as a status: the dot of an announced one in
+  the colour of its bars, a forecast's neutral.
+  """
   def kind_tag(assigns) do
     ~H"""
-    <span class={["badge app-kind", "app-upcoming-#{@kind}", @class]}>{kind_label(@kind)}</span>
+    <.badge tone={if @kind == :announced, do: :primary, else: :neutral} class={@class}>
+      {kind_label(@kind)}
+    </.badge>
     """
   end
 
-  def kind_label(:announced), do: "angekündigt"
-  def kind_label(:forecast), do: "Prognose"
+  defp kind_label(:announced), do: "angekündigt"
+  defp kind_label(:forecast), do: "Prognose"
 
   @doc "The `amount` (`:gross` or `:net`) of `dividend` in euros, with „~“ for a forecast."
   def expected(%{kind: :forecast} = dividend, amount, places),
@@ -43,25 +51,30 @@ defmodule ZipfelfolioWeb.DividendComponents do
   end
 
   attr :security, :map, required: true, doc: "nil for a dividend booked without a security"
-  attr :class, :string, default: nil
+  attr :class, :any, default: nil
 
   def security_link(%{security: nil} = assigns) do
     ~H"""
-    <span class={["d-block fw-semibold text-body-secondary", @class]}>Ohne Wertpapier</span>
+    <span class={["font-medium text-base-content/70", @class]}>Ohne Wertpapier</span>
     """
   end
 
   def security_link(assigns) do
     ~H"""
-    <.link
-      navigate={~p"/securities/#{@security}"}
-      class={["d-block fw-semibold text-body text-decoration-none", @class]}
-    >
+    <.link navigate={~p"/securities/#{@security}"} class={["font-medium hover:underline", @class]}>
       {security_name(@security)}
     </.link>
     """
   end
 
+  @doc "The page of a dividend's security, nil for one booked without a security."
+  def security_path(nil), do: nil
+  def security_path(security), do: ~p"/securities/#{security}"
+
+  @doc "A dividend's security by name, „Ohne Wertpapier“ for one booked without."
+  def security_title(nil), do: "Ohne Wertpapier"
+  def security_title(security), do: security_name(security)
+
   @doc "Names such as „All-World“ never break at their hyphen."
-  def security_name(security), do: String.replace(security.name, "-", "\u2011")
+  def security_name(security), do: String.replace(security.name, "-", "‑")
 end

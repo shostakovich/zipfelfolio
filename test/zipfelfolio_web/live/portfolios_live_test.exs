@@ -9,18 +9,34 @@ defmodule ZipfelfolioWeb.PortfoliosLiveTest do
 
   setup :register_and_log_in_user
 
-  test "keeps the „Depots“ tab active on the holdings", %{conn: conn} do
-    {:ok, lv, _html} = live(conn, ~p"/holdings")
+  test "belongs to the settings in the navigation", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/portfolios")
 
-    assert has_element?(lv, "#tab-portfolios.active")
-    refute has_element?(lv, "#tab-overview.active")
+    assert has_element?(lv, sidebar_link("/users/settings") <> "[aria-current=page]")
+  end
+
+  test "shows a portfolio without a name, as PP may store one, as „Ohne Namen“", ctx do
+    portfolio = portfolio_fixture(ctx.scope, %{name: ""})
+    path = ZipfelfolioWeb.Sidebar.portfolio_path(portfolio)
+
+    {:ok, lv, _html} = live(ctx.conn, ~p"/portfolios")
+    assert has_element?(lv, "#depot-number-#{portfolio.id}", "Ohne Namen")
+    assert has_element?(lv, sidebar_link(path), "Ohne Namen")
+
+    {:ok, lv, _html} = live(ctx.conn, ~p"/")
+    assert has_element?(lv, ~s(#portfolio-#{portfolio.id} a[href="#{path}"]), "Ohne Namen")
+
+    {:ok, lv, _html} = live(ctx.conn, path)
+    assert has_element?(lv, "#portfolio-menu summary", "Ohne Namen")
+    assert has_element?(lv, "#portfolio-menu a", "Ohne Namen")
   end
 
   test "points to the import while there are no portfolios", %{conn: conn} do
     {:ok, lv, _html} = live(conn, ~p"/portfolios")
 
     refute has_element?(lv, "#depot-numbers")
-    assert has_element?(lv, "a[href='/settings/import']", "Import aus Portfolio Performance")
+    assert has_element?(lv, "img[src^='/images/plush/briefcase']")
+    assert has_element?(lv, "a[href='/settings/import']", "Aus Portfolio Performance importieren")
   end
 
   describe "depot numbers" do
@@ -42,7 +58,7 @@ defmodule ZipfelfolioWeb.PortfoliosLiveTest do
       assert has_element?(
                lv,
                "#depot-number-#{portfolio.id}",
-               "Depotnummer …4472 · Referenzkonto „Konto Sparplan“"
+               "Depotnummer …4472\u2060\u00A0· Referenzkonto „Konto Sparplan“"
              )
 
       refute render(lv) =~ "123 456 4472"
@@ -60,7 +76,7 @@ defmodule ZipfelfolioWeb.PortfoliosLiveTest do
 
       assert lv
              |> form("#depot-number-form", portfolio: %{depot_number: "44-72"})
-             |> render_change() =~ "gehört schon zu „Sparplan“"
+             |> render_change() =~ "Gehört schon zu „Sparplan“"
 
       lv
       |> form("#depot-number-form", portfolio: %{depot_number: "DE 0815 4471"})

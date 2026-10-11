@@ -13,8 +13,13 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
 
   @unknown_benchmark "Dieses Wertpapier gibt es nicht mehr, die Benchmark bleibt."
 
+  @symbol_help "Wird deine Benchmark. Name, Währung und Kurse kommen von Yahoo; ein " <>
+                 "vorhandenes Symbol wird übernommen statt doppelt angelegt."
+
   @impl true
   def render(assigns) do
+    assigns = assign(assigns, :symbol_help, @symbol_help)
+
     ~H"""
     <Layouts.app
       flash={@flash}
@@ -22,26 +27,21 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
       sidebar={@sidebar}
       current={:settings}
     >
-      <.header>
+      <.header back={~p"/users/settings"} back_label="Einstellungen">
         Wertpapiere
-        <:actions>
-          <.link navigate={~p"/users/settings"} class="btn btn-sm btn-outline-secondary">
-            Einstellungen
-          </.link>
-        </:actions>
+        <:subtitle>
+          Kurse kommen von Yahoo, täglich um 18:00 und beim Öffnen dieser Seite. Am selben Tag gilt
+          ein Kurs aus Portfolio Performance vor einem manuellen, ein manueller vor einem von Yahoo.
+        </:subtitle>
       </.header>
 
-      <p class="text-body-secondary">
-        Kurse kommen von Yahoo, täglich um 18:00 und beim Öffnen dieser Seite. Am selben Tag gilt ein
-        Kurs aus Portfolio Performance vor einem manuellen, ein manueller vor einem von Yahoo.
-      </p>
-
-      <.card title="Benchmark" id="benchmark">
-        <p>
-          Übersicht und Performance vergleichen deine Depots mit diesem Wertpapier, wenn du dort „Benchmark“ einschaltest.
-        </p>
-        <div class="row g-4">
-          <div class="col-lg-6">
+      <div class="flex flex-col gap-8">
+        <section id="benchmark" aria-labelledby="benchmark-title">
+          <.section_heading id="benchmark-title">Benchmark</.section_heading>
+          <p class="mb-3 max-w-prose text-sm text-base-content/70">
+            Übersicht und Performance vergleichen deine Depots mit diesem Wertpapier, wenn du dort „Benchmark“ einschaltest.
+          </p>
+          <div class="grid gap-x-12 gap-y-4 lg:grid-cols-2">
             <.form
               for={@benchmark_form}
               id="benchmark-form"
@@ -53,88 +53,84 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
                 type="select"
                 label="Wertpapier"
                 options={benchmark_options(@active, @benchmark)}
-                wrapper_class=""
+                help="Gilt sofort, ohne Speichern."
               />
             </.form>
-            <p class="small text-body-secondary mt-2 mb-0">Gilt sofort, ohne Speichern.</p>
-          </div>
-          <div class="col-lg-6">
             <.form for={@symbol_form} id="yahoo-security" phx-submit="create_security">
-              <label class="form-label" for={@symbol_form[:symbol].id}>
-                Oder neu per Yahoo-Symbol anlegen
-              </label>
-              <div class="input-group">
-                <input
-                  type="text"
-                  name={@symbol_form[:symbol].name}
-                  id={@symbol_form[:symbol].id}
-                  value={@symbol_form[:symbol].value}
-                  class={["form-control", symbol_errors(@symbol_form) != [] && "is-invalid"]}
-                  spellcheck="false"
-                  autocapitalize="characters"
-                  aria-describedby="yahoo-security-help"
-                />
-                <.button variant="outline-primary" phx-disable-with="Wird abgerufen …">
+              <h3 class="fieldset-legend text-xs">Oder neu per Yahoo-Symbol anlegen</h3>
+              <.input
+                field={@symbol_form[:symbol]}
+                label="Yahoo-Symbol"
+                inline
+                spellcheck="false"
+                autocapitalize="characters"
+                help={@symbol_help}
+              >
+                <.button type="submit" class="join-item" phx-disable-with="Wird abgerufen …">
                   Anlegen
                 </.button>
-              </div>
-              <.error :for={message <- symbol_errors(@symbol_form)}>{message}</.error>
+              </.input>
             </.form>
-            <p id="yahoo-security-help" class="small text-body-secondary mt-2 mb-0">
-              Wird deine Benchmark. Name, Währung und Kurse kommen von Yahoo; ein vorhandenes
-              Symbol wird übernommen statt doppelt angelegt.
-            </p>
           </div>
-        </div>
-      </.card>
+        </section>
 
-      <.card title="Wechselkurse" id="exchange-rates">
-        <p class="mb-0">
-          <%= if @rates_until do %>
-            EZB-Referenzkurse bis {Format.date(@rates_until)}, täglich um 18:00 aktualisiert.
-          <% else %>
-            Noch keine Wechselkurse; sie kommen mit dem nächsten Abruf um 18:00.
-          <% end %>
-        </p>
-        <p :if={@last_run && @last_run.error} class="text-danger small mt-2 mb-0">
-          {@last_run.error}
-        </p>
-      </.card>
+        <section id="exchange-rates" aria-labelledby="exchange-rates-title">
+          <.section_heading id="exchange-rates-title">Wechselkurse</.section_heading>
+          <p class="max-w-prose text-sm">
+            <%= if @rates_until do %>
+              EZB-Referenzkurse bis {Format.date(@rates_until)}, täglich um 18:00 aktualisiert.
+            <% else %>
+              Noch keine Wechselkurse; sie kommen mit dem nächsten Abruf um 18:00.
+            <% end %>
+          </p>
+          <p
+            :if={@last_run && @last_run.error}
+            class="mt-2 flex items-center gap-1.5 text-sm text-error-ink"
+          >
+            <.icon name="circle-alert" class="shrink-0" />{@last_run.error}
+          </p>
+        </section>
 
-      <section class="card mb-3" aria-label="Aktive Wertpapiere">
-        <p :if={@active == []} class="card-body mb-0">
-          Noch keine Wertpapiere. Sie kommen mit dem <.link navigate={~p"/settings/import"}>Import aus Portfolio Performance</.link>.
-        </p>
-        <ul :if={@active != []} class="list-group list-group-flush">
-          <.security
-            :for={security <- @active}
-            security={security}
-            benchmark={@benchmark == security}
-            feed_form={@feed_forms[security.id]}
-            price_form={@price_forms[security.id]}
-            manual_prices={@manual_prices[security.id]}
-          />
-        </ul>
-      </section>
+        <section id="active-securities" aria-labelledby="active-securities-title">
+          <.section_heading id="active-securities-title" count={length(@active)}>
+            Aktive Wertpapiere
+          </.section_heading>
+          <.empty_state :if={@active == []} icon="layers">
+            Noch keine Wertpapiere. Sie kommen mit dem Import aus Portfolio Performance.
+            <:action>
+              <.button navigate={~p"/settings/import"} icon="upload">PP-Datei importieren</.button>
+            </:action>
+          </.empty_state>
+          <.list :if={@active != []}>
+            <.security
+              :for={security <- @active}
+              security={security}
+              benchmark={@benchmark == security}
+              feed_form={@feed_forms[security.id]}
+              price_form={@price_forms[security.id]}
+              manual_prices={@manual_prices[security.id]}
+            />
+          </.list>
+        </section>
 
-      <details
-        :if={@retired != []}
-        id="retired"
-        class="card mb-3"
-        phx-mounted={JS.ignore_attributes(["open"])}
-      >
-        <summary class="card-body">Ausgemustert ({length(@retired)})</summary>
-        <ul class="list-group list-group-flush">
-          <.security
-            :for={security <- @retired}
-            security={security}
-            benchmark={@benchmark == security}
-            feed_form={@feed_forms[security.id]}
-            price_form={@price_forms[security.id]}
-            manual_prices={@manual_prices[security.id]}
-          />
-        </ul>
-      </details>
+        <.disclosure
+          :if={@retired != []}
+          id="retired"
+          summary="Ausgemustert"
+          count={length(@retired)}
+        >
+          <.list flush>
+            <.security
+              :for={security <- @retired}
+              security={security}
+              benchmark={@benchmark == security}
+              feed_form={@feed_forms[security.id]}
+              price_form={@price_forms[security.id]}
+              manual_prices={@manual_prices[security.id]}
+            />
+          </.list>
+        </.disclosure>
+      </div>
     </Layouts.app>
     """
   end
@@ -147,101 +143,109 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
 
   defp security(assigns) do
     ~H"""
-    <li class="list-group-item" id={"security-#{@security.id}"}>
-      <div class="d-flex gap-3">
-        <div class="me-auto">
-          <span class="d-block fw-semibold">
-            {@security.name}
-            <span :if={@benchmark} class="badge ms-1 app-benchmark-badge">
-              <span class="app-benchmark-key" aria-hidden="true"></span>Benchmark
-            </span>
-          </span>
-          <span class="small text-body-secondary">
-            {[@security.isin, @security.currency] |> Enum.reject(&is_nil/1) |> Enum.join(" · ")}
-          </span>
+    <li class="list-row" id={"security-#{@security.id}"}>
+      <div class="list-col-grow min-w-0">
+        <div class="flex items-start gap-4">
+          <div class="min-w-0 grow">
+            <p class="flex flex-wrap items-center gap-2 font-medium wrap-anywhere">
+              {@security.name}
+              <.badge :if={@benchmark} style={:plain}>Benchmark</.badge>
+            </p>
+            <p class="text-sm text-base-content/70">
+              {join_meta([@security.isin, @security.currency])}
+            </p>
+          </div>
+          <div class="shrink-0 text-end">
+            <p class="tabular-nums whitespace-nowrap">
+              {Format.price(@security.latest_close, @security.currency)}
+            </p>
+            <p class="text-sm text-base-content/70 whitespace-nowrap">{quote_time(@security)}</p>
+          </div>
         </div>
-        <div class="text-end text-nowrap">
-          <span class="d-block">{Format.price(@security.latest_close, @security.currency)}</span>
-          <span class="small text-body-secondary">{quote_time(@security)}</span>
-        </div>
-      </div>
 
-      <p :if={@security.fetch_error} class="text-danger small my-2">{@security.fetch_error}</p>
-      <p :if={!@security.fetch_error && @security.fetched_at} class="text-body-secondary small my-2">
-        Zuletzt abgerufen {Format.datetime(@security.fetched_at)}
-      </p>
+        <p :if={@security.fetch_error} class="mt-2 flex items-center gap-1.5 text-sm text-error-ink">
+          <.icon name="circle-alert" class="shrink-0" />{@security.fetch_error}
+        </p>
+        <p
+          :if={!@security.fetch_error && @security.fetched_at}
+          class="mt-2 text-sm text-base-content/70"
+        >
+          Zuletzt abgerufen {Format.datetime(@security.fetched_at)}
+        </p>
 
-      <.form for={@feed_form} id={"feed-#{@security.id}"} phx-submit="save_feed" class="row g-2 mt-1">
-        <input type="hidden" name="security_id" value={@security.id} />
-        <div class="col-sm-4">
+        <.form
+          for={@feed_form}
+          id={"feed-#{@security.id}"}
+          phx-submit="save_feed"
+          class="mt-2 grid items-end gap-x-4 sm:grid-cols-[1fr_1fr_auto]"
+        >
+          <input type="hidden" name="security_id" value={@security.id} />
           <.input
             field={@feed_form[:quote_feed]}
             type="select"
             label="Kursquelle"
             options={feeds()}
-            wrapper_class=""
           />
-        </div>
-        <div class="col-sm-5">
           <.input
             field={@feed_form[:symbol]}
             label="Yahoo-Symbol"
             placeholder="z. B. VGWL.DE"
             spellcheck="false"
-            wrapper_class=""
           />
-        </div>
-        <div class="col-sm-3 d-flex align-items-end">
-          <.button variant="outline-primary" class="w-100">Speichern</.button>
-        </div>
-      </.form>
+          <div class="py-1"><.button type="submit" class="max-sm:w-full">Speichern</.button></div>
+        </.form>
 
-      <details
-        id={"manual-prices-#{@security.id}"}
-        class="mt-3"
-        phx-mounted={JS.ignore_attributes(["open"])}
-      >
-        <summary class="small">Manuelle Kurse ({length(@manual_prices)})</summary>
-        <.form
-          for={@price_form}
-          id={"manual-price-#{@security.id}"}
-          phx-submit="add_price"
-          class="row g-2 mt-1"
+        <.disclosure
+          id={"manual-prices-#{@security.id}"}
+          summary="Manuelle Kurse"
+          count={length(@manual_prices)}
+          class="mt-3"
         >
-          <input type="hidden" name="security_id" value={@security.id} />
-          <div class="col-sm-4">
-            <.input field={@price_form[:date]} type="date" label="Tag" required wrapper_class="" />
-          </div>
-          <div class="col-sm-5">
+          <.form
+            for={@price_form}
+            id={"manual-price-#{@security.id}"}
+            phx-submit="add_price"
+            class="grid items-end gap-x-4 sm:grid-cols-[1fr_1fr_auto]"
+          >
+            <input type="hidden" name="security_id" value={@security.id} />
+            <.input field={@price_form[:date]} type="date" label="Tag" required />
             <.input
               field={@price_form[:close]}
               label="Kurs"
-              inputmode="decimal"
+              suffix={Format.currency(@security.currency)}
+              numeric
               required
-              wrapper_class=""
             />
-          </div>
-          <div class="col-sm-3 d-flex align-items-end">
-            <.button variant="outline-primary" class="w-100">Eintragen</.button>
-          </div>
-        </.form>
-        <ul :if={@manual_prices != []} class="list-unstyled mt-2 mb-0">
-          <li :for={price <- @manual_prices} class="d-flex align-items-center gap-2 py-1">
-            <span class="me-auto">{Format.date(price.date)}</span>
-            <span>{Format.price(price.close, @security.currency)}</span>
-            <.button
-              type="button"
-              variant="link"
-              size="sm"
-              phx-click="delete_price"
-              phx-value-security_id={@security.id}
-              phx-value-price-id={price.id}
+            <div class="py-1"><.button type="submit" class="max-sm:w-full">Eintragen</.button></div>
+          </.form>
+          <.list :if={@manual_prices != []} flush class="mt-2">
+            <.list_row
+              :for={price <- @manual_prices}
+              id={"manual-price-row-#{price.id}"}
+              title={Format.date(price.date)}
             >
-              Löschen
-            </.button>
-          </li>
-        </ul>
-      </details>
+              <:trailing>
+                <span class="tabular-nums">{Format.price(price.close, @security.currency)}</span>
+              </:trailing>
+              <:action
+                id={"manual-price-row-#{price.id}-delete"}
+                label="Löschen"
+                icon="trash-2"
+                danger
+                confirm={"Kurs vom #{Format.date(price.date)} löschen?"}
+                on_click={
+                  JS.push("delete_price",
+                    value: %{
+                      "security_id" => to_string(@security.id),
+                      "price-id" => to_string(price.id)
+                    }
+                  )
+                }
+              />
+            </.list_row>
+          </.list>
+        </.disclosure>
+      </div>
     </li>
     """
   end
@@ -266,8 +270,6 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
      |> assign(:symbol_form, symbol_form())
      |> load()}
   end
-
-  defp symbol_errors(form), do: Enum.map(form[:symbol].errors, &translate_error/1)
 
   defp symbol_form(changeset \\ Securities.change_yahoo_symbol(%{"symbol" => @symbol})),
     do: to_form(changeset, as: :yahoo)

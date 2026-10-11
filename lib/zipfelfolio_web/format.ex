@@ -48,6 +48,10 @@ defmodule ZipfelfolioWeb.Format do
   def currency("EUR"), do: "€"
   def currency(code), do: code
 
+  @doc "How setzkasten's `<.amount>` names a currency, as `currency/1` does."
+  def currency_display("EUR"), do: :symbol
+  def currency_display(_code), do: :code
+
   @doc "A change of a price × 10⁸ with its sign, e.g. `−1,06 €`; none when it rounds to zero."
   def signed_price(change, currency) do
     unchanged = price(0, currency)
@@ -103,7 +107,7 @@ defmodule ZipfelfolioWeb.Format do
   def ter(nil), do: "–"
   def ter(%Decimal{} = ter), do: ter |> Decimal.mult(100) |> percent(2)
 
-  @doc "An exchange rate with the decimal places it has, e.g. `1,1652`."
+  @doc "A decimal with the places it has, e.g. an exchange rate `1,1652` or `93,207` shares."
   def rate(%Decimal{} = rate) do
     rate = Decimal.normalize(rate)
     number(rate, max(-rate.exp, 0), "")
@@ -159,9 +163,18 @@ defmodule ZipfelfolioWeb.Format do
     |> Enum.map_join(".", &Enum.join/1)
   end
 
+  @doc "A portfolio's name or its `name`; „Ohne Namen“ for the empty one PP may store."
+  def portfolio_name(%{name: name}), do: portfolio_name(name)
+  def portfolio_name(name) when name in [nil, ""], do: "Ohne Namen"
+  def portfolio_name(name) when is_binary(name), do: name
+
   @doc "A depot or account number by its last four digits, e.g. „…4471“."
   def masked(number),
     do: "…" <> (number |> Portfolio.digits() |> String.slice(-4, 4))
+
+  @doc "A day without its year, e.g. `14.03.`."
+  def short_date(nil), do: "–"
+  def short_date(%Date{} = date), do: Calendar.strftime(date, "%d.%m.")
 
   def date(nil), do: "–"
   def date(%Date{} = date), do: Calendar.strftime(date, "%d.%m.%Y")
@@ -183,22 +196,22 @@ defmodule ZipfelfolioWeb.Format do
   """
   def date_span(first, last, year? \\ true)
 
-  def date_span(day, day, year?), do: short_date(day, year?)
+  def date_span(day, day, year?), do: span_end(day, year?)
 
   def date_span(
         %Date{year: year, month: month} = first,
         %Date{year: year, month: month} = last,
         year?
       ),
-      do: Calendar.strftime(first, "%d.–") <> short_date(last, year?)
+      do: Calendar.strftime(first, "%d.–") <> span_end(last, year?)
 
   def date_span(%Date{year: year} = first, %Date{year: year} = last, year?),
-    do: Calendar.strftime(first, "%d.%m.–") <> short_date(last, year?)
+    do: Calendar.strftime(first, "%d.%m.–") <> span_end(last, year?)
 
   def date_span(first, last, _year?), do: date(first) <> "–" <> date(last)
 
-  defp short_date(date, true), do: date(date)
-  defp short_date(date, false), do: Calendar.strftime(date, "%d.%m.")
+  defp span_end(date, true), do: date(date)
+  defp span_end(date, false), do: short_date(date)
 
   defp long_date(date), do: "#{date.day}. #{month_name(date)} #{date.year}"
 

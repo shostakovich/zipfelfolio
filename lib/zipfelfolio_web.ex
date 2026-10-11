@@ -59,6 +59,7 @@ defmodule ZipfelfolioWeb do
   defp html_helpers do
     quote do
       import Phoenix.HTML
+      use Setzkasten
       import ZipfelfolioWeb.CoreComponents
 
       alias Phoenix.LiveView.JS

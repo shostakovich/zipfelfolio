@@ -60,6 +60,12 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
 
   defp only_receipt(scope), do: hd(Receipts.list_inbox(scope))
 
+  # „Buchungen“ in the sidebar counts nothing, neither as a number nor in its name.
+  defp refute_inbox_count(lv) do
+    refute has_element?(lv, sidebar_link("/transactions") <> " .tabular-nums")
+    refute has_element?(lv, sidebar_link("/transactions") <> "[aria-label]")
+  end
+
   test "an uploaded PDF goes through the model into the inbox and is booked once confirmed",
        ctx do
     FakeModel.stub(fn _text -> {:ok, answer()} end)
@@ -67,15 +73,18 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
     receipt = only_receipt(ctx.scope)
 
     row = lv |> element("#receipt-#{receipt.id}") |> render()
-    assert row =~ "Kauf · Vanguard FTSE All-World"
-    assert row =~ "01.10.2026 · 93,207 Stück · 1.125,00 € · Upload · alle Prüfungen bestanden"
-    assert has_element?(lv, "#side-transactions .badge", "1")
-    assert has_element?(lv, "#tab-transactions .badge", "1")
+    assert row =~ "Kauf\u2060\u00A0· Vanguard FTSE All-World"
+
+    assert row =~
+             "01.10.2026\u2060\u00A0· 93,207 Stück\u2060\u00A0· 1.125,00\u00A0€\u2060\u00A0· Upload"
+
+    assert has_element?(lv, "#receipt-#{receipt.id}-status", "Geprüft")
+    assert has_element?(lv, sidebar_link("/transactions"), "1")
 
     lv |> element("#receipt-#{receipt.id} button", "Prüfen und buchen") |> render_click()
 
     assert has_element?(lv, "#transaction-modal h2", "Beleg prüfen")
-    assert has_element?(lv, "#transaction-modal", "beleg.pdf · Kauf vom 01.10.2026")
+    assert has_element?(lv, "#transaction-modal", "beleg.pdf\u2060\u00A0· Kauf vom 01.10.2026")
     assert has_element?(lv, "#receipt-check-amount", "Stück × Kurs = 1.125,00 €")
     assert has_element?(lv, "#receipt-check-isin", "ISIN gültig und bekannt")
     assert has_element?(lv, "#receipt-check-depot", "Depot …4472 gehört zu „Sparplan“")
@@ -85,9 +94,10 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
     assert has_element?(lv, "#transaction_shares[value='93,207']")
     assert has_element?(lv, "#transaction_price[value='12,0699']")
     assert has_element?(lv, "#transaction_amount[value='1.125,00']")
-    assert has_element?(lv, "#transaction-form button.btn-success", "Buchen")
+    refute has_element?(lv, "#receipt-checks [data-problem]")
+    assert has_element?(lv, "#transaction-book", "Buchen")
     refute has_element?(lv, "#new-security")
-    refute has_element?(lv, "#transaction_kind-deposit")
+    refute has_element?(lv, "input[name='transaction[kind]'][value=deposit]")
     assert has_element?(lv, "#transaction_security_id option[selected]", "Vanguard")
     assert has_element?(lv, "#transaction_portfolio_id option[selected]", "Sparplan")
     assert has_element?(lv, "#transaction_account_id option[selected]", "Verrechnungskonto")
@@ -98,7 +108,7 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
     assert render(lv) =~ "Buchung gespeichert."
     refute has_element?(lv, "#transaction-modal")
     refute has_element?(lv, "#inbox")
-    refute has_element?(lv, "#side-transactions .badge")
+    refute_inbox_count(lv)
 
     assert [transaction] = Portfolios.list_transactions(ctx.scope)
 
@@ -108,7 +118,7 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
     assert transaction.account_id == ctx.account.id
     assert receipt_id == receipt.id
     assert Repo.get!(Receipt, receipt.id).status == :booked
-    assert has_element?(lv, "#transaction-#{transaction.id} .app-tx-receipt")
+    assert has_element?(lv, "#transaction-#{transaction.id}-receipt")
   end
 
   test "shows „wird erkannt“ until the model is done and updates every open page", ctx do
@@ -124,14 +134,14 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
     upload(lv, [{"beleg.pdf", pdf()}])
     assert_receive {:waiting, task}
 
-    assert render(lv) =~ "wird erkannt …"
+    assert has_element?(lv, "#inbox [id$=-status]", "Wird erkannt")
     refute has_element?(lv, "#inbox button")
-    refute has_element?(other, "#side-transactions .badge")
+    refute_inbox_count(other)
 
     send(task, :go)
     await_recognition()
     assert has_element?(lv, "#inbox button", "Prüfen und buchen")
-    assert has_element?(other, "#side-transactions .badge", "1")
+    assert has_element?(other, sidebar_link("/transactions"), "1")
   end
 
   test "Scenario: Unknown depot number — the user picks the portfolio before booking", ctx do
@@ -142,24 +152,30 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
 
     assert has_element?(
              lv,
-             "#receipt-#{receipt.id} .text-warning-emphasis",
+             "#receipt-#{receipt.id}-warning",
              "Depot …9999 gehört zu keinem deiner Depots. Bitte Depot wählen."
            )
 
-    assert has_element?(lv, "#side-transactions .badge", "1")
+    assert has_element?(lv, "#receipt-#{receipt.id}-status", "Bitte prüfen")
+    assert has_element?(lv, sidebar_link("/transactions"), "1")
 
     lv |> element("#receipt-#{receipt.id} button", "Prüfen und buchen") |> render_click()
 
     assert has_element?(
              lv,
-             "#receipt-check-depot.list-group-item-warning",
+             "#receipt-check-depot[data-problem]",
              "Depot …9999 gehört zu keinem deiner Depots"
            )
 
     refute has_element?(lv, "#transaction_portfolio_id option[selected]")
-    refute has_element?(lv, "#transaction-form button.btn-success")
-    assert has_element?(lv, "#transaction_portfolio_id.border-warning")
-    assert has_element?(lv, "#transaction_portfolio_id-warning", "Laut Beleg Depot …9999")
+    assert has_element?(lv, "#receipt-checks [data-problem]")
+
+    assert has_element?(
+             lv,
+             "#transaction_portfolio_id[aria-describedby~='transaction_portfolio_id-help']"
+           )
+
+    assert has_element?(lv, "#transaction_portfolio_id-help", "Laut Beleg Depot …9999")
 
     lv |> form("#transaction-form") |> render_submit()
     assert has_element?(lv, "#transaction-modal")
@@ -169,7 +185,7 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
     |> form("#transaction-form", transaction: %{portfolio_id: ctx.portfolio.id})
     |> render_change(%{"_target" => ["transaction", "portfolio_id"]})
 
-    refute has_element?(lv, "#transaction_portfolio_id-warning")
+    refute has_element?(lv, "#transaction_portfolio_id-help")
     lv |> form("#transaction-form") |> render_submit()
 
     assert render(lv) =~ "Buchung gespeichert."
@@ -191,7 +207,7 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
     |> form("#depot-number-form", portfolio: %{depot_number: "08159999"})
     |> render_submit()
 
-    assert has_element?(lv, "#receipt-#{receipt.id}", "alle Prüfungen bestanden")
+    assert has_element?(lv, "#receipt-#{receipt.id}-status", "Geprüft")
   end
 
   test "a receipt from Paperless names its document, and the inbox when Paperless was polled",
@@ -218,13 +234,20 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
     assert has_element?(
              lv,
              "#receipt-#{receipt.id}",
-             "93,207 Stück · 1.125,00\u00A0€ · Paperless #4812 · alle Prüfungen bestanden"
+             "93,207 Stück\u2060\u00A0· 1.125,00\u00A0€\u2060\u00A0· Paperless #4812"
            )
+
+    assert has_element?(lv, "#receipt-#{receipt.id}-status", "Geprüft")
 
     assert has_element?(lv, "#inbox-polled", "zuletzt abgefragt")
 
     lv |> element("#receipt-#{receipt.id} button", "Prüfen und buchen") |> render_click()
-    assert has_element?(lv, "#transaction-modal", "Paperless #4812 · Kauf vom 01.10.2026")
+
+    assert has_element?(
+             lv,
+             "#transaction-modal",
+             "Paperless #4812\u2060\u00A0· Kauf vom 01.10.2026"
+           )
   end
 
   test "a model answer off the schema leaves the receipt in the inbox with an empty form", ctx do
@@ -233,7 +256,8 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
     receipt = only_receipt(ctx.scope)
 
     assert has_element?(lv, "#receipt-#{receipt.id}", "beleg.pdf")
-    assert has_element?(lv, "#receipt-#{receipt.id}", "nicht erkannt, bitte von Hand erfassen")
+    assert has_element?(lv, "#receipt-#{receipt.id}-status", "Nicht erkannt")
+    assert has_element?(lv, "#receipt-#{receipt.id}", "bitte von Hand erfassen")
 
     lv |> element("#receipt-#{receipt.id} button", "Erfassen") |> render_click()
 
@@ -241,7 +265,7 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
     assert has_element?(lv, "#receipt-checks", "Nicht erkannt.")
     assert has_element?(lv, "#receipt-text", "Wertpapierabrechnung Kauf")
     assert has_element?(lv, "#transaction_shares:not([value])")
-    refute has_element?(lv, "#transaction-form .is-invalid")
+    refute has_element?(lv, "#transaction-form [aria-invalid]")
   end
 
   test "Scenario: A duplicate by bank reference — marked as booked and offered to discard", ctx do
@@ -264,6 +288,7 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
              "gleiche Referenznummer wie die Buchung vom 01.10.2026"
            )
 
+    assert has_element?(lv, "#receipt-#{second.id}-status", "Doppelt")
     refute has_element?(lv, "#receipt-#{second.id} button", "Prüfen und buchen")
 
     lv |> element("#receipt-#{second.id} button", "Verwerfen") |> render_click()
@@ -282,10 +307,10 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
 
     [transaction] = Portfolios.list_transactions(ctx.scope)
     lv |> element("#transaction-#{transaction.id} button") |> render_click()
-    lv |> element("#transaction-delete") |> render_click()
+    confirm_click(lv, "#transaction-delete", "Diese Buchung löschen?")
 
     assert render(lv) =~ "Buchung gelöscht."
-    assert has_element?(lv, "#receipt-#{second.id}", "alle Prüfungen bestanden")
+    assert has_element?(lv, "#receipt-#{second.id}-status", "Geprüft")
   end
 
   test "attaching a waiting file in the plain dialog takes it out of every open inbox", ctx do
@@ -329,7 +354,7 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
 
     lv |> element("#inbox button", "Prüfen und buchen") |> render_click()
     lv |> form("#transaction-form") |> put_submitter("#new-security-create") |> render_submit()
-    lv |> element("#receipt-later") |> render_click()
+    close_modal(lv, "#receipt-later", "transaction-modal")
 
     refute has_element?(lv, "#receipt-#{receipt.id}", "Wertpapier noch nicht angelegt")
   end
@@ -342,14 +367,14 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
 
     assert render(lv) =~ "nochmal.pdf liegt schon im Eingang."
     assert [_one] = Receipts.list_inbox(ctx.scope)
-    assert lv |> element("#inbox") |> render() =~ "1 Beleg"
+    assert has_element?(lv, "#inbox-title span", ~r/^\s*1\s*$/)
   end
 
   test "takes several PDFs at once", ctx do
     lv = upload_and_recognise(ctx.conn, [{"a.pdf", pdf()}, {"b.pdf", pdf()}])
 
-    assert has_element?(lv, "#inbox", "2 Belege")
-    assert has_element?(lv, "#side-transactions .badge", "2")
+    assert has_element?(lv, "#inbox-title span", ~r/^\s*2\s*$/)
+    assert has_element?(lv, sidebar_link("/transactions"), "2")
     assert render(lv) =~ "2 Belege liegen im Eingang."
   end
 
@@ -398,7 +423,7 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
     lv = upload_and_recognise(ctx.conn)
     receipt = only_receipt(ctx.scope)
 
-    assert has_element?(lv, "#receipt-#{receipt.id}", "nicht unterstützt")
+    assert has_element?(lv, "#receipt-#{receipt.id}-status", "Nicht unterstützt")
     lv |> element("#receipt-#{receipt.id} button", "Verwerfen") |> render_click()
 
     assert render(lv) =~ "Beleg verworfen."
@@ -412,7 +437,7 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
 
     assert has_element?(
              lv,
-             "#receipt-#{receipt.id} .text-warning-emphasis",
+             "#receipt-#{receipt.id}-warning",
              "Stück × Kurs ergibt 375,01 €, der Beleg nennt 375,00 €. Bitte Kurs prüfen."
            )
 
@@ -420,14 +445,14 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
 
     assert has_element?(
              lv,
-             "#receipt-check-amount.list-group-item-warning",
+             "#receipt-check-amount[data-problem]",
              "der Beleg nennt 375,00"
            )
 
-    assert has_element?(lv, "#transaction-form button.btn-primary", "Buchen")
-    assert has_element?(lv, "#transaction_price.border-warning")
-    assert has_element?(lv, "#transaction_price-warning", "Summe laut Beleg: 375,00")
-    assert has_element?(lv, "#transaction-expected", "Stück × Kurs ergibt 375,01")
+    assert has_element?(lv, "#transaction-book", "Buchen")
+    assert has_element?(lv, "#transaction_price[aria-describedby~='transaction_price-help']")
+    assert has_element?(lv, "#transaction_price-help", "Summe laut Beleg: 375,00")
+    assert has_element?(lv, "#transaction_amount-help", "Stück × Kurs ergibt 375,01")
   end
 
   test "a value not in the receipt fails its check in the row and the dialog", ctx do
@@ -437,7 +462,7 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
 
     assert has_element?(
              lv,
-             "#receipt-#{receipt.id} .text-warning-emphasis",
+             "#receipt-#{receipt.id}-warning",
              "Datum 02.10.2026 steht nicht im Beleg, bitte prüfen."
            )
 
@@ -445,11 +470,11 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
 
     assert has_element?(
              lv,
-             "#receipt-check-found.list-group-item-warning",
+             "#receipt-check-found[data-problem]",
              "Datum 02.10.2026 steht nicht im Beleg"
            )
 
-    refute has_element?(lv, "#receipt-check-amount.list-group-item-warning")
+    refute has_element?(lv, "#receipt-check-amount[data-problem]")
   end
 
   test "a receipt whose values all stand in it says so", ctx do
@@ -459,7 +484,7 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
 
     assert has_element?(
              lv,
-             "#receipt-check-found:not(.list-group-item-warning)",
+             "#receipt-check-found:not([data-problem])",
              "Alle Werte im Beleg gefunden"
            )
   end
@@ -487,7 +512,7 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
     receipt = only_receipt(ctx.scope)
 
     lv |> element("#inbox button", "Prüfen und buchen") |> render_click()
-    lv |> element("#receipt-later") |> render_click()
+    close_modal(lv, "#receipt-later", "transaction-modal")
 
     refute has_element?(lv, "#transaction-modal")
     assert has_element?(lv, "#receipt-#{receipt.id}")
@@ -522,7 +547,7 @@ defmodule ZipfelfolioWeb.ReceiptInboxTest do
     receipt = only_receipt(ctx.scope)
     lv |> element("#inbox button", "Prüfen und buchen") |> render_click()
     params = %{"receipt_id" => to_string(receipt.id), "transaction" => %{"kind" => "deposit"}}
-    lv |> element("#receipt-later") |> render_click()
+    close_modal(lv, "#receipt-later", "transaction-modal")
 
     dialog = with_target(lv, "#transaction-dialog")
     render_submit(dialog, "book", params)

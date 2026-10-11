@@ -20,71 +20,71 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
       <.header>
         Einstellungen
         <:actions>
-          <.link href={~p"/users/log-out"} method="delete" class="btn btn-sm btn-outline-secondary">
-            Abmelden
-          </.link>
+          <.button href={~p"/users/log-out"} method="delete" icon="log-out">Abmelden</.button>
         </:actions>
       </.header>
 
-      <div class="row gx-4">
-        <div class="col-lg-7">
-          <.card title="Passkeys" id="passkeys">
-            <p class="text-body-secondary">
+      <div class="grid gap-x-12 gap-y-8 lg:grid-cols-2">
+        <div class="flex min-w-0 flex-col gap-8">
+          <section id="passkeys" aria-labelledby="passkeys-title">
+            <.section_heading id="passkeys-title" count={length(@passkeys)}>
+              Passkeys
+            </.section_heading>
+            <p class="mb-3 max-w-prose text-sm text-base-content/70">
               Mit einem Passkey meldest du dich per Face ID, Fingerabdruck oder Geräte-PIN an.
             </p>
-            <p :if={@passkeys == []} class="fst-italic">Noch kein Passkey hinterlegt.</p>
-            <ul :if={@passkeys != []} class="list-group mb-3">
-              <li
+            <.empty_state :if={@passkeys == []} icon="key-round">
+              Noch kein Passkey hinterlegt.
+            </.empty_state>
+            <.list :if={@passkeys != []}>
+              <.list_row
                 :for={passkey <- @passkeys}
                 id={"passkey-#{passkey.id}"}
-                class="list-group-item d-flex align-items-center gap-2"
+                title={passkey.name}
               >
-                <div class="me-auto">
-                  <div class="fw-semibold">{passkey.name}</div>
-                  <div class="small text-body-secondary">
-                    angelegt {Format.date(passkey.inserted_at)}
-                    <span :if={passkey.last_used_at}>
-                      · zuletzt genutzt {Format.date(passkey.last_used_at)}
-                    </span>
-                  </div>
-                </div>
-                <.button
-                  variant="outline-danger"
-                  size="sm"
-                  phx-click="delete_passkey"
-                  phx-value-id={passkey.id}
-                  data-confirm={"Passkey „#{passkey.name}“ löschen?"}
-                >
-                  Löschen
-                </.button>
-              </li>
-            </ul>
-            <form id="passkey-register" phx-hook="PasskeyRegister">
-              <label class="form-label" for="passkey-name">Name des neuen Passkeys</label>
-              <div class="d-flex flex-column flex-sm-row gap-2">
-                <input
-                  id="passkey-name"
-                  name="name"
-                  class="form-control"
-                  placeholder="z. B. iPhone"
-                  maxlength="60"
-                  required
+                <:leading><.icon name="key-round" class="size-5 text-base-content/70" /></:leading>
+                <:meta>
+                  angelegt {Format.date(passkey.inserted_at)}<span :if={passkey.last_used_at}><.meta_sep />zuletzt genutzt {Format.date(
+                    passkey.last_used_at
+                  )}</span>
+                </:meta>
+                <:action
+                  id={"passkey-#{passkey.id}-delete"}
+                  label="Löschen"
+                  icon="trash-2"
+                  danger
+                  confirm={"Passkey „#{passkey.name}“ löschen?"}
+                  on_click={JS.push("delete_passkey", value: %{id: to_string(passkey.id)})}
                 />
-                <button class="btn btn-primary text-nowrap" type="submit">
+              </.list_row>
+            </.list>
+            <form id="passkey-register" class="mt-4" phx-hook="PasskeyRegister">
+              <.input
+                id="passkey-name"
+                name="name"
+                label="Name des neuen Passkeys"
+                inline
+                placeholder="Name, z. B. iPhone"
+                maxlength="60"
+                required
+              >
+                <.button type="submit" variant={:primary} icon="plus" class="join-item">
                   Passkey hinzufügen
-                </button>
-              </div>
+                </.button>
+              </.input>
             </form>
-          </.card>
-          <.card title="Depots" id="depots">
-            <p class="text-body-secondary">
-              Depotnummern und Referenzkonten deiner Depots.
+          </section>
+
+          <section id="depots" aria-labelledby="depots-title">
+            <.section_heading id="depots-title">Depots</.section_heading>
+            <p class="mb-3 max-w-prose text-sm text-base-content/70">
+              Die Depotnummern deiner Depots.
             </p>
-            <.link navigate={~p"/portfolios"} class="btn btn-outline-primary">
-              Depotnummern bearbeiten
-            </.link>
-          </.card>
-          <.card title="E-Mail-Adresse">
+            <.button navigate={~p"/portfolios"} icon="briefcase">Depotnummern bearbeiten</.button>
+          </section>
+
+          <section id="email" aria-labelledby="email-title">
+            <.section_heading id="email-title">E-Mail-Adresse</.section_heading>
             <.form
               for={@email_form}
               id="email-form"
@@ -99,43 +99,52 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
                 spellcheck="false"
                 required
               />
-              <.button phx-disable-with="Wird gesendet …">E-Mail ändern</.button>
+              <.action_bar class="mt-4">
+                <.button type="submit" variant={:primary} phx-disable-with="Wird gesendet …">
+                  E-Mail ändern
+                </.button>
+              </.action_bar>
             </.form>
-          </.card>
+          </section>
         </div>
 
-        <div class="col-lg-5">
-          <.card title="Wertpapiere" id="securities">
-            <p class="text-body-secondary">
+        <div class="flex min-w-0 flex-col gap-8">
+          <section id="securities" aria-labelledby="securities-title">
+            <.section_heading id="securities-title">Wertpapiere</.section_heading>
+            <p class="mb-3 max-w-prose text-sm text-base-content/70">
               Woher die Kurse kommen, letzte Kurse und Wechselkurse, manuelle Kurse.
             </p>
-            <.link navigate={~p"/settings/securities"} class="btn btn-outline-primary">
+            <.button navigate={~p"/settings/securities"} icon="trending-up">
               Kursquellen und Kurse
-            </.link>
-          </.card>
-          <.card title="Import" id="import">
-            <p class="text-body-secondary">
+            </.button>
+          </section>
+
+          <section id="import" aria-labelledby="import-title">
+            <.section_heading id="import-title">Import</.section_heading>
+            <p class="mb-3 max-w-prose text-sm text-base-content/70">
               Wertpapiere, Depots, Konten und Buchungen aus Portfolio Performance übernehmen.
             </p>
-            <.link navigate={~p"/settings/import"} class="btn btn-outline-primary">
-              PP-Datei importieren
-            </.link>
-          </.card>
-          <.card title="Belegeingang" id="receipt-intake">
-            <p class="text-body-secondary">
+            <.button navigate={~p"/settings/import"} icon="upload">PP-Datei importieren</.button>
+          </section>
+
+          <section id="receipt-intake" aria-labelledby="receipt-intake-title">
+            <.section_heading id="receipt-intake-title">Belegeingang</.section_heading>
+            <p class="mb-3 max-w-prose text-sm text-base-content/70">
               Holt alle 15 Minuten die Dokumente mit deinem Tag aus Paperless-ngx in den Eingang.
             </p>
-            <ul class="list-unstyled vstack gap-3 mb-3">
+            <ul class="mb-4 flex flex-col gap-3">
               <.intake_row
                 id="paperless-status"
-                on={User.paperless?(@paperless)}
                 title="Paperless-ngx"
+                status={if User.paperless?(@paperless), do: "Verbunden", else: "Nicht verbunden"}
+                tone={if User.paperless?(@paperless), do: :success, else: :warning}
                 detail={paperless_status(@paperless)}
               />
               <.intake_row
                 id="recognition-status"
-                on={@model_name != nil}
                 title="Belegerkennung"
+                status={if @model_name, do: "Eingerichtet", else: "Kein Modell"}
+                tone={if @model_name, do: :success, else: :neutral}
                 detail={recognition_status(@model_name)}
               />
             </ul>
@@ -155,14 +164,13 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
                 value=""
                 autocomplete="off"
                 placeholder={if @paperless.paperless_token, do: "gespeichert"}
-                wrapper_class="mb-1"
+                help={
+                  if @paperless.paperless_token,
+                    do:
+                      "Leer lassen, um den gespeicherten Token zu behalten; eine neue URL braucht einen neuen.",
+                    else: "In Paperless unter „Mein Profil“."
+                }
               />
-              <div class="form-text mb-3">
-                {if @paperless.paperless_token,
-                  do:
-                    "Leer lassen, um den gespeicherten Token zu behalten; eine neue URL braucht einen neuen.",
-                  else: "In Paperless unter „Mein Profil“."}
-              </div>
               <.input
                 field={@paperless_form[:paperless_tag]}
                 label="Tag"
@@ -170,20 +178,25 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
                 autocomplete="off"
                 spellcheck="false"
               />
-              <div class="d-flex flex-wrap gap-2">
-                <.button phx-disable-with="Speichert …">Speichern</.button>
-                <.button
-                  :if={User.paperless?(@paperless)}
-                  type="button"
-                  variant="outline-danger"
-                  phx-click="disconnect_paperless"
-                  data-confirm="Paperless trennen? URL, Token und Tag werden gelöscht."
-                >
-                  Trennen
+              <.action_bar class="mt-4">
+                <:secondary :if={User.paperless?(@paperless)}>
+                  <.button
+                    id="paperless-disconnect"
+                    variant={:danger_outline}
+                    confirm="Paperless trennen?"
+                    confirm_text="URL, Token und Tag werden gelöscht."
+                    confirm_label="Trennen"
+                    phx-click="disconnect_paperless"
+                  >
+                    Trennen
+                  </.button>
+                </:secondary>
+                <.button type="submit" variant={:primary} phx-disable-with="Speichert …">
+                  Speichern
                 </.button>
-              </div>
+              </.action_bar>
             </.form>
-          </.card>
+          </section>
         </div>
       </div>
     </Layouts.app>
@@ -191,25 +204,23 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
   end
 
   attr :id, :string, required: true
-  attr :on, :boolean, required: true
   attr :title, :string, required: true
+  attr :status, :string, required: true
+  attr :tone, :atom, required: true
   attr :detail, :list, required: true, doc: "its parts, each with its punctuation; none wraps"
 
   defp intake_row(assigns) do
     ~H"""
-    <li id={@id} class="d-flex align-items-start gap-2">
-      <.icon
-        name={if @on, do: "check", else: "alert"}
-        class={["flex-shrink-0 mt-1", if(@on, do: "text-success", else: "text-body-tertiary")]}
-      />
-      <span class="me-auto">
-        <span class="d-block fw-semibold">{@title}</span>
-        <span class="d-block small text-body-secondary">
-          <%= for part <- @detail do %>
-            <span class="text-nowrap">{part}</span>
-          <% end %>
-        </span>
-      </span>
+    <li id={@id}>
+      <p class="flex flex-wrap items-center gap-x-2 font-medium">
+        {@title}<span class="sr-only">:</span>
+        <.badge tone={@tone} data-status>{@status}</.badge>
+      </p>
+      <p :if={@detail != []} class="text-sm text-base-content/70" data-detail>
+        <%= for part <- @detail do %>
+          <span class="whitespace-nowrap" data-part>{part}</span>
+        <% end %>
+      </p>
     </li>
     """
   end
@@ -225,12 +236,11 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
 
       ["Tag „#{tag}“,", "danach „#{Receipts.done_tag(tag)}“ ·", polled]
     else
-      ["Nicht verbunden"]
+      []
     end
   end
 
-  defp recognition_status(nil),
-    do: ["Kein Modell eingerichtet:", "Belege öffnen ein leeres Formular."]
+  defp recognition_status(nil), do: ["Belege öffnen", "ein leeres Formular."]
 
   defp recognition_status(name),
     do: ["#{name} ·", "Text aus Paperless,", "sonst aus dem PDF"]

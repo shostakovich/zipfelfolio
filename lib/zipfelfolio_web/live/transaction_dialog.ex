@@ -66,271 +66,256 @@ defmodule ZipfelfolioWeb.TransactionDialog do
   def render(assigns) do
     ~H"""
     <div id={@id}>
-      <div :if={@open}>
-        <div
-          id="transaction-modal"
-          class="modal d-block"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="transaction-title"
-          phx-window-keydown="close"
-          phx-key="Escape"
+      <.modal
+        :if={@open}
+        id="transaction-modal"
+        title={title(@receipt, @editing)}
+        show
+        on_cancel={JS.push("close", target: @myself)}
+        class={if @receipt, do: "sm:max-w-6xl", else: "sm:max-w-2xl"}
+      >
+        <p :if={@receipt} class="text-sm text-base-content/70 wrap-anywhere">
+          {ReceiptComponents.receipt_subtitle(@receipt)}
+        </p>
+        <.form
+          for={@form}
+          id="transaction-form"
+          class="mt-4"
+          phx-change="validate"
+          phx-submit="book"
           phx-target={@myself}
         >
-          <div class={[
-            "modal-dialog modal-dialog-scrollable",
-            if(@receipt,
-              do: "modal-xl modal-fullscreen-lg-down app-receipt-dialog",
-              else: "modal-lg modal-fullscreen-sm-down"
-            )
-          ]}>
-            <.form
-              for={@form}
-              id="transaction-form"
-              class="modal-content"
-              phx-change="validate"
-              phx-submit="book"
-              phx-target={@myself}
-              phx-click-away="close"
-              phx-mounted={JS.focus_first(to: "#transaction-form .modal-body")}
-            >
-              <input :if={@receipt} type="hidden" name="receipt_id" value={@receipt.id} />
-              <div class="modal-header">
-                <div :if={@receipt}>
-                  <h2 class="modal-title h4" id="transaction-title">Beleg prüfen</h2>
-                  <div class="small text-body-secondary">
-                    {ReceiptComponents.receipt_subtitle(@receipt)}
-                  </div>
-                </div>
-                <h2 :if={!@receipt} class="modal-title h4" id="transaction-title">
-                  {if @editing, do: "Buchung bearbeiten", else: "Buchung erfassen"}
-                </h2>
-                <button
-                  type="button"
-                  class="btn-close"
-                  aria-label="Schließen"
-                  phx-click="close"
-                  phx-target={@myself}
-                ></button>
-              </div>
-              <div class="modal-body">
-                <div class={@receipt && "row g-4"}>
-                  <div :if={@receipt} class="col-lg-6 app-receipt-pane">
-                    <ReceiptComponents.sheet receipt={@receipt} />
-                  </div>
-                  <div class={@receipt && "col-lg-6"}>
-                    <ReceiptComponents.checklist :if={@receipt} receipt={@receipt} />
-                    <.kinds field={@form[:kind]} receipt={@receipt} />
-                    <div class="row g-3">
-                      <div :if={@kind != :deposit and @kind != :removal} class="col-sm-6">
-                        <.input
-                          field={@form[:portfolio_id]}
-                          type="select"
-                          label="Depot"
-                          options={Enum.map(@choices.portfolios, &{&1.name, &1.id})}
-                          prompt={portfolio_prompt(@kind, @receipt)}
-                          wrapper_class={nil}
-                          class={@depot_number_warning && "border-warning"}
-                          aria-describedby={
-                            @depot_number_warning && "transaction_portfolio_id-warning"
-                          }
-                        />
-                        <div
-                          :if={@depot_number_warning}
-                          id="transaction_portfolio_id-warning"
-                          class="form-text text-warning-emphasis"
-                        >
-                          {@depot_number_warning}
-                        </div>
-                      </div>
-                      <div class="col-sm-6">
-                        <.input
-                          field={@form[:date]}
-                          type="date"
-                          label="Datum"
-                          max={Date.to_iso8601(@today)}
-                          wrapper_class={nil}
-                        />
-                      </div>
-                      <div :if={@kind != :deposit and @kind != :removal} class="col-12">
-                        <.input
-                          field={@form[:security_id]}
-                          type="select"
-                          label="Wertpapier"
-                          options={Enum.map(@choices.securities, &{security_label(&1), &1.id})}
-                          prompt="Wertpapier wählen"
-                          wrapper_class={nil}
-                        />
-                        <button
-                          :if={
-                            !@new_security and
-                              !(@receipt && @form[:security_id].value not in [nil, ""])
-                          }
-                          id="new-security"
-                          type="button"
-                          class="btn btn-link btn-sm px-0"
-                          phx-click="new_security"
-                          phx-target={@myself}
-                        >
-                          Neues Wertpapier per ISIN
-                        </button>
-                        <.new_security
-                          :if={@new_security}
-                          form={@new_security.form}
-                          lookup={@new_security.lookup}
-                          myself={@myself}
-                        />
-                      </div>
-                      <div :if={@kind != :deposit and @kind != :removal} class="col-6 col-sm-4">
-                        <.number field={@form[:shares]} label="Stück" />
-                      </div>
-                      <div :if={@kind in [:purchase, :sale]} class="col-6 col-sm-4">
-                        <.number
-                          field={@form[:price]}
-                          label="Kurs"
-                          euros
-                          warning={ReceiptComponents.price_warning(@receipt)}
-                        />
-                      </div>
-                      <div :if={@kind == :dividend} class="col-6 col-sm-4">
-                        <.number field={@form[:gross]} label="Brutto" euros />
-                      </div>
-                      <div :if={@kind != :deposit and @kind != :removal} class="col-6 col-sm-4">
-                        <.number field={@form[:fees]} label="Gebühren" euros />
-                      </div>
-                      <div :if={@kind != :deposit and @kind != :removal} class="col-6 col-sm-4">
-                        <.number field={@form[:taxes]} label="Steuern" euros />
-                      </div>
-                      <div class="col-sm-8">
-                        <.input
-                          field={@form[:account_id]}
-                          type="select"
-                          label="Konto"
-                          options={Enum.map(@choices.accounts, &{&1.name, &1.id})}
-                          prompt={account_prompt(@kind)}
-                          wrapper_class={nil}
-                        />
-                      </div>
-                      <div class="col-12">
-                        <.amount form={@form} kind={@kind} />
-                      </div>
-                      <div :if={@kind == :dividend and !@editing} class="col-12">
-                        <.input
-                          field={@form[:remove_at_once]}
-                          type="checkbox"
-                          label="Gleich entnehmen"
-                          aria-describedby="transaction-remove-hint"
-                          wrapper_class="mb-0"
-                        />
-                        <div id="transaction-remove-hint" class="form-text">
-                          Bucht den Nettobetrag am selben Tag vom Konto ab.
-                        </div>
-                      </div>
-                      <div :if={!@receipt} class="col-12">
-                        <label class="form-label" for={@uploads.receipt.ref}>
-                          {if @editing && @editing.receipt, do: "Beleg ersetzen", else: "Beleg"}
-                          <span class="text-body-secondary">(optional)</span>
-                        </label>
-                        <.live_file_input
-                          upload={@uploads.receipt}
-                          class={[
-                            "form-control",
-                            receipt_errors(@uploads, @form) != [] && "is-invalid"
-                          ]}
-                        />
-                        <.error :for={message <- receipt_errors(@uploads, @form)}>{message}</.error>
-                        <div :if={@editing && @editing.receipt} class="form-text">
-                          Angehängt:
-                          <a
-                            href={~p"/receipts/#{@editing.receipt_id}"}
-                            target="_blank"
-                            rel="noopener"
-                          >
-                            {@editing.receipt.filename}
-                          </a>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div
-                  :if={@delete_error}
-                  id="transaction-delete-error"
-                  class="alert alert-danger mt-3 mb-0"
-                  role="alert"
-                >
-                  {@delete_error}
-                </div>
-              </div>
-              <div :if={@receipt} class="modal-footer">
-                <button
-                  id="receipt-discard"
-                  type="button"
-                  class="btn me-auto"
-                  phx-click="discard_receipt"
-                  phx-target={@myself}
-                >
-                  Verwerfen
-                </button>
-                <button
-                  id="receipt-later"
-                  type="button"
-                  class="btn"
-                  phx-click="close"
-                  phx-target={@myself}
-                >
-                  Später
-                </button>
-                <.button
-                  name="intent"
-                  value="book"
-                  class={[
-                    "btn",
-                    if(ReceiptComponents.passed?(@receipt), do: "btn-success", else: "btn-primary")
-                  ]}
-                  phx-disable-with="Wird gebucht …"
-                >
-                  Buchen
-                </.button>
-              </div>
-              <div :if={!@receipt} class="modal-footer">
-                <button
-                  :if={@editing}
-                  id="transaction-delete"
-                  type="button"
-                  class="btn btn-outline-danger me-auto"
-                  phx-click="delete"
-                  phx-target={@myself}
-                  data-confirm="Diese Buchung löschen?"
-                >
-                  Löschen
-                </button>
-                <button type="button" class="btn" phx-click="close" phx-target={@myself}>
-                  Abbrechen
-                </button>
-                <.button
-                  :if={!@editing}
-                  name="intent"
-                  value="book"
-                  phx-disable-with="Wird gebucht …"
-                >
-                  Buchen
-                </.button>
-                <.button
-                  :if={@editing}
-                  name="intent"
-                  value="book"
-                  phx-disable-with="Wird gespeichert …"
-                >
-                  Speichern
-                </.button>
-              </div>
-            </.form>
+          <input :if={@receipt} type="hidden" name="receipt_id" value={@receipt.id} />
+          <div class={@receipt && "grid gap-6 lg:grid-cols-[3fr_2fr]"}>
+            <div :if={@receipt} class="app-receipt-pane min-w-0">
+              <ReceiptComponents.sheet receipt={@receipt} />
+            </div>
+            <div class="min-w-0">
+              <ReceiptComponents.checklist :if={@receipt} receipt={@receipt} />
+              <.kinds field={@form[:kind]} receipt={@receipt} />
+              <.fields
+                form={@form}
+                kind={@kind}
+                choices={@choices}
+                receipt={@receipt}
+                editing={@editing}
+                today={@today}
+                new_security={@new_security}
+                depot_number_warning={@depot_number_warning}
+                uploads={@uploads}
+                myself={@myself}
+              />
+            </div>
           </div>
-        </div>
-        <div class="modal-backdrop show"></div>
+          <.alert
+            :if={@delete_error}
+            id="transaction-delete-error"
+            tone={:error}
+            class="mt-4"
+          >
+            {@delete_error}
+          </.alert>
+          <.action_bar :if={@receipt} sticky class="mt-6">
+            <:secondary>
+              <.button
+                id="receipt-discard"
+                variant={:ghost}
+                phx-click="discard_receipt"
+                phx-target={@myself}
+              >
+                Verwerfen
+              </.button>
+            </:secondary>
+            <.button id="receipt-later" phx-click={close_js()}>Später</.button>
+            <.button
+              id="transaction-book"
+              type="submit"
+              name="intent"
+              value="book"
+              variant={:primary}
+              phx-disable-with="Wird gebucht …"
+            >
+              Buchen
+            </.button>
+          </.action_bar>
+          <.action_bar :if={!@receipt} sticky class="mt-6">
+            <:secondary :if={@editing}>
+              <.button
+                id="transaction-delete"
+                variant={:danger_outline}
+                icon="trash-2"
+                confirm="Diese Buchung löschen?"
+                phx-click={JS.push("delete", target: @myself)}
+              >
+                Löschen
+              </.button>
+            </:secondary>
+            <.button id="transaction-cancel" phx-click={close_js()}>Abbrechen</.button>
+            <.button
+              id="transaction-book"
+              type="submit"
+              variant={:primary}
+              name="intent"
+              value="book"
+              phx-disable-with={if @editing, do: "Wird gespeichert …", else: "Wird gebucht …"}
+            >
+              {if @editing, do: "Speichern", else: "Buchen"}
+            </.button>
+          </.action_bar>
+        </.form>
+      </.modal>
+    </div>
+    """
+  end
+
+  defp title(%{} = _receipt, _editing), do: "Beleg prüfen"
+  defp title(nil, %{} = _editing), do: "Buchung bearbeiten"
+  defp title(nil, nil), do: "Buchung erfassen"
+
+  # Closes natively, so focus goes back to what opened the dialog; `on_cancel` tells the server.
+  defp close_js, do: hide_modal("transaction-modal")
+
+  attr :form, Phoenix.HTML.Form, required: true
+  attr :kind, :atom, required: true
+  attr :choices, :map, required: true
+  attr :receipt, :any, required: true
+  attr :editing, :any, required: true
+  attr :today, Date, required: true
+  attr :new_security, :any, required: true
+  attr :depot_number_warning, :string, default: nil
+  attr :uploads, :map, required: true
+  attr :myself, :any, required: true
+
+  defp fields(assigns) do
+    assigns = assign(assigns, :security?, assigns.kind not in [:deposit, :removal])
+
+    ~H"""
+    <div class="mt-2 grid grid-cols-2 gap-x-4 sm:grid-cols-6">
+      <div :if={@security?} class="col-span-2 sm:col-span-3">
+        <.input
+          field={@form[:portfolio_id]}
+          type="select"
+          label="Depot"
+          options={Enum.map(@choices.portfolios, &{Format.portfolio_name(&1), &1.id})}
+          prompt={portfolio_prompt(@kind, @receipt)}
+          help={@depot_number_warning}
+          help_tone={:warning}
+        />
+      </div>
+      <div class={["col-span-2", if(@security?, do: "sm:col-span-3", else: "sm:col-span-6")]}>
+        <.input field={@form[:date]} type="date" label="Datum" max={Date.to_iso8601(@today)} />
+      </div>
+      <div :if={@security?} class="col-span-2 sm:col-span-6">
+        <.input
+          field={@form[:security_id]}
+          type="select"
+          label="Wertpapier"
+          options={Enum.map(@choices.securities, &{security_label(&1), &1.id})}
+          prompt="Wertpapier wählen"
+        />
+        <.button
+          :if={!@new_security and !(@receipt && @form[:security_id].value not in [nil, ""])}
+          id="new-security"
+          variant={:link}
+          size={:sm}
+          class="px-0"
+          phx-click="new_security"
+          phx-target={@myself}
+        >
+          Neues Wertpapier per ISIN
+        </.button>
+        <.new_security
+          :if={@new_security}
+          form={@new_security.form}
+          lookup={@new_security.lookup}
+          myself={@myself}
+        />
+      </div>
+      <div :if={@security?} class="sm:col-span-2">
+        <.number field={@form[:shares]} label="Stück" />
+      </div>
+      <div :if={@kind in [:purchase, :sale]} class="sm:col-span-2">
+        <.number
+          field={@form[:price]}
+          label="Kurs"
+          euros
+          help={ReceiptComponents.price_warning(@receipt)}
+          help_tone={:warning}
+        />
+      </div>
+      <div :if={@kind == :dividend} class="sm:col-span-2">
+        <.number field={@form[:gross]} label="Brutto" euros />
+      </div>
+      <div :if={@security?} class="sm:col-span-2">
+        <.number field={@form[:fees]} label="Gebühren" euros />
+      </div>
+      <div :if={@security?} class="sm:col-span-2">
+        <.number field={@form[:taxes]} label="Steuern" euros />
+      </div>
+      <div class="col-span-2 sm:col-span-4">
+        <.input
+          field={@form[:account_id]}
+          type="select"
+          label="Konto"
+          options={Enum.map(@choices.accounts, &{&1.name, &1.id})}
+          prompt={account_prompt(@kind)}
+        />
+      </div>
+      <div class="col-span-2 sm:col-span-6">
+        <.amount_field form={@form} kind={@kind} />
+      </div>
+      <div :if={@kind == :dividend and !@editing} class="col-span-2 sm:col-span-6">
+        <.input
+          field={@form[:remove_at_once]}
+          type="checkbox"
+          label="Gleich entnehmen"
+          help="Bucht den Nettobetrag am selben Tag vom Konto ab."
+        />
+      </div>
+      <div :if={!@receipt} class="col-span-2 sm:col-span-6">
+        <.receipt_file uploads={@uploads} form={@form} editing={@editing} />
       </div>
     </div>
+    """
+  end
+
+  attr :uploads, :map, required: true
+  attr :form, Phoenix.HTML.Form, required: true
+  attr :editing, :any, required: true
+
+  defp receipt_file(assigns) do
+    assigns =
+      assign(assigns,
+        ref: assigns.uploads.receipt.ref,
+        errors: receipt_errors(assigns.uploads, assigns.form),
+        attached: assigns.editing && assigns.editing.receipt
+      )
+
+    ~H"""
+    <fieldset class="fieldset min-w-0">
+      <label class="fieldset-legend" for={@ref}>
+        {if @attached, do: "Beleg ersetzen", else: "Beleg"}
+        <span class="font-normal text-base-content/70">(optional)</span>
+      </label>
+      <.live_file_input
+        upload={@uploads.receipt}
+        class={["file-input w-full", @errors != [] && "file-input-error"]}
+        aria-invalid={@errors != [] && "true"}
+        aria-describedby={field_describedby(@ref, @errors, @attached)}
+      />
+      <.field_error id={@ref} errors={@errors} />
+      <.field_help :if={@attached} id={@ref}>
+        Angehängt:
+        <a
+          href={~p"/receipts/#{@editing.receipt_id}"}
+          target="_blank"
+          rel="noopener"
+          class="link"
+        >
+          {@editing.receipt.filename}
+        </a>
+      </.field_help>
+    </fieldset>
     """
   end
 
@@ -341,51 +326,53 @@ defmodule ZipfelfolioWeb.TransactionDialog do
   # Inside the transaction form, as forms do not nest: its fields are sent as `security`. „Anlegen“
   # comes first of the form's submit buttons, so Enter while it shows creates the security.
   defp new_security(assigns) do
+    assigns =
+      assign(assigns,
+        isin: assigns.form[:isin],
+        isin_errors: field_errors(assigns.form[:isin])
+      )
+
     ~H"""
-    <fieldset id="new-security-panel" class="border rounded p-3 mt-2 bg-body-tertiary">
-      <legend class="float-none w-auto fs-6 fw-semibold px-1 mb-0">Neues Wertpapier</legend>
-      <div class="row g-3">
-        <div class="col-sm-5">
-          <.input
-            field={@form[:isin]}
-            label="ISIN"
+    <fieldset
+      id="new-security-panel"
+      class="mt-2 rounded-box border border-base-content/10 px-4 pb-4"
+    >
+      <legend class="fieldset-legend px-1">Neues Wertpapier</legend>
+      <div class="grid gap-x-4 sm:grid-cols-2">
+        <fieldset class="fieldset min-w-0">
+          <label class="fieldset-legend" for={@isin.id}>ISIN</label>
+          <input
+            type="text"
+            id={@isin.id}
+            name={@isin.name}
+            value={@isin.value}
             autocomplete="off"
             spellcheck="false"
-            class="text-uppercase font-monospace"
             phx-debounce="300"
-            aria-describedby="new-security-lookup"
-            wrapper_class={nil}
+            class={["input w-full uppercase font-mono", @isin_errors != [] && "input-error"]}
+            aria-invalid={@isin_errors != [] && "true"}
+            aria-describedby={field_describedby(@isin.id, @isin_errors, true)}
           />
-          <div
-            id="new-security-lookup"
-            class={["form-text", lookup_tone(@lookup)]}
-            aria-live="polite"
-          >
-            {lookup_text(@lookup, @form[:isin].value)}
-          </div>
-        </div>
-        <div class="col-sm-7">
-          <.input field={@form[:name]} label="Name" autocomplete="off" wrapper_class={nil} />
-        </div>
-        <div class="col-sm-5">
-          <label class="form-label" for={@form[:symbol].id}>
-            Yahoo-Symbol <span class="text-body-secondary">(leer: Kurse von Hand)</span>
-          </label>
-          <.input field={@form[:symbol]} autocomplete="off" spellcheck="false" wrapper_class={nil} />
-        </div>
-        <div class="col-sm-7 d-flex align-items-end justify-content-end gap-2">
-          <button type="button" class="btn" phx-click="cancel_security" phx-target={@myself}>
+          <.field_error id={@isin.id} errors={@isin_errors} />
+          <.field_help id={@isin.id} aria-live="polite">
+            {lookup_text(@lookup, @isin.value)}
+          </.field_help>
+        </fieldset>
+        <.input field={@form[:name]} label="Name" autocomplete="off" />
+        <.input
+          field={@form[:symbol]}
+          label="Yahoo-Symbol"
+          help="Leer lassen für Kurse von Hand."
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <div class="flex items-end justify-end gap-2 pt-2 sm:pb-7">
+          <.button variant={:ghost} phx-click="cancel_security" phx-target={@myself}>
             Abbrechen
-          </button>
-          <button
-            id="new-security-create"
-            type="submit"
-            name="intent"
-            value="create_security"
-            class="btn btn-primary"
-          >
+          </.button>
+          <.button id="new-security-create" type="submit" name="intent" value="create_security">
             Anlegen
-          </button>
+          </.button>
         </div>
       </div>
     </fieldset>
@@ -400,9 +387,6 @@ defmodule ZipfelfolioWeb.TransactionDialog do
   defp lookup_text(:found, _isin), do: "Von Yahoo übernommen, bitte prüfen."
   defp lookup_text({:error, message}, _isin), do: message
 
-  defp lookup_tone({:error, _message}), do: "text-warning-emphasis"
-  defp lookup_tone(_lookup), do: nil
-
   attr :field, Phoenix.HTML.FormField, required: true
   attr :receipt, :any, required: true
 
@@ -411,111 +395,77 @@ defmodule ZipfelfolioWeb.TransactionDialog do
     kinds =
       if assigns.receipt, do: Keyword.take(@kinds, [:purchase, :sale, :dividend]), else: @kinds
 
-    assigns = assign(assigns, :kinds, kinds)
+    assigns = assign(assigns, :kinds, Enum.map(kinds, fn {kind, label} -> {label, kind} end))
 
     ~H"""
-    <div class="btn-group btn-group-sm w-100 mb-3 flex-wrap" role="group" aria-label="Art">
-      <%= for {kind, label} <- @kinds do %>
-        <input
-          type="radio"
-          class="btn-check"
-          name={@field.name}
-          id={"#{@field.id}-#{kind}"}
-          value={kind}
-          checked={to_string(@field.value) == to_string(kind)}
-        />
-        <label class="btn btn-outline-secondary flex-fill" for={"#{@field.id}-#{kind}"}>
-          {label}
-        </label>
-      <% end %>
-    </div>
+    <.segmented
+      mode={:radio}
+      field={@field}
+      label="Art"
+      size={:sm}
+      options={@kinds}
+      block
+    />
     """
   end
 
   attr :field, Phoenix.HTML.FormField, required: true
   attr :label, :string, required: true
   attr :euros, :boolean, default: false
-  attr :warning, :string, default: nil, doc: "what a receipt's failed check says about it"
+  attr :help, :string, default: nil, doc: "what a receipt's failed check says about it"
+  attr :help_tone, :atom, default: nil
 
   # A number as typed, in German notation, with its error once the field was used.
   defp number(assigns) do
-    assigns = assign(assigns, :errors, field_errors(assigns.field))
-
     ~H"""
-    <label class="form-label" for={@field.id}>{@label}</label>
-    <div class={[@euros && "input-group", @errors != [] && "has-validation"]}>
-      <input
-        type="text"
-        inputmode="decimal"
-        autocomplete="off"
-        id={@field.id}
-        name={@field.name}
-        value={typed(@field)}
-        class={[
-          "form-control tabular-nums",
-          @errors != [] && "is-invalid",
-          @warning && "border-warning"
-        ]}
-        aria-describedby={@warning && "#{@field.id}-warning"}
-      />
-      <span :if={@euros} class="input-group-text">€</span>
-      <.error :for={message <- @errors}>{message}</.error>
-    </div>
-    <div :if={@warning} id={"#{@field.id}-warning"} class="form-text text-warning-emphasis">
-      {@warning}
-    </div>
+    <.input
+      field={@field}
+      label={@label}
+      value={typed(@field)}
+      numeric
+      suffix={@euros && "€"}
+      autocomplete="off"
+      help={@help}
+      help_tone={@help_tone}
+    />
     """
   end
 
   attr :form, Phoenix.HTML.Form, required: true
   attr :kind, :atom, required: true
 
-  # The amount computed or overwritten, and a warning when it differs from the other fields.
-  defp amount(assigns) do
+  # The amount computed or overwritten, and what the other fields give when it differs.
+  defp amount_field(assigns) do
     form = assigns.form
-    field = form[:amount]
+    expected = form[:expected_amount].value
 
     assigns =
       assign(assigns,
-        field: field,
-        errors: field_errors(field),
         value: amount_value(form),
-        expected: form[:expected_amount].value
+        help:
+          expected &&
+            "#{expected_text(assigns.kind, form)} ergibt #{Format.amount(cents(expected))}\u00A0€."
       )
 
     ~H"""
-    <div class="alert alert-light mb-0">
-      <label class="form-label" for={@field.id}>
-        Betrag
-        <span class="text-body-secondary">({amount_hint(@kind, @form[:account_id].value)})</span>
-      </label>
-      <input type="hidden" name={@form[:amount_set].name} value={to_string(@form[:amount_set].value)} />
-      <div class={["input-group", @errors != [] && "has-validation"]}>
-        <input
-          type="text"
-          inputmode="decimal"
-          autocomplete="off"
-          id={@field.id}
-          name={@field.name}
-          value={@value}
-          class={["form-control fw-bold tabular-nums", @errors != [] && "is-invalid"]}
-          aria-describedby={@expected && "transaction-expected"}
-        />
-        <span class="input-group-text">€</span>
-        <.error :for={message <- @errors}>{message}</.error>
-      </div>
-      <div :if={@expected} id="transaction-expected" class="form-text text-warning-emphasis">
-        {expected_text(@kind, @form)} ergibt {Format.amount(cents(@expected))}&nbsp;€.
-      </div>
-    </div>
+    <input type="hidden" name={@form[:amount_set].name} value={to_string(@form[:amount_set].value)} />
+    <.input
+      field={@form[:amount]}
+      label={"Betrag (#{amount_hint(@kind, @form[:account_id].value)})"}
+      value={@value}
+      numeric
+      suffix="€"
+      autocomplete="off"
+      class="font-semibold"
+      help={@help}
+      help_tone={:warning}
+    />
     """
   end
 
-  defp field_errors(field) do
-    if Phoenix.Component.used_input?(field),
-      do: Enum.map(field.errors, &translate_error/1),
-      else: []
-  end
+  # Untranslated: `field_error` translates them.
+  defp field_errors(field),
+    do: if(Phoenix.Component.used_input?(field), do: field.errors, else: [])
 
   # What the user typed, not the cast decimal, which would read as thousands in German.
   defp typed(%Phoenix.HTML.FormField{form: form, field: field}),
@@ -566,8 +516,7 @@ defmodule ZipfelfolioWeb.TransactionDialog do
     upload = uploads.receipt
     entry_errors = Enum.flat_map(upload.entries, &upload_errors(upload, &1))
 
-    Enum.map(upload_errors(upload) ++ entry_errors, &upload_error/1) ++
-      Enum.map(form[:receipt].errors, &translate_error/1)
+    Enum.map(upload_errors(upload) ++ entry_errors, &upload_error/1) ++ form[:receipt].errors
   end
 
   defp upload_error(:too_large), do: "Die Datei ist zu groß."
