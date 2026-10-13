@@ -120,7 +120,7 @@ defmodule ZipfelfolioWeb.OverviewLive do
               navigate={Sidebar.portfolio_path(entry.portfolio)}
               trailing_on_phone={:title}
             >
-              <:leading><.avatar icon="briefcase" tone={:base} /></:leading>
+              <:leading><.avatar icon="briefcase" /></:leading>
               <:meta>{portfolio_note(entry)}</:meta>
               <:trailing>
                 <div class="text-end">

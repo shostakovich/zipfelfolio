@@ -102,7 +102,7 @@ defmodule ZipfelfolioWeb.SidebarTest do
     test "stay out of the icon rail, which keeps the views and the settings", ctx do
       {:ok, lv, _html} = live(ctx.conn, ~p"/")
 
-      rail = "aside.xl\\:hidden"
+      rail = "#app-shell-rail"
       refute has_element?(lv, "#{rail} a[href='#{ctx.portfolio_path}']")
       refute has_element?(lv, "#{rail} a[href='#{ctx.savings_path}']")
       assert has_element?(lv, "#{rail} a[href='/holdings']")

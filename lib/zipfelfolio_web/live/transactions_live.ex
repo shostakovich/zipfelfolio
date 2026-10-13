@@ -165,7 +165,7 @@ defmodule ZipfelfolioWeb.TransactionsLive do
       trailing_on_phone={:title}
       data-month={Date.to_iso8601(@month)}
     >
-      <:leading><.avatar icon={type_icon(@transaction.type)} tone={:base} /></:leading>
+      <:leading><.avatar icon={type_icon(@transaction.type)} /></:leading>
       <span :if={@editable} class="sr-only"> bearbeiten</span>
       <:meta>{details(@transaction)}</:meta>
       <:trailing :let={place}>

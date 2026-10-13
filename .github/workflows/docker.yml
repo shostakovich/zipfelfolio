@@ -105,6 +105,12 @@ jobs:
             echo "::error::GET /users/log-in returned $status"
             exit 1
           fi
+          status=$(curl -sS -o /dev/null -w '%{http_code}' -H 'X-Forwarded-Proto: https' \
+            http://localhost:4000/setzkasten/fonts/Figtree-Variable.woff2)
+          if [ "$status" != 200 ]; then
+            echo "::error::GET /setzkasten/fonts/Figtree-Variable.woff2 returned $status"
+            exit 1
+          fi
 
       - name: Show container logs
         if: failure() && steps.smoke.outcome == 'failure'

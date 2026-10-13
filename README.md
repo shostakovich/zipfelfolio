@@ -84,4 +84,5 @@ Chart.js; one container behind a reverse proxy.
 Public domain ([The Unlicense](LICENSE)). The FI forecast is inspired by
 [Beyond Rule 4](https://github.com/JackMorrissey/beyond-rule-4) (MIT). The Lucide icons in `assets/vendor/lucide` are
 ISC-licensed. The plush images in `priv/static/images/plush` are derived from Noto Emoji 3D (Apache License 2.0),
-see `priv/static/images/plush/NOTICE`.
+see `priv/static/images/plush/NOTICE`. The Figtree fonts served from setzkasten are under the SIL Open Font License
+1.1.

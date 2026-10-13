@@ -45,7 +45,7 @@ defmodule ZipfelfolioWeb.ReceiptComponents do
     ~H"""
     <.list_row id={"receipt-#{@receipt.id}"} title={title(@receipt, @names)} data-state={@state}>
       <:leading>
-        <.avatar icon={state_icon(@state)} tone={:base} loading={@state == :recognising} />
+        <.avatar icon={state_icon(@state)} loading={@state == :recognising} />
       </:leading>
       <:meta>
         <span class="flex flex-wrap items-center gap-x-2 whitespace-normal">
