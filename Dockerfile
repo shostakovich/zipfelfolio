@@ -57,7 +57,7 @@ RUN mix deps.compile
 COPY priv priv
 COPY lib lib
 COPY --from=assets /app/priv/static priv/static
-# ZipfelfolioWeb.Icons compiles these SVGs in; without them it compiles empty and every page raises.
+# ZipfelfolioWeb.Icons compiles these SVGs in; without them mix compile fails.
 COPY assets/vendor/lucide assets/vendor/lucide
 
 RUN mix compile

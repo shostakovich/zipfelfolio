@@ -124,7 +124,7 @@ defmodule ZipfelfolioWeb.HoldingsLive do
 
   attr :item, :map, required: true, doc: "an item of `groups/2`"
 
-  # A security with its ISIN or, below lg, its shares and price; an account with what it is; the
+  # A security with its ISIN or, below xl, its shares and price; an account with what it is; the
   # note of a portfolio without securities.
   defp position_name(%{item: %{type: :holding, entry: entry}} = assigns) do
     assigns = assign(assigns, :entry, entry)
