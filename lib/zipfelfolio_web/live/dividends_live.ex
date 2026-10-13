@@ -229,7 +229,7 @@ defmodule ZipfelfolioWeb.DividendsLive do
         title={coming_months_title(@upcoming, @amount)}
         hook="UpcomingDividendChart"
         summary={coming_months_label(@months, @amount)}
-        class="xl:sticky xl:top-6"
+        class="min-w-0 xl:sticky xl:top-6"
       >
         <:legend>
           <%!-- As <.legend>, which has no marker for a series' fill mixed lighter. --%>
@@ -319,7 +319,7 @@ defmodule ZipfelfolioWeb.DividendsLive do
             :for={{month, index} <- @months}
             label={month}
             align={:end}
-            show_from={:md}
+            show_from={:"2xl"}
           >
             <% amount = month_cell(year, index, @amount, @today) %>
             <span :if={is_nil(amount)} class="sr-only">noch offen</span>
@@ -364,7 +364,7 @@ defmodule ZipfelfolioWeb.DividendsLive do
         </:col>
         <:col :let={entry} label="Wertpapier">
           <.security_link security={entry.security} />
-          <.cell_sub hide_from={:md} class="tabular-nums">
+          <.cell_sub hide_from={:lg} class="tabular-nums">
             <span class="sm:hidden"><.pay_date date={entry.date} /><.meta_sep /></span><span class="whitespace-nowrap">{shares(
               entry.shares
             )}</span><.meta_sep /><span class="whitespace-nowrap">Steuern {Format.euros(
@@ -375,20 +375,20 @@ defmodule ZipfelfolioWeb.DividendsLive do
               class="whitespace-nowrap"
             ><.meta_sep />Gebühren {Format.euros(entry.fees, 2)}</span>
           </.cell_sub>
-          <.cell_sub show_from={:md} hide_from={:lg} class="tabular-nums">
+          <.cell_sub show_from={:lg} hide_from={:xl} class="tabular-nums">
             {shares(entry.shares)}
           </.cell_sub>
         </:col>
-        <:col :let={entry} label="Stück" align={:end} show_from={:lg}>
+        <:col :let={entry} label="Stück" align={:end} show_from={:xl}>
           {share_count(entry.shares)}
         </:col>
         <:col :let={entry} label="Brutto" align={:end} show_from={:sm}>
           <.amount value={entry.gross} />
         </:col>
-        <:col :let={entry} label="Steuern" align={:end} show_from={:md}>
+        <:col :let={entry} label="Steuern" align={:end} show_from={:lg}>
           <span class={muted(entry.taxes)}>{deduction(entry.taxes)}</span>
         </:col>
-        <:col :let={entry} label="Gebühren" align={:end} show_from={:md}>
+        <:col :let={entry} label="Gebühren" align={:end} show_from={:lg}>
           <span class={muted(entry.fees)}>{deduction(entry.fees)}</span>
         </:col>
         <:col :let={entry} label="Netto" align={:end}>

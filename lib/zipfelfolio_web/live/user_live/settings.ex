@@ -24,7 +24,7 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
         </:actions>
       </.header>
 
-      <div class="grid gap-x-12 gap-y-8 lg:grid-cols-2">
+      <div class="grid gap-x-12 gap-y-8 xl:grid-cols-2">
         <div class="flex min-w-0 flex-col gap-8">
           <section id="passkeys" aria-labelledby="passkeys-title">
             <.section_heading id="passkeys-title" count={length(@passkeys)}>
