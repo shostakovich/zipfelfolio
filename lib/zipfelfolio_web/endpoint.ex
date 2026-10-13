@@ -17,6 +17,12 @@ defmodule ZipfelfolioWeb.Endpoint do
     longpoll: [connect_info: [session: @session_options]]
 
   plug Plug.Static,
+    at: "/setzkasten",
+    from: {:setzkasten, "priv/static"},
+    only: ~w(fonts),
+    cache_control_for_etags: "public, max-age=86400"
+
+  plug Plug.Static,
     at: "/",
     from: :zipfelfolio,
     gzip: not code_reloading?,

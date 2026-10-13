@@ -70,10 +70,10 @@ defmodule ZipfelfolioWeb.HoldingsLive do
             purchase_value={item.entry.purchase_value}
           />
         </:col>
-        <:col :let={item} label="Anteil" align={:end} show_from={:md}>
+        <:col :let={item} label="Anteil" align={:end} show_from={:lg}>
           <span :if={item.type != :none}>{share(item.entry.value, @holdings.net_worth)}</span>
         </:col>
-        <:col :let={item} :if={@yields?} label="Div.-Rendite" align={:end} show_from={:lg}>
+        <:col :let={item} :if={@yields?} label="Div.-Rendite" align={:end} show_from={:"2xl"}>
           <span :if={item.type == :holding} class={muted(item.entry.dividends)}>
             {dividend_yield(item.entry.dividends, item.entry.value)}
           </span>
@@ -94,15 +94,15 @@ defmodule ZipfelfolioWeb.HoldingsLive do
           <td class={["text-end whitespace-nowrap", show_from(:sm)]}>
             <.gain gain={@holdings.total.gain} />
           </td>
-          <td class={["text-end whitespace-nowrap", show_from(:md)]}>
+          <td class={["text-end whitespace-nowrap", show_from(:lg)]}>
             {@holdings.portfolio && share(@holdings.total.value, @holdings.net_worth)}
           </td>
-          <td :if={@yields?} class={["text-end whitespace-nowrap", show_from(:lg)]}>
+          <td :if={@yields?} class={["text-end whitespace-nowrap", show_from(:"2xl")]}>
             {dividend_yield(@holdings.total.dividends, @holdings.total.securities_value)}
           </td>
         </:foot>
       </.table>
-      <p :if={!@empty and @yields?} class="mt-2 hidden text-sm text-base-content/70 lg:block">
+      <p :if={!@empty and @yields?} class="mt-2 hidden text-sm text-base-content/70 2xl:block">
         Div.-Rendite: brutto, nächste 12 Monate auf den heutigen Wert.
       </p>
 
@@ -124,7 +124,7 @@ defmodule ZipfelfolioWeb.HoldingsLive do
 
   attr :item, :map, required: true, doc: "an item of `groups/2`"
 
-  # A security with its ISIN or, below lg, its shares and price; an account with what it is; the
+  # A security with its ISIN or, below xl, its shares and price; an account with what it is; the
   # note of a portfolio without securities.
   defp position_name(%{item: %{type: :holding, entry: entry}} = assigns) do
     assigns = assign(assigns, :entry, entry)

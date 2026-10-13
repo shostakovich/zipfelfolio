@@ -68,7 +68,7 @@ defmodule ZipfelfolioWeb.SecurityLive do
       </.header>
 
       <%!-- One grid for both rows, so the columns line up. --%>
-      <div class="grid items-start gap-x-10 gap-y-8 lg:grid-cols-[3fr_2fr]">
+      <div class="grid items-start gap-x-10 gap-y-8 2xl:grid-cols-[3fr_2fr]">
         <.chart_card
           id="price-history"
           title="Kurs"

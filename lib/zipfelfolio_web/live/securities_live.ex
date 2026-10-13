@@ -192,7 +192,17 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
             placeholder="z. B. VGWL.DE"
             spellcheck="false"
           />
-          <div class="py-1"><.button type="submit" class="max-sm:w-full">Speichern</.button></div>
+          <div class="py-1">
+            <.button
+              id={"feed-#{@security.id}-save"}
+              type="submit"
+              class="max-sm:w-full"
+              saved
+              phx-disable-with="Speichert …"
+            >
+              Speichern
+            </.button>
+          </div>
         </.form>
 
         <.disclosure
@@ -329,7 +339,7 @@ defmodule ZipfelfolioWeb.SecuritiesLive do
         if new_yahoo_source?(security, updated),
           do: MarketData.fetch_in_background(updated)
 
-        {:noreply, socket |> load() |> put_flash(:info, "Kursquelle gespeichert.")}
+        {:noreply, socket |> load() |> push_saved("feed-#{security.id}-save")}
 
       {:error, changeset} ->
         {:noreply, put_form(socket, :feed_forms, security, feed_form(security, changeset))}
