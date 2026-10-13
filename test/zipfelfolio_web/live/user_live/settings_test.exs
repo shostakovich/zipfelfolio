@@ -214,7 +214,9 @@ defmodule ZipfelfolioWeb.UserLive.SettingsTest do
           "paperless_tag" => "zipfelfolio"
         })
 
-      assert result =~ "Paperless gespeichert"
+      assert_push_event(lv, "setzkasten:saved", %{id: "paperless-save"})
+      assert has_element?(lv, "#paperless-save.setzkasten-saved")
+      refute has_element?(lv, "#flash-info")
       refute result =~ "geheim123"
 
       assert has_element?(lv, "#paperless-status [data-status]", "Verbunden")
@@ -280,6 +282,7 @@ defmodule ZipfelfolioWeb.UserLive.SettingsTest do
       result = save_paperless(lv, %{"paperless_url" => "paperless.local"})
 
       assert result =~ "Braucht http:// oder https:// und einen Host"
+      refute_push_event(lv, "setzkasten:saved", %{id: "paperless-save"})
       assert has_element?(lv, ~s(#paperless-form p[id$="-error-0"]), "Muss ausgefüllt werden")
       assert has_element?(lv, "#paperless-status", "Nicht verbunden")
     end

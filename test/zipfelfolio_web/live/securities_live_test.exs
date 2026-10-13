@@ -110,7 +110,10 @@ defmodule ZipfelfolioWeb.SecuritiesLiveTest do
     end)
 
     {:ok, lv, _html} = live(conn, ~p"/settings/securities")
-    assert save_feed(lv, security, "yahoo", "VWRL.AS") =~ "Kursquelle gespeichert."
+    save_id = "feed-#{security.id}-save"
+    save_feed(lv, security, "yahoo", "VWRL.AS")
+    assert_push_event(lv, "setzkasten:saved", %{id: ^save_id})
+    assert has_element?(lv, "##{save_id}.setzkasten-saved")
     await_background_fetches()
 
     assert_received {:chart, "VWRL.AS", nil}
@@ -142,6 +145,7 @@ defmodule ZipfelfolioWeb.SecuritiesLiveTest do
     {:ok, lv, _html} = live(conn, ~p"/settings/securities")
 
     assert save_feed(lv, security, "yahoo", "") =~ "Muss ausgefüllt werden"
+    refute_push_event(lv, "setzkasten:saved", %{})
     assert Repo.reload!(security).symbol == "VGWL.DE"
   end
 

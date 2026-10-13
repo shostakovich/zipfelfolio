@@ -191,7 +191,13 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
                     Trennen
                   </.button>
                 </:secondary>
-                <.button type="submit" variant={:primary} phx-disable-with="Speichert …">
+                <.button
+                  id="paperless-save"
+                  type="submit"
+                  variant={:primary}
+                  saved
+                  phx-disable-with="Speichert …"
+                >
                   Speichern
                 </.button>
               </.action_bar>
@@ -318,7 +324,7 @@ defmodule ZipfelfolioWeb.UserLive.Settings do
 
         {:noreply,
          socket
-         |> put_flash(:info, "Paperless gespeichert; zipfelfolio fragt es gleich ab.")
+         |> push_saved("paperless-save")
          |> assign_paperless(user)}
 
       {:error, changeset} ->
