@@ -10,8 +10,8 @@ const sharesFormat = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 8 }
 // Prices and shares come × 10⁸.
 const unscaled = (value) => value / 100_000_000
 
-// A security's prices over the period, its purchases as rings and its sales as dots at their price
-// per share; the security page pushes them with the currency they are in. Nothing without prices.
+// A security's prices over the period, its purchases and sales as dots at their price per share;
+// the security page pushes them with the currency they are in. Nothing without prices.
 export const PriceChart = chartHook("price-chart", ({ currency, dates, prices, trades }, el) => {
   if (dates.length === 0) return null
 
@@ -36,6 +36,8 @@ export const PriceChart = chartHook("price-chart", ({ currency, dates, prices, t
     clip: false,
     pointRadius: compact ? 4 : 4.5,
     pointHoverRadius: compact ? 5 : 6,
+    pointBorderColor: background,
+    pointBorderWidth: 1.5,
   }
 
   return {
@@ -44,6 +46,8 @@ export const PriceChart = chartHook("price-chart", ({ currency, dates, prices, t
       datasets: [
         {
           label: "Kurs",
+          // Drawn below the trades, which would otherwise disappear under the line.
+          order: 1,
           data: prices.map((value, i) => ({ x: days[i], y: unscaled(value) })),
           borderColor: primary,
           borderWidth: compact ? 1.75 : 2.5,
@@ -60,17 +64,13 @@ export const PriceChart = chartHook("price-chart", ({ currency, dates, prices, t
           ...tradeDots,
           label: "Käufe",
           data: dots(true),
-          pointBackgroundColor: background,
-          pointBorderColor: success,
-          pointBorderWidth: 2.5,
+          pointBackgroundColor: success,
         },
         {
           ...tradeDots,
           label: "Verkäufe",
           data: dots(false),
           pointBackgroundColor: danger,
-          pointBorderColor: background,
-          pointBorderWidth: 1.5,
         },
       ],
     },
@@ -94,6 +94,7 @@ export const PriceChart = chartHook("price-chart", ({ currency, dates, prices, t
       plugins: {
         legend: { display: false },
         tooltip: {
+          itemSort: (a, b) => a.datasetIndex - b.datasetIndex,
           callbacks: {
             title: ([item]) => formatDay(item.parsed.x),
             label: ({ raw: { trade }, parsed }) =>
